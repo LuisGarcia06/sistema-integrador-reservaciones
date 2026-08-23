@@ -1,9 +1,12 @@
 const express = require('express');
 const pool = require('./config/database');
+const reservacionesRoutes = require('./routes/reservaciones.routes');
 
 const app = express();
 
 app.use(express.json());
+
+app.use('/api/reservaciones', reservacionesRoutes);
 
 const PORT = 3000;
 
