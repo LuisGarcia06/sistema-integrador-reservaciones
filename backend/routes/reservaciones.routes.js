@@ -5,6 +5,7 @@ const router = express.Router();
 
 router.get('/', reservacionesController.listarReservaciones);
 router.post('/', reservacionesController.crearReservacion);
+router.patch('/:id/cancelar', reservacionesController.cancelarReservacion);
 router.patch('/:id', reservacionesController.actualizarReservacionParcial);
 router.get('/:id', reservacionesController.obtenerReservacionPorId);
 

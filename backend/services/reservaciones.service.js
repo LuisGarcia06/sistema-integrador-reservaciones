@@ -155,9 +155,26 @@ const actualizarReservacionParcial = async (idReservacion, campos) => {
     return result.rows[0];
 };
 
+const cancelarReservacion = async (idReservacion) => {
+    const query = `
+        UPDATE reservaciones
+        SET
+            estado = $1,
+            ultima_actualizacion = CURRENT_TIMESTAMP
+        WHERE id_reservacion = $2
+        RETURNING
+            ${columnasReservacion}
+    `;
+
+    const result = await pool.query(query, ['Cancelada', idReservacion]);
+
+    return result.rows[0];
+};
+
 module.exports = {
     obtenerReservaciones,
     obtenerReservacionPorId,
     crearReservacion,
-    actualizarReservacionParcial
+    actualizarReservacionParcial,
+    cancelarReservacion
 };

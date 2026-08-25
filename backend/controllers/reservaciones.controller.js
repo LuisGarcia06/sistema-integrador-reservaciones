@@ -487,6 +487,46 @@ const actualizarReservacionParcial = async (req, res) => {
     }
 };
 
+const cancelarReservacion = async (req, res) => {
+    const idReservacion = Number(req.params.id);
+
+    if (!Number.isInteger(idReservacion) || idReservacion <= 0) {
+        return res.status(400).json({
+            mensaje: 'El id de la reservación debe ser un entero válido'
+        });
+    }
+
+    try {
+        const reservacionActual = await reservacionesService.obtenerReservacionPorId(idReservacion);
+
+        if (!reservacionActual) {
+            return res.status(404).json({
+                mensaje: 'Reservación no encontrada'
+            });
+        }
+
+        if (reservacionActual.estado === 'Cancelada') {
+            return res.status(200).json({
+                mensaje: 'La reservación ya estaba cancelada',
+                datos: reservacionActual
+            });
+        }
+
+        const reservacionCancelada = await reservacionesService.cancelarReservacion(idReservacion);
+
+        return res.status(200).json({
+            mensaje: 'Reservación cancelada correctamente',
+            datos: reservacionCancelada
+        });
+    } catch (error) {
+        console.error('Error al cancelar la reservación:', error);
+
+        return res.status(500).json({
+            mensaje: 'Error al cancelar la reservación'
+        });
+    }
+};
+
 const obtenerReservacionPorId = async (req, res) => {
     const idReservacion = Number(req.params.id);
 
@@ -522,5 +562,6 @@ module.exports = {
     listarReservaciones,
     crearReservacion,
     actualizarReservacionParcial,
+    cancelarReservacion,
     obtenerReservacionPorId
 };
