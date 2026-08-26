@@ -32,6 +32,12 @@ const camposEditables = [
     'estado'
 ];
 
+const filtrosReservacionesPermitidos = [
+    'codigo',
+    'nombre',
+    'fecha'
+];
+
 const esValorVacio = (valor) => (
     valor === undefined ||
     valor === null ||
@@ -96,6 +102,57 @@ const obtenerOpcional = (valor) => {
 };
 
 const validarIdReservacion = (id) => convertirEnteroPositivo(id);
+
+const validarFiltrosReservaciones = (query) => {
+    const errores = [];
+    const filtros = {};
+    const filtrosEnviados = Object.keys(query);
+
+    filtrosEnviados.forEach((filtro) => {
+        if (!filtrosReservacionesPermitidos.includes(filtro)) {
+            errores.push(`El filtro ${filtro} no está permitido`);
+        }
+    });
+
+    if (Object.prototype.hasOwnProperty.call(query, 'codigo')) {
+        const codigo = typeof query.codigo === 'string' ? query.codigo.trim() : query.codigo;
+
+        if (esValorVacio(codigo)) {
+            errores.push('El filtro codigo no puede estar vacío');
+        } else if (typeof codigo !== 'string' || codigo.length > 30) {
+            errores.push('El filtro codigo no puede exceder 30 caracteres');
+        } else {
+            filtros.codigo = codigo;
+        }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(query, 'nombre')) {
+        const nombre = typeof query.nombre === 'string' ? query.nombre.trim() : query.nombre;
+
+        if (esValorVacio(nombre)) {
+            errores.push('El filtro nombre no puede estar vacío');
+        } else if (typeof nombre !== 'string' || nombre.length > 120) {
+            errores.push('El filtro nombre no puede exceder 120 caracteres');
+        } else {
+            filtros.nombre = nombre;
+        }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(query, 'fecha')) {
+        const fecha = typeof query.fecha === 'string' ? query.fecha.trim() : query.fecha;
+
+        if (!esFechaValida(fecha)) {
+            errores.push('El filtro fecha debe tener formato YYYY-MM-DD y ser una fecha válida');
+        } else {
+            filtros.fecha = fecha;
+        }
+    }
+
+    return {
+        errores,
+        filtros
+    };
+};
 
 const validarDatosReservacion = (datos) => {
     const errores = [];
@@ -365,7 +422,9 @@ const validarDatosActualizacionReservacion = (datos) => {
 module.exports = {
     camposObligatorios,
     camposEditables,
+    filtrosReservacionesPermitidos,
     validarIdReservacion,
+    validarFiltrosReservaciones,
     validarDatosReservacion,
     validarDatosActualizacionReservacion,
     esValorVacio,

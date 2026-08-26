@@ -43,15 +43,38 @@ const camposActualizables = [
     'estado'
 ];
 
-const obtenerReservaciones = async () => {
+const obtenerReservaciones = async (filtros = {}) => {
+    const condiciones = [];
+    const values = [];
+
+    if (filtros.codigo) {
+        values.push(filtros.codigo);
+        condiciones.push(`codigo = $${values.length}`);
+    }
+
+    if (filtros.nombre) {
+        values.push(`%${filtros.nombre}%`);
+        condiciones.push(`nombre_cliente ILIKE $${values.length}`);
+    }
+
+    if (filtros.fecha) {
+        values.push(filtros.fecha);
+        condiciones.push(`fecha = $${values.length}`);
+    }
+
+    const where = condiciones.length > 0
+        ? `WHERE ${condiciones.join('\n            AND ')}`
+        : '';
+
     const query = `
         SELECT
             ${columnasReservacion}
         FROM reservaciones
+        ${where}
         ORDER BY fecha_registro DESC, id_reservacion DESC
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, values);
 
     return result.rows;
 };

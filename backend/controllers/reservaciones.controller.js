@@ -2,15 +2,25 @@ const reservacionesService = require('../services/reservaciones.service');
 const {
     validarIdReservacion,
     validarDatosReservacion,
-    validarDatosActualizacionReservacion
+    validarDatosActualizacionReservacion,
+    validarFiltrosReservaciones
 } = require('../validators/reservaciones.validator');
 const { obtenerRespuestaErrorPostgres } = require('../utils/dbErrors');
 
 const listarReservaciones = async (req, res) => {
-    try {
-        const reservaciones = await reservacionesService.obtenerReservaciones();
+    const { errores, filtros } = validarFiltrosReservaciones(req.query || {});
 
-        res.status(200).json({
+    if (errores.length > 0) {
+        return res.status(400).json({
+            mensaje: 'Filtros inválidos',
+            errores
+        });
+    }
+
+    try {
+        const reservaciones = await reservacionesService.obtenerReservaciones(filtros);
+
+        return res.status(200).json({
             mensaje: 'Reservaciones consultadas correctamente',
             total: reservaciones.length,
             datos: reservaciones
