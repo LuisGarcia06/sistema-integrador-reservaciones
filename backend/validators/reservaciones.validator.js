@@ -101,6 +101,42 @@ const obtenerOpcional = (valor) => {
     return valor;
 };
 
+const convertirNumeroOpcional = (valor) => {
+    const valorOpcional = obtenerOpcional(valor);
+
+    if (valorOpcional === null) {
+        return {
+            valido: true,
+            valor: null
+        };
+    }
+
+    const numero = convertirNumero(valorOpcional);
+
+    return {
+        valido: numero !== null,
+        valor: numero
+    };
+};
+
+const convertirEnteroNoNegativoOpcional = (valor) => {
+    const valorOpcional = obtenerOpcional(valor);
+
+    if (valorOpcional === null) {
+        return {
+            valido: true,
+            valor: null
+        };
+    }
+
+    const numero = convertirEnteroNoNegativo(valorOpcional);
+
+    return {
+        valido: numero !== null,
+        valor: numero
+    };
+};
+
 const validarIdReservacion = (id) => convertirEnteroPositivo(id);
 
 const validarFiltrosReservaciones = (query) => {
@@ -187,6 +223,14 @@ const validarDatosReservacion = (datos) => {
 
     if (!esValorVacio(datos.pax) && pax === null) {
         errores.push('El campo pax debe ser un entero positivo');
+    }
+
+    if (!esValorVacio(datos.fecha) && !esFechaValida(datos.fecha)) {
+        errores.push('El campo fecha debe ser una fecha válida');
+    }
+
+    if (!esValorVacio(datos.pickup_time) && !esHoraValida(datos.pickup_time)) {
+        errores.push('El campo pickup_time debe ser una hora válida');
     }
 
     let ninos = null;
@@ -336,12 +380,12 @@ const validarDatosActualizacionReservacion = (datos) => {
     }
 
     if (Object.prototype.hasOwnProperty.call(datos, 'ninos')) {
-        const ninos = convertirEnteroNoNegativo(datos.ninos);
+        const ninos = convertirEnteroNoNegativoOpcional(datos.ninos);
 
-        if (ninos === null) {
+        if (!ninos.valido) {
             errores.push('El campo ninos debe ser un entero mayor o igual a 0');
         } else {
-            camposActualizacion.ninos = ninos;
+            camposActualizacion.ninos = ninos.valor;
         }
     }
 
@@ -372,32 +416,32 @@ const validarDatosActualizacionReservacion = (datos) => {
     }
 
     if (Object.prototype.hasOwnProperty.call(datos, 'deposito')) {
-        const deposito = convertirNumero(datos.deposito);
+        const deposito = convertirNumeroOpcional(datos.deposito);
 
-        if (deposito === null) {
+        if (!deposito.valido) {
             errores.push('El campo deposito debe ser numérico válido');
         } else {
-            camposActualizacion.deposito = deposito;
+            camposActualizacion.deposito = deposito.valor;
         }
     }
 
     if (Object.prototype.hasOwnProperty.call(datos, 'saldo')) {
-        const saldo = convertirNumero(datos.saldo);
+        const saldo = convertirNumeroOpcional(datos.saldo);
 
-        if (saldo === null) {
+        if (!saldo.valido) {
             errores.push('El campo saldo debe ser numérico válido');
         } else {
-            camposActualizacion.saldo = saldo;
+            camposActualizacion.saldo = saldo.valor;
         }
     }
 
     if (Object.prototype.hasOwnProperty.call(datos, 'tipo_cambio')) {
-        const tipoCambio = convertirNumero(datos.tipo_cambio);
+        const tipoCambio = convertirNumeroOpcional(datos.tipo_cambio);
 
-        if (tipoCambio === null) {
+        if (!tipoCambio.valido) {
             errores.push('El campo tipo_cambio debe ser numérico válido');
         } else {
-            camposActualizacion.tipo_cambio = tipoCambio;
+            camposActualizacion.tipo_cambio = tipoCambio.valor;
         }
     }
 
