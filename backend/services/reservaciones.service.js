@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { camposEditablesReservacion } = require('../constants/reservaciones.fields');
 
 const columnasReservacion = `
     id_reservacion,
@@ -23,25 +24,7 @@ const columnasReservacion = `
     ultima_actualizacion
 `;
 
-const camposActualizables = [
-    'codigo',
-    'fecha',
-    'id_tour',
-    'id_pais',
-    'id_plataforma',
-    'nombre_cliente',
-    'habitacion',
-    'pax',
-    'ninos',
-    'pickup_place',
-    'pickup_time',
-    'precio_total',
-    'deposito',
-    'saldo',
-    'tipo_cambio',
-    'metodo_pago',
-    'estado'
-];
+const camposActualizables = camposEditablesReservacion;
 
 const obtenerReservaciones = async (filtros = {}) => {
     const condiciones = [];

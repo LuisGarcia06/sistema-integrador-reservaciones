@@ -1,18 +1,18 @@
-const camposObligatorios = [
+const {
+    camposObligatoriosReservacion,
+    camposEditablesReservacion
+} = require('../constants/reservaciones.fields');
+
+const camposObligatorios = camposObligatoriosReservacion;
+const camposEditables = camposEditablesReservacion;
+
+const filtrosReservacionesPermitidos = [
     'codigo',
-    'fecha',
-    'id_tour',
-    'id_pais',
-    'id_plataforma',
-    'nombre_cliente',
-    'pax',
-    'pickup_place',
-    'pickup_time',
-    'precio_total',
-    'estado'
+    'nombre',
+    'fecha'
 ];
 
-const camposEditables = [
+const camposResultadoReservacion = [
     'codigo',
     'fecha',
     'id_tour',
@@ -32,10 +32,18 @@ const camposEditables = [
     'estado'
 ];
 
-const filtrosReservacionesPermitidos = [
-    'codigo',
-    'nombre',
-    'fecha'
+const camposValidacionCreacion = [
+    'id_tour',
+    'id_pais',
+    'id_plataforma',
+    'pax',
+    'fecha',
+    'pickup_time',
+    'ninos',
+    'precio_total',
+    'deposito',
+    'saldo',
+    'tipo_cambio'
 ];
 
 const esValorVacio = (valor) => (
@@ -43,6 +51,18 @@ const esValorVacio = (valor) => (
     valor === null ||
     (typeof valor === 'string' && valor.trim() === '')
 );
+
+const tieneCampo = (objeto, campo) => Object.prototype.hasOwnProperty.call(objeto, campo);
+
+const resultadoValido = (valor) => ({
+    valido: true,
+    valor
+});
+
+const resultadoInvalido = (valor = null) => ({
+    valido: false,
+    valor
+});
 
 const convertirEnteroPositivo = (valor) => {
     const numero = Number(valor);
@@ -105,36 +125,283 @@ const convertirNumeroOpcional = (valor) => {
     const valorOpcional = obtenerOpcional(valor);
 
     if (valorOpcional === null) {
-        return {
-            valido: true,
-            valor: null
-        };
+        return resultadoValido(null);
     }
 
     const numero = convertirNumero(valorOpcional);
 
-    return {
-        valido: numero !== null,
-        valor: numero
-    };
+    return numero === null
+        ? resultadoInvalido()
+        : resultadoValido(numero);
 };
 
 const convertirEnteroNoNegativoOpcional = (valor) => {
     const valorOpcional = obtenerOpcional(valor);
 
     if (valorOpcional === null) {
-        return {
-            valido: true,
-            valor: null
-        };
+        return resultadoValido(null);
     }
 
     const numero = convertirEnteroNoNegativo(valorOpcional);
 
+    return numero === null
+        ? resultadoInvalido()
+        : resultadoValido(numero);
+};
+
+const convertirCon = (convertidor) => (valor) => {
+    const valorConvertido = convertidor(valor);
+
+    return valorConvertido === null
+        ? resultadoInvalido()
+        : resultadoValido(valorConvertido);
+};
+
+const conservarValor = (valor) => resultadoValido(valor);
+
+const validarTextoNoVacio = (valor) => (
+    esValorVacio(valor)
+        ? resultadoInvalido(valor)
+        : resultadoValido(valor)
+);
+
+const validarFecha = (valor) => (
+    esFechaValida(valor)
+        ? resultadoValido(valor)
+        : resultadoInvalido(valor)
+);
+
+const validarHora = (valor) => (
+    esHoraValida(valor)
+        ? resultadoValido(valor)
+        : resultadoInvalido(valor)
+);
+
+const obtenerTextoOpcional = (valor) => resultadoValido(obtenerOpcional(valor));
+
+const reglasReservacion = {
+    codigo: {
+        transformarCreacion: conservarValor,
+        transformarActualizacion: validarTextoNoVacio,
+        mensajeActualizacion: 'El campo codigo no puede estar vacío'
+    },
+    fecha: {
+        transformarCreacion: validarFecha,
+        transformarActualizacion: validarFecha,
+        mensajeCreacion: 'El campo fecha debe ser una fecha válida',
+        mensajeActualizacion: 'El campo fecha debe ser una fecha válida'
+    },
+    id_tour: {
+        transformarCreacion: convertirCon(convertirEnteroPositivo),
+        transformarActualizacion: convertirCon(convertirEnteroPositivo),
+        mensajeCreacion: 'El campo id_tour debe ser un entero positivo',
+        mensajeActualizacion: 'El campo id_tour debe ser un entero positivo'
+    },
+    id_pais: {
+        transformarCreacion: convertirCon(convertirEnteroPositivo),
+        transformarActualizacion: convertirCon(convertirEnteroPositivo),
+        mensajeCreacion: 'El campo id_pais debe ser un entero positivo',
+        mensajeActualizacion: 'El campo id_pais debe ser un entero positivo'
+    },
+    id_plataforma: {
+        transformarCreacion: convertirCon(convertirEnteroPositivo),
+        transformarActualizacion: convertirCon(convertirEnteroPositivo),
+        mensajeCreacion: 'El campo id_plataforma debe ser un entero positivo',
+        mensajeActualizacion: 'El campo id_plataforma debe ser un entero positivo'
+    },
+    nombre_cliente: {
+        transformarCreacion: conservarValor,
+        transformarActualizacion: validarTextoNoVacio,
+        mensajeActualizacion: 'El campo nombre_cliente no puede estar vacío'
+    },
+    habitacion: {
+        transformarCreacion: obtenerTextoOpcional,
+        transformarActualizacion: obtenerTextoOpcional
+    },
+    pax: {
+        transformarCreacion: convertirCon(convertirEnteroPositivo),
+        transformarActualizacion: convertirCon(convertirEnteroPositivo),
+        mensajeCreacion: 'El campo pax debe ser un entero positivo',
+        mensajeActualizacion: 'El campo pax debe ser un entero positivo'
+    },
+    ninos: {
+        transformarCreacion: convertirEnteroNoNegativoOpcional,
+        transformarActualizacion: convertirEnteroNoNegativoOpcional,
+        mensajeCreacion: 'El campo ninos debe ser un entero mayor o igual a 0',
+        mensajeActualizacion: 'El campo ninos debe ser un entero mayor o igual a 0'
+    },
+    pickup_place: {
+        transformarCreacion: conservarValor,
+        transformarActualizacion: validarTextoNoVacio,
+        mensajeActualizacion: 'El campo pickup_place no puede estar vacío'
+    },
+    pickup_time: {
+        transformarCreacion: validarHora,
+        transformarActualizacion: validarHora,
+        mensajeCreacion: 'El campo pickup_time debe ser una hora válida',
+        mensajeActualizacion: 'El campo pickup_time debe ser una hora válida'
+    },
+    precio_total: {
+        transformarCreacion: convertirCon(convertirNumero),
+        transformarActualizacion: convertirCon(convertirNumero),
+        mensajeCreacion: 'El campo precio_total debe ser numérico válido',
+        mensajeActualizacion: 'El campo precio_total debe ser numérico válido'
+    },
+    deposito: {
+        transformarCreacion: convertirNumeroOpcional,
+        transformarActualizacion: convertirNumeroOpcional,
+        mensajeCreacion: 'El campo deposito debe ser numérico válido',
+        mensajeActualizacion: 'El campo deposito debe ser numérico válido'
+    },
+    saldo: {
+        transformarCreacion: convertirNumeroOpcional,
+        transformarActualizacion: convertirNumeroOpcional,
+        mensajeCreacion: 'El campo saldo debe ser numérico válido',
+        mensajeActualizacion: 'El campo saldo debe ser numérico válido'
+    },
+    tipo_cambio: {
+        transformarCreacion: convertirNumeroOpcional,
+        transformarActualizacion: convertirNumeroOpcional,
+        mensajeCreacion: 'El campo tipo_cambio debe ser numérico válido',
+        mensajeActualizacion: 'El campo tipo_cambio debe ser numérico válido'
+    },
+    metodo_pago: {
+        transformarCreacion: obtenerTextoOpcional,
+        transformarActualizacion: obtenerTextoOpcional
+    },
+    estado: {
+        transformarCreacion: conservarValor,
+        transformarActualizacion: validarTextoNoVacio,
+        mensajeActualizacion: 'El campo estado no puede estar vacío'
+    }
+};
+
+const normalizarTextoFiltro = (valor) => (
+    typeof valor === 'string' ? valor.trim() : valor
+);
+
+const crearValidadorFiltroTexto = ({ maximo, mensajeVacio, mensajeInvalido }) => (valor) => {
+    const valorNormalizado = normalizarTextoFiltro(valor);
+
+    if (esValorVacio(valorNormalizado)) {
+        return {
+            valido: false,
+            mensaje: mensajeVacio
+        };
+    }
+
+    if (typeof valorNormalizado !== 'string' || valorNormalizado.length > maximo) {
+        return {
+            valido: false,
+            mensaje: mensajeInvalido
+        };
+    }
+
     return {
-        valido: numero !== null,
-        valor: numero
+        valido: true,
+        valor: valorNormalizado
     };
+};
+
+const reglasFiltrosReservaciones = {
+    codigo: {
+        validar: crearValidadorFiltroTexto({
+            maximo: 30,
+            mensajeVacio: 'El filtro codigo no puede estar vacío',
+            mensajeInvalido: 'El filtro codigo no puede exceder 30 caracteres'
+        })
+    },
+    nombre: {
+        validar: crearValidadorFiltroTexto({
+            maximo: 120,
+            mensajeVacio: 'El filtro nombre no puede estar vacío',
+            mensajeInvalido: 'El filtro nombre no puede exceder 120 caracteres'
+        })
+    },
+    fecha: {
+        validar: (valor) => {
+            const fecha = normalizarTextoFiltro(valor);
+
+            if (!esFechaValida(fecha)) {
+                return {
+                    valido: false,
+                    mensaje: 'El filtro fecha debe tener formato YYYY-MM-DD y ser una fecha válida'
+                };
+            }
+
+            return {
+                valido: true,
+                valor: fecha
+            };
+        }
+    }
+};
+
+const transformarCampoReservacion = (campo, valor, tipoValidacion) => {
+    const regla = reglasReservacion[campo];
+    const transformar = tipoValidacion === 'actualizacion'
+        ? regla.transformarActualizacion
+        : regla.transformarCreacion;
+
+    return transformar(valor);
+};
+
+const obtenerTransformacionesReservacion = (datos, tipoValidacion) => {
+    const transformaciones = {};
+
+    camposResultadoReservacion.forEach((campo) => {
+        transformaciones[campo] = transformarCampoReservacion(
+            campo,
+            datos[campo],
+            tipoValidacion
+        );
+    });
+
+    return transformaciones;
+};
+
+const obtenerReservacionTransformada = (transformaciones) => {
+    const reservacion = {};
+
+    camposResultadoReservacion.forEach((campo) => {
+        reservacion[campo] = transformaciones[campo].valor;
+    });
+
+    return reservacion;
+};
+
+const validarCampoPresente = (datos, campo, errores) => {
+    if (esValorVacio(datos[campo])) {
+        errores.push(`El campo ${campo} es obligatorio`);
+    }
+};
+
+const aplicarReglaCreacion = (datos, transformaciones, campo, errores) => {
+    const regla = reglasReservacion[campo];
+
+    if (esValorVacio(datos[campo])) {
+        return;
+    }
+
+    if (!transformaciones[campo].valido) {
+        errores.push(regla.mensajeCreacion);
+    }
+};
+
+const aplicarReglaActualizacion = (datos, campo, errores, camposActualizacion) => {
+    if (!tieneCampo(datos, campo)) {
+        return;
+    }
+
+    const regla = reglasReservacion[campo];
+    const resultado = transformarCampoReservacion(campo, datos[campo], 'actualizacion');
+
+    if (!resultado.valido) {
+        errores.push(regla.mensajeActualizacion);
+        return;
+    }
+
+    camposActualizacion[campo] = resultado.valor;
 };
 
 const validarIdReservacion = (id) => convertirEnteroPositivo(id);
@@ -150,39 +417,20 @@ const validarFiltrosReservaciones = (query) => {
         }
     });
 
-    if (Object.prototype.hasOwnProperty.call(query, 'codigo')) {
-        const codigo = typeof query.codigo === 'string' ? query.codigo.trim() : query.codigo;
-
-        if (esValorVacio(codigo)) {
-            errores.push('El filtro codigo no puede estar vacío');
-        } else if (typeof codigo !== 'string' || codigo.length > 30) {
-            errores.push('El filtro codigo no puede exceder 30 caracteres');
-        } else {
-            filtros.codigo = codigo;
+    filtrosReservacionesPermitidos.forEach((filtro) => {
+        if (!tieneCampo(query, filtro)) {
+            return;
         }
-    }
 
-    if (Object.prototype.hasOwnProperty.call(query, 'nombre')) {
-        const nombre = typeof query.nombre === 'string' ? query.nombre.trim() : query.nombre;
+        const resultado = reglasFiltrosReservaciones[filtro].validar(query[filtro]);
 
-        if (esValorVacio(nombre)) {
-            errores.push('El filtro nombre no puede estar vacío');
-        } else if (typeof nombre !== 'string' || nombre.length > 120) {
-            errores.push('El filtro nombre no puede exceder 120 caracteres');
-        } else {
-            filtros.nombre = nombre;
+        if (!resultado.valido) {
+            errores.push(resultado.mensaje);
+            return;
         }
-    }
 
-    if (Object.prototype.hasOwnProperty.call(query, 'fecha')) {
-        const fecha = typeof query.fecha === 'string' ? query.fecha.trim() : query.fecha;
-
-        if (!esFechaValida(fecha)) {
-            errores.push('El filtro fecha debe tener formato YYYY-MM-DD y ser una fecha válida');
-        } else {
-            filtros.fecha = fecha;
-        }
-    }
+        filtros[filtro] = resultado.valor;
+    });
 
     return {
         errores,
@@ -192,98 +440,23 @@ const validarFiltrosReservaciones = (query) => {
 
 const validarDatosReservacion = (datos) => {
     const errores = [];
+    const transformaciones = obtenerTransformacionesReservacion(datos, 'creacion');
 
-    if (Object.prototype.hasOwnProperty.call(datos, 'id_reservacion')) {
+    if (tieneCampo(datos, 'id_reservacion')) {
         errores.push('No se permite enviar id_reservacion');
     }
 
     camposObligatorios.forEach((campo) => {
-        if (esValorVacio(datos[campo])) {
-            errores.push(`El campo ${campo} es obligatorio`);
-        }
+        validarCampoPresente(datos, campo, errores);
     });
 
-    const idTour = convertirEnteroPositivo(datos.id_tour);
-    const idPais = convertirEnteroPositivo(datos.id_pais);
-    const idPlataforma = convertirEnteroPositivo(datos.id_plataforma);
-    const pax = convertirEnteroPositivo(datos.pax);
-    const precioTotal = convertirNumero(datos.precio_total);
-
-    if (!esValorVacio(datos.id_tour) && idTour === null) {
-        errores.push('El campo id_tour debe ser un entero positivo');
-    }
-
-    if (!esValorVacio(datos.id_pais) && idPais === null) {
-        errores.push('El campo id_pais debe ser un entero positivo');
-    }
-
-    if (!esValorVacio(datos.id_plataforma) && idPlataforma === null) {
-        errores.push('El campo id_plataforma debe ser un entero positivo');
-    }
-
-    if (!esValorVacio(datos.pax) && pax === null) {
-        errores.push('El campo pax debe ser un entero positivo');
-    }
-
-    if (!esValorVacio(datos.fecha) && !esFechaValida(datos.fecha)) {
-        errores.push('El campo fecha debe ser una fecha válida');
-    }
-
-    if (!esValorVacio(datos.pickup_time) && !esHoraValida(datos.pickup_time)) {
-        errores.push('El campo pickup_time debe ser una hora válida');
-    }
-
-    let ninos = null;
-
-    if (!esValorVacio(datos.ninos)) {
-        ninos = convertirEnteroNoNegativo(datos.ninos);
-
-        if (ninos === null) {
-            errores.push('El campo ninos debe ser un entero mayor o igual a 0');
-        }
-    }
-
-    if (!esValorVacio(datos.precio_total) && precioTotal === null) {
-        errores.push('El campo precio_total debe ser numérico válido');
-    }
-
-    const deposito = obtenerOpcional(datos.deposito);
-    const saldo = obtenerOpcional(datos.saldo);
-    const tipoCambio = obtenerOpcional(datos.tipo_cambio);
-
-    if (deposito !== null && convertirNumero(deposito) === null) {
-        errores.push('El campo deposito debe ser numérico válido');
-    }
-
-    if (saldo !== null && convertirNumero(saldo) === null) {
-        errores.push('El campo saldo debe ser numérico válido');
-    }
-
-    if (tipoCambio !== null && convertirNumero(tipoCambio) === null) {
-        errores.push('El campo tipo_cambio debe ser numérico válido');
-    }
+    camposValidacionCreacion.forEach((campo) => {
+        aplicarReglaCreacion(datos, transformaciones, campo, errores);
+    });
 
     return {
         errores,
-        reservacion: {
-            codigo: datos.codigo,
-            fecha: datos.fecha,
-            id_tour: idTour,
-            id_pais: idPais,
-            id_plataforma: idPlataforma,
-            nombre_cliente: datos.nombre_cliente,
-            habitacion: obtenerOpcional(datos.habitacion),
-            pax,
-            ninos,
-            pickup_place: datos.pickup_place,
-            pickup_time: datos.pickup_time,
-            precio_total: precioTotal,
-            deposito: deposito === null ? null : convertirNumero(deposito),
-            saldo: saldo === null ? null : convertirNumero(saldo),
-            tipo_cambio: tipoCambio === null ? null : convertirNumero(tipoCambio),
-            metodo_pago: obtenerOpcional(datos.metodo_pago),
-            estado: datos.estado
-        }
+        reservacion: obtenerReservacionTransformada(transformaciones)
     };
 };
 
@@ -295,11 +468,11 @@ const validarDatosActualizacionReservacion = (datos) => {
         errores.push('Debe enviar al menos un campo para actualizar');
     }
 
-    if (Object.prototype.hasOwnProperty.call(datos, 'id_reservacion')) {
+    if (tieneCampo(datos, 'id_reservacion')) {
         errores.push('No se permite modificar id_reservacion');
     }
 
-    if (Object.prototype.hasOwnProperty.call(datos, 'fecha_registro')) {
+    if (tieneCampo(datos, 'fecha_registro')) {
         errores.push('No se permite modificar fecha_registro');
     }
 
@@ -311,151 +484,9 @@ const validarDatosActualizacionReservacion = (datos) => {
 
     const camposActualizacion = {};
 
-    if (Object.prototype.hasOwnProperty.call(datos, 'codigo')) {
-        if (esValorVacio(datos.codigo)) {
-            errores.push('El campo codigo no puede estar vacío');
-        } else {
-            camposActualizacion.codigo = datos.codigo;
-        }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'fecha')) {
-        if (!esFechaValida(datos.fecha)) {
-            errores.push('El campo fecha debe ser una fecha válida');
-        } else {
-            camposActualizacion.fecha = datos.fecha;
-        }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'id_tour')) {
-        const idTour = convertirEnteroPositivo(datos.id_tour);
-
-        if (idTour === null) {
-            errores.push('El campo id_tour debe ser un entero positivo');
-        } else {
-            camposActualizacion.id_tour = idTour;
-        }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'id_pais')) {
-        const idPais = convertirEnteroPositivo(datos.id_pais);
-
-        if (idPais === null) {
-            errores.push('El campo id_pais debe ser un entero positivo');
-        } else {
-            camposActualizacion.id_pais = idPais;
-        }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'id_plataforma')) {
-        const idPlataforma = convertirEnteroPositivo(datos.id_plataforma);
-
-        if (idPlataforma === null) {
-            errores.push('El campo id_plataforma debe ser un entero positivo');
-        } else {
-            camposActualizacion.id_plataforma = idPlataforma;
-        }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'nombre_cliente')) {
-        if (esValorVacio(datos.nombre_cliente)) {
-            errores.push('El campo nombre_cliente no puede estar vacío');
-        } else {
-            camposActualizacion.nombre_cliente = datos.nombre_cliente;
-        }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'habitacion')) {
-        camposActualizacion.habitacion = obtenerOpcional(datos.habitacion);
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'pax')) {
-        const pax = convertirEnteroPositivo(datos.pax);
-
-        if (pax === null) {
-            errores.push('El campo pax debe ser un entero positivo');
-        } else {
-            camposActualizacion.pax = pax;
-        }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'ninos')) {
-        const ninos = convertirEnteroNoNegativoOpcional(datos.ninos);
-
-        if (!ninos.valido) {
-            errores.push('El campo ninos debe ser un entero mayor o igual a 0');
-        } else {
-            camposActualizacion.ninos = ninos.valor;
-        }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'pickup_place')) {
-        if (esValorVacio(datos.pickup_place)) {
-            errores.push('El campo pickup_place no puede estar vacío');
-        } else {
-            camposActualizacion.pickup_place = datos.pickup_place;
-        }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'pickup_time')) {
-        if (!esHoraValida(datos.pickup_time)) {
-            errores.push('El campo pickup_time debe ser una hora válida');
-        } else {
-            camposActualizacion.pickup_time = datos.pickup_time;
-        }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'precio_total')) {
-        const precioTotal = convertirNumero(datos.precio_total);
-
-        if (precioTotal === null) {
-            errores.push('El campo precio_total debe ser numérico válido');
-        } else {
-            camposActualizacion.precio_total = precioTotal;
-        }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'deposito')) {
-        const deposito = convertirNumeroOpcional(datos.deposito);
-
-        if (!deposito.valido) {
-            errores.push('El campo deposito debe ser numérico válido');
-        } else {
-            camposActualizacion.deposito = deposito.valor;
-        }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'saldo')) {
-        const saldo = convertirNumeroOpcional(datos.saldo);
-
-        if (!saldo.valido) {
-            errores.push('El campo saldo debe ser numérico válido');
-        } else {
-            camposActualizacion.saldo = saldo.valor;
-        }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'tipo_cambio')) {
-        const tipoCambio = convertirNumeroOpcional(datos.tipo_cambio);
-
-        if (!tipoCambio.valido) {
-            errores.push('El campo tipo_cambio debe ser numérico válido');
-        } else {
-            camposActualizacion.tipo_cambio = tipoCambio.valor;
-        }
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'metodo_pago')) {
-        camposActualizacion.metodo_pago = obtenerOpcional(datos.metodo_pago);
-    }
-
-    if (Object.prototype.hasOwnProperty.call(datos, 'estado')) {
-        if (esValorVacio(datos.estado)) {
-            errores.push('El campo estado no puede estar vacío');
-        } else {
-            camposActualizacion.estado = datos.estado;
-        }
-    }
+    camposEditables.forEach((campo) => {
+        aplicarReglaActualizacion(datos, campo, errores, camposActualizacion);
+    });
 
     return {
         errores,
