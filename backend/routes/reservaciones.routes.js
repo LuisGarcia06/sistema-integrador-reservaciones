@@ -1,12 +1,43 @@
 const express = require('express');
 const reservacionesController = require('../controllers/reservaciones.controller');
+const { autenticarUsuario, autorizarRoles } = require('../middleware/auth.middleware');
+const { ROLES } = require('../constants/roles');
 
 const router = express.Router();
 
-router.get('/', reservacionesController.listarReservaciones);
-router.post('/', reservacionesController.crearReservacion);
-router.patch('/:id/cancelar', reservacionesController.cancelarReservacion);
-router.patch('/:id', reservacionesController.actualizarReservacionParcial);
-router.get('/:id', reservacionesController.obtenerReservacionPorId);
+router.get(
+    '/',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA),
+    reservacionesController.listarReservaciones
+);
+
+router.post(
+    '/',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR),
+    reservacionesController.crearReservacion
+);
+
+router.patch(
+    '/:id/cancelar',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR),
+    reservacionesController.cancelarReservacion
+);
+
+router.patch(
+    '/:id',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR),
+    reservacionesController.actualizarReservacionParcial
+);
+
+router.get(
+    '/:id',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA),
+    reservacionesController.obtenerReservacionPorId
+);
 
 module.exports = router;

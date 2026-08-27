@@ -26,6 +26,27 @@ const obtenerUsuarioPorCorreo = async (correo) => {
     return result.rows[0];
 };
 
+const obtenerUsuarioAutenticadoPorId = async (idUsuario) => {
+    const query = `
+        SELECT
+            u.id_usuario,
+            u.nombre,
+            u.correo,
+            u.estado,
+            u.id_rol,
+            r.nombre AS rol
+        FROM usuarios u
+        INNER JOIN roles r
+            ON r.id_rol = u.id_rol
+        WHERE u.id_usuario = $1
+        LIMIT 1
+    `;
+
+    const result = await pool.query(query, [idUsuario]);
+
+    return result.rows[0];
+};
+
 const obtenerUsuarioSeguro = (usuario) => ({
     id_usuario: usuario.id_usuario,
     nombre: usuario.nombre,
@@ -91,5 +112,6 @@ const iniciarSesion = async ({ correo, password }) => {
 };
 
 module.exports = {
-    iniciarSesion
+    iniciarSesion,
+    obtenerUsuarioAutenticadoPorId
 };
