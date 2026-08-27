@@ -1,0 +1,9 @@
+const ACCIONES_BITACORA = {
+    CREAR: 'CREAR',
+    MODIFICAR: 'MODIFICAR',
+    CANCELAR: 'CANCELAR'
+};
+
+module.exports = {
+    ACCIONES_BITACORA
+};

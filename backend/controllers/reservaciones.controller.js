@@ -45,7 +45,8 @@ const crearReservacion = async (req, res) => {
     }
 
     try {
-        const reservacionCreada = await reservacionesService.crearReservacion(reservacion);
+        const idUsuario = req.usuario.id_usuario;
+        const reservacionCreada = await reservacionesService.crearReservacion(reservacion, idUsuario);
 
         return res.status(201).json({
             mensaje: 'Reservación creada correctamente',
@@ -85,18 +86,18 @@ const actualizarReservacionParcial = async (req, res) => {
     }
 
     try {
-        const reservacionActual = await reservacionesService.obtenerReservacionPorId(idReservacion);
+        const idUsuario = req.usuario.id_usuario;
+        const reservacionActualizada = await reservacionesService.actualizarReservacionParcial(
+            idReservacion,
+            camposActualizacion,
+            idUsuario
+        );
 
-        if (!reservacionActual) {
+        if (!reservacionActualizada) {
             return res.status(404).json({
                 mensaje: 'Reservación no encontrada'
             });
         }
-
-        const reservacionActualizada = await reservacionesService.actualizarReservacionParcial(
-            idReservacion,
-            camposActualizacion
-        );
 
         return res.status(200).json({
             mensaje: 'Reservación actualizada correctamente',
@@ -127,26 +128,25 @@ const cancelarReservacion = async (req, res) => {
     }
 
     try {
-        const reservacionActual = await reservacionesService.obtenerReservacionPorId(idReservacion);
+        const idUsuario = req.usuario.id_usuario;
+        const resultadoCancelacion = await reservacionesService.cancelarReservacion(idReservacion, idUsuario);
 
-        if (!reservacionActual) {
+        if (!resultadoCancelacion) {
             return res.status(404).json({
                 mensaje: 'Reservación no encontrada'
             });
         }
 
-        if (reservacionActual.estado === 'Cancelada') {
+        if (resultadoCancelacion.yaEstabaCancelada) {
             return res.status(200).json({
                 mensaje: 'La reservación ya estaba cancelada',
-                datos: reservacionActual
+                datos: resultadoCancelacion.reservacion
             });
         }
 
-        const reservacionCancelada = await reservacionesService.cancelarReservacion(idReservacion);
-
         return res.status(200).json({
             mensaje: 'Reservación cancelada correctamente',
-            datos: reservacionCancelada
+            datos: resultadoCancelacion.reservacion
         });
     } catch (error) {
         console.error('Error al cancelar la reservación:', error);

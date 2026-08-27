@@ -1,5 +1,12 @@
 const pool = require('../config/database');
+const bitacoraService = require('./bitacora.service');
+const { ACCIONES_BITACORA } = require('../constants/bitacora.actions');
 const { camposEditablesReservacion } = require('../constants/reservaciones.fields');
+const {
+    obtenerCambiosReservacion,
+    obtenerCamposActualizacionDesdeCambios,
+    generarDescripcionCambios
+} = require('../utils/cambiosReservacion');
 
 const columnasReservacion = `
     id_reservacion,
@@ -26,56 +33,21 @@ const columnasReservacion = `
 
 const camposActualizables = camposEditablesReservacion;
 
-const obtenerReservaciones = async (filtros = {}) => {
-    const condiciones = [];
-    const values = [];
-
-    if (filtros.codigo) {
-        values.push(filtros.codigo);
-        condiciones.push(`codigo = $${values.length}`);
-    }
-
-    if (filtros.nombre) {
-        values.push(`%${filtros.nombre}%`);
-        condiciones.push(`nombre_cliente ILIKE $${values.length}`);
-    }
-
-    if (filtros.fecha) {
-        values.push(filtros.fecha);
-        condiciones.push(`fecha = $${values.length}`);
-    }
-
-    const where = condiciones.length > 0
-        ? `WHERE ${condiciones.join('\n            AND ')}`
-        : '';
-
-    const query = `
-        SELECT
-            ${columnasReservacion}
-        FROM reservaciones
-        ${where}
-        ORDER BY fecha_registro DESC, id_reservacion DESC
-    `;
-
-    const result = await pool.query(query, values);
-
-    return result.rows;
-};
-
-const obtenerReservacionPorId = async (idReservacion) => {
+const obtenerReservacionPorIdConDb = async (db, idReservacion, bloquear = false) => {
     const query = `
         SELECT
             ${columnasReservacion}
         FROM reservaciones
         WHERE id_reservacion = $1
+        ${bloquear ? 'FOR UPDATE' : ''}
     `;
 
-    const result = await pool.query(query, [idReservacion]);
+    const result = await db.query(query, [idReservacion]);
 
     return result.rows[0];
 };
 
-const crearReservacion = async (reservacion) => {
+const insertarReservacionConDb = async (db, reservacion) => {
     const query = `
         INSERT INTO reservaciones (
             codigo,
@@ -128,12 +100,12 @@ const crearReservacion = async (reservacion) => {
         reservacion.estado
     ];
 
-    const result = await pool.query(query, values);
+    const result = await db.query(query, values);
 
     return result.rows[0];
 };
 
-const actualizarReservacionParcial = async (idReservacion, campos) => {
+const actualizarReservacionParcialConDb = async (db, idReservacion, campos) => {
     const nombresCampos = Object.keys(campos);
     const asignaciones = nombresCampos.map((campo, index) => {
         if (!camposActualizables.includes(campo)) {
@@ -156,12 +128,12 @@ const actualizarReservacionParcial = async (idReservacion, campos) => {
             ${columnasReservacion}
     `;
 
-    const result = await pool.query(query, values);
+    const result = await db.query(query, values);
 
     return result.rows[0];
 };
 
-const cancelarReservacion = async (idReservacion) => {
+const cancelarReservacionConDb = async (db, idReservacion) => {
     const query = `
         UPDATE reservaciones
         SET
@@ -172,9 +144,164 @@ const cancelarReservacion = async (idReservacion) => {
             ${columnasReservacion}
     `;
 
-    const result = await pool.query(query, ['Cancelada', idReservacion]);
+    const result = await db.query(query, ['Cancelada', idReservacion]);
 
     return result.rows[0];
+};
+
+const obtenerReservaciones = async (filtros = {}) => {
+    const condiciones = [];
+    const values = [];
+
+    if (filtros.codigo) {
+        values.push(filtros.codigo);
+        condiciones.push(`codigo = $${values.length}`);
+    }
+
+    if (filtros.nombre) {
+        values.push(`%${filtros.nombre}%`);
+        condiciones.push(`nombre_cliente ILIKE $${values.length}`);
+    }
+
+    if (filtros.fecha) {
+        values.push(filtros.fecha);
+        condiciones.push(`fecha = $${values.length}`);
+    }
+
+    const where = condiciones.length > 0
+        ? `WHERE ${condiciones.join('\n            AND ')}`
+        : '';
+
+    const query = `
+        SELECT
+            ${columnasReservacion}
+        FROM reservaciones
+        ${where}
+        ORDER BY fecha_registro DESC, id_reservacion DESC
+    `;
+
+    const result = await pool.query(query, values);
+
+    return result.rows;
+};
+
+const obtenerReservacionPorId = async (idReservacion) => {
+    return obtenerReservacionPorIdConDb(pool, idReservacion);
+};
+
+const crearReservacion = async (reservacion, idUsuario) => {
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        const reservacionCreada = await insertarReservacionConDb(client, reservacion);
+
+        await bitacoraService.crearEntradaBitacora({
+            idUsuario,
+            idReservacion: reservacionCreada.id_reservacion,
+            accion: ACCIONES_BITACORA.CREAR,
+            descripcion: `Reservación creada con código ${reservacionCreada.codigo}`
+        }, client);
+
+        await client.query('COMMIT');
+
+        return reservacionCreada;
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+};
+
+const actualizarReservacionParcial = async (idReservacion, campos, idUsuario) => {
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        const reservacionActual = await obtenerReservacionPorIdConDb(client, idReservacion, true);
+
+        if (!reservacionActual) {
+            await client.query('COMMIT');
+            return null;
+        }
+
+        const cambios = obtenerCambiosReservacion(reservacionActual, campos);
+
+        if (cambios.length === 0) {
+            await client.query('COMMIT');
+            return reservacionActual;
+        }
+
+        const camposActualizados = obtenerCamposActualizacionDesdeCambios(cambios);
+        const reservacionActualizada = await actualizarReservacionParcialConDb(
+            client,
+            idReservacion,
+            camposActualizados
+        );
+
+        await bitacoraService.crearEntradaBitacora({
+            idUsuario,
+            idReservacion,
+            accion: ACCIONES_BITACORA.MODIFICAR,
+            descripcion: generarDescripcionCambios(cambios)
+        }, client);
+
+        await client.query('COMMIT');
+
+        return reservacionActualizada;
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+};
+
+const cancelarReservacion = async (idReservacion, idUsuario) => {
+    const client = await pool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        const reservacionActual = await obtenerReservacionPorIdConDb(client, idReservacion, true);
+
+        if (!reservacionActual) {
+            await client.query('COMMIT');
+            return null;
+        }
+
+        if (reservacionActual.estado === 'Cancelada') {
+            await client.query('COMMIT');
+            return {
+                reservacion: reservacionActual,
+                yaEstabaCancelada: true
+            };
+        }
+
+        const reservacionCancelada = await cancelarReservacionConDb(client, idReservacion);
+
+        await bitacoraService.crearEntradaBitacora({
+            idUsuario,
+            idReservacion,
+            accion: ACCIONES_BITACORA.CANCELAR,
+            descripcion: 'Reservación cancelada'
+        }, client);
+
+        await client.query('COMMIT');
+
+        return {
+            reservacion: reservacionCancelada,
+            yaEstabaCancelada: false
+        };
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
 };
 
 module.exports = {
