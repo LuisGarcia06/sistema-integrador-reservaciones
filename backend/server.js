@@ -1,11 +1,13 @@
 const express = require('express');
 const pool = require('./config/database');
+const authRoutes = require('./routes/auth.routes');
 const reservacionesRoutes = require('./routes/reservaciones.routes');
 
 const app = express();
 
 app.use(express.json());
 
+app.use('/api/auth', authRoutes);
 app.use('/api/reservaciones', reservacionesRoutes);
 
 const PORT = 3000;
