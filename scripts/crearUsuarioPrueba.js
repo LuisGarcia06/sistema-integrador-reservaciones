@@ -6,12 +6,20 @@ const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
 require('dotenv').config({ quiet: true });
 
-const USUARIO_PRUEBA = {
-    rol: 'Administrador',
-    nombre: 'Usuario Prueba',
-    correo: 'prueba@empresa.com',
-    estado: true
+const usuariosPruebaPorRol = {
+    Administrador: {
+        nombre: 'Usuario Prueba',
+        correo: 'prueba@empresa.com',
+        estado: true
+    },
+    Consulta: {
+        nombre: 'Usuario Consulta Prueba',
+        correo: 'consulta.prueba@empresa.com',
+        estado: true
+    }
 };
+
+const rolesPermitidos = Object.keys(usuariosPruebaPorRol);
 
 const pool = new Pool({
     host: process.env.DB_HOST,
@@ -46,7 +54,18 @@ const solicitarPassword = () => new Promise((resolve) => {
     rl.stdoutMuted = true;
 });
 
-const obtenerIdRolAdministrador = async () => {
+const obtenerRolSolicitado = () => {
+    const rol = process.argv[2] || 'Administrador';
+
+    if (!rolesPermitidos.includes(rol)) {
+        console.error(`Rol inválido. Use uno de: ${rolesPermitidos.join(', ')}`);
+        return null;
+    }
+
+    return rol;
+};
+
+const obtenerIdRol = async (rol) => {
     const result = await pool.query(
         `
             SELECT id_rol
@@ -54,13 +73,13 @@ const obtenerIdRolAdministrador = async () => {
             WHERE nombre = $1
             LIMIT 1
         `,
-        [USUARIO_PRUEBA.rol]
+        [rol]
     );
 
     return result.rows[0]?.id_rol || null;
 };
 
-const guardarUsuarioPrueba = async (idRol, passwordHash) => {
+const guardarUsuarioPrueba = async (usuarioPrueba, idRol, passwordHash) => {
     const result = await pool.query(
         `
             INSERT INTO usuarios (
@@ -81,10 +100,10 @@ const guardarUsuarioPrueba = async (idRol, passwordHash) => {
         `,
         [
             idRol,
-            USUARIO_PRUEBA.nombre,
-            USUARIO_PRUEBA.correo,
+            usuarioPrueba.nombre,
+            usuarioPrueba.correo,
             passwordHash,
-            USUARIO_PRUEBA.estado
+            usuarioPrueba.estado
         ]
     );
 
@@ -92,6 +111,13 @@ const guardarUsuarioPrueba = async (idRol, passwordHash) => {
 };
 
 const main = async () => {
+    const rol = obtenerRolSolicitado();
+
+    if (!rol) {
+        process.exitCode = 1;
+        return;
+    }
+
     const password = await solicitarPassword();
 
     if (typeof password !== 'string' || password.trim() === '') {
@@ -100,21 +126,22 @@ const main = async () => {
         return;
     }
 
-    const idRol = await obtenerIdRolAdministrador();
+    const idRol = await obtenerIdRol(rol);
 
     if (!idRol) {
-        console.error('No existe el rol Administrador. No se creó el usuario de prueba.');
+        console.error(`No existe el rol ${rol}. No se creó el usuario de prueba.`);
         process.exitCode = 1;
         return;
     }
 
+    const usuarioPrueba = usuariosPruebaPorRol[rol];
     const passwordHash = await bcrypt.hash(password, 12);
-    const creado = await guardarUsuarioPrueba(idRol, passwordHash);
+    const creado = await guardarUsuarioPrueba(usuarioPrueba, idRol, passwordHash);
 
     console.log(
         creado
-            ? 'Usuario de prueba creado correctamente'
-            : 'Usuario de prueba actualizado correctamente'
+            ? `Usuario de prueba ${rol} creado correctamente`
+            : `Usuario de prueba ${rol} actualizado correctamente`
     );
 };
 

@@ -40,6 +40,50 @@ const crearEntradaBitacora = async ({
     return result.rows[0];
 };
 
+const consultarBitacora = async (filtros = {}) => {
+    const condiciones = [];
+    const values = [];
+
+    if (filtros.fecha_desde) {
+        values.push(filtros.fecha_desde);
+        condiciones.push(`b.fecha >= $${values.length}::date`);
+    }
+
+    if (filtros.fecha_hasta) {
+        values.push(filtros.fecha_hasta);
+        condiciones.push(`b.fecha < ($${values.length}::date + INTERVAL '1 day')`);
+    }
+
+    const where = condiciones.length > 0
+        ? `WHERE ${condiciones.join('\n            AND ')}`
+        : '';
+
+    const query = `
+        SELECT
+            b.id_bitacora,
+            b.id_usuario,
+            u.nombre AS usuario,
+            u.correo AS usuario_correo,
+            b.id_reservacion,
+            r.codigo AS codigo_reservacion,
+            b.accion,
+            b.descripcion,
+            b.fecha
+        FROM bitacora b
+        INNER JOIN usuarios u
+            ON u.id_usuario = b.id_usuario
+        INNER JOIN reservaciones r
+            ON r.id_reservacion = b.id_reservacion
+        ${where}
+        ORDER BY b.fecha DESC, b.id_bitacora DESC
+    `;
+
+    const result = await pool.query(query, values);
+
+    return result.rows;
+};
+
 module.exports = {
-    crearEntradaBitacora
+    crearEntradaBitacora,
+    consultarBitacora
 };

@@ -1,6 +1,7 @@
 const express = require('express');
 const pool = require('./config/database');
 const authRoutes = require('./routes/auth.routes');
+const bitacoraRoutes = require('./routes/bitacora.routes');
 const reservacionesRoutes = require('./routes/reservaciones.routes');
 
 const app = express();
@@ -8,6 +9,7 @@ const app = express();
 app.use(express.json());
 
 app.use('/api/auth', authRoutes);
+app.use('/api/bitacora', bitacoraRoutes);
 app.use('/api/reservaciones', reservacionesRoutes);
 
 const PORT = 3000;
