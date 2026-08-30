@@ -2,6 +2,10 @@ const parametrosDailyPermitidos = [
     'fecha'
 ];
 
+const camposBodyObservacionesPermitidos = [
+    'observaciones'
+];
+
 const tieneCampo = (objeto, campo) => Object.prototype.hasOwnProperty.call(objeto, campo);
 
 const normalizarTextoFiltro = (valor) => (
@@ -62,8 +66,47 @@ const validarConsultaDaily = (query) => {
     };
 };
 
+const validarBodyObservacionesDaily = (body) => {
+    const errores = [];
+    const datos = {};
+    const camposEnviados = Object.keys(body);
+
+    camposEnviados.forEach((campo) => {
+        if (!camposBodyObservacionesPermitidos.includes(campo)) {
+            errores.push(`El campo ${campo} no está permitido`);
+        }
+    });
+
+    if (!tieneCampo(body, 'observaciones')) {
+        errores.push('El campo observaciones es obligatorio');
+
+        return {
+            errores,
+            datos
+        };
+    }
+
+    if (typeof body.observaciones !== 'string') {
+        errores.push('El campo observaciones debe ser texto');
+
+        return {
+            errores,
+            datos
+        };
+    }
+
+    datos.observaciones = body.observaciones.trim();
+
+    return {
+        errores,
+        datos
+    };
+};
+
 module.exports = {
     parametrosDailyPermitidos,
+    camposBodyObservacionesPermitidos,
     validarConsultaDaily,
+    validarBodyObservacionesDaily,
     esFechaValida
 };

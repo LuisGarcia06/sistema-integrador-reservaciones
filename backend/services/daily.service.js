@@ -1,6 +1,6 @@
 const pool = require('../config/database');
 
-const consultarDailyPorFecha = async (fecha) => {
+const consultarReservacionesDailyPorFecha = async (fecha) => {
     const query = `
         SELECT
             r.id_reservacion,
@@ -41,6 +41,57 @@ const consultarDailyPorFecha = async (fecha) => {
     return result.rows;
 };
 
+const obtenerObservacionesPorFecha = async (fecha) => {
+    const query = `
+        SELECT
+            observaciones
+        FROM daily_observaciones
+        WHERE fecha = $1
+        LIMIT 1
+    `;
+
+    const result = await pool.query(query, [fecha]);
+
+    return result.rows[0]?.observaciones || '';
+};
+
+const guardarObservacionesPorFecha = async (fecha, observaciones) => {
+    const query = `
+        INSERT INTO daily_observaciones (
+            fecha,
+            observaciones
+        )
+        VALUES ($1, $2)
+        ON CONFLICT (fecha)
+        DO UPDATE SET
+            observaciones = EXCLUDED.observaciones,
+            ultima_actualizacion = CURRENT_TIMESTAMP
+        RETURNING
+            id_daily_observacion,
+            fecha,
+            observaciones,
+            ultima_actualizacion
+    `;
+
+    const result = await pool.query(query, [fecha, observaciones]);
+
+    return result.rows[0];
+};
+
+const consultarDailyPorFecha = async (fecha) => {
+    const [datos, observaciones] = await Promise.all([
+        consultarReservacionesDailyPorFecha(fecha),
+        obtenerObservacionesPorFecha(fecha)
+    ]);
+
+    return {
+        observaciones,
+        datos
+    };
+};
+
 module.exports = {
-    consultarDailyPorFecha
+    consultarDailyPorFecha,
+    obtenerObservacionesPorFecha,
+    guardarObservacionesPorFecha
 };

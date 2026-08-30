@@ -115,6 +115,18 @@ CREATE TABLE reservaciones (
 
 
 -- =========================================================
+-- TABLA: daily_observaciones
+-- =========================================================
+
+CREATE TABLE daily_observaciones (
+    id_daily_observacion INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    fecha DATE NOT NULL UNIQUE,
+    observaciones TEXT NOT NULL,
+    ultima_actualizacion TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+
+-- =========================================================
 -- TABLA: bitacora
 -- =========================================================
 
