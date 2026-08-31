@@ -1,4 +1,5 @@
 const express = require('express');
+const path = require('path');
 const pool = require('./config/database');
 const authRoutes = require('./routes/auth.routes');
 const bitacoraRoutes = require('./routes/bitacora.routes');
@@ -6,8 +7,10 @@ const dailyRoutes = require('./routes/daily.routes');
 const reservacionesRoutes = require('./routes/reservaciones.routes');
 
 const app = express();
+const frontendPath = path.join(__dirname, '..', 'frontend');
 
 app.use(express.json());
+app.use('/app', express.static(frontendPath));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/bitacora', bitacoraRoutes);

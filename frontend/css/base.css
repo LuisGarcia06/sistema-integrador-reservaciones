@@ -19,6 +19,10 @@ body {
   line-height: var(--line-height-body);
 }
 
+[hidden] {
+  display: none !important;
+}
+
 h1,
 h2,
 h3,

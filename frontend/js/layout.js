@@ -6,13 +6,28 @@
     { id: "reservaciones", label: "Reservaciones", route: "#/reservaciones", mark: "RS" },
     { id: "daily", label: "Daily", route: "#/daily", mark: "DY" },
     { id: "historial", label: "Historial", route: "#/historial", mark: "HS" },
-    { id: "bitacora", label: "Bitácora", route: "#/bitacora", mark: "BT" },
-    { id: "usuarios", label: "Usuarios", route: "#/usuarios", mark: "US" },
+    { id: "bitacora", label: "Bitácora", route: "#/bitacora", mark: "BT", adminOnly: true },
+    { id: "usuarios", label: "Usuarios", route: "#/usuarios", mark: "US", adminOnly: true },
     { id: "configuracion", label: "Configuración", route: "#/configuracion", mark: "CF" }
   ];
 
+  function getVisibleNavItems() {
+    if (!App.auth || !App.auth.estaAutenticado()) {
+      return [];
+    }
+
+    if (App.auth.esAdministrador()) {
+      return NAV_ITEMS;
+    }
+
+    return NAV_ITEMS.filter(function (item) {
+      return !item.adminOnly;
+    });
+  }
+
   function renderSidebar() {
     const sidebar = document.getElementById("sidebar");
+    const navItems = getVisibleNavItems();
 
     sidebar.innerHTML = [
       '<div class="sidebar-brand">',
@@ -23,10 +38,18 @@
       "</div>",
       "</div>",
       '<nav class="sidebar-nav" aria-label="Secciones">',
-      NAV_ITEMS.map(renderNavItem).join(""),
+      navItems.map(renderNavItem).join(""),
       "</nav>",
-      '<p class="sidebar-footer">Base visual local</p>'
+      '<button class="sidebar-logout" type="button" data-logout>Cerrar sesión</button>'
     ].join("");
+
+    const logoutButton = sidebar.querySelector("[data-logout]");
+
+    if (logoutButton) {
+      logoutButton.addEventListener("click", function () {
+        App.auth.cerrarSesion();
+      });
+    }
   }
 
   function renderNavItem(item) {
@@ -42,6 +65,17 @@
     const header = document.getElementById("app-header");
     const title = config && config.title ? config.title : "Sistema Integrador";
     const subtitle = config && config.subtitle ? config.subtitle : "";
+    const usuario = App.auth ? App.auth.obtenerUsuario() : null;
+    const nombre = usuario && usuario.nombre ? usuario.nombre : "Usuario";
+    const rol = usuario && usuario.rol ? usuario.rol : "";
+    const iniciales = nombre
+      .split(/\s+/)
+      .filter(Boolean)
+      .slice(0, 2)
+      .map(function (parte) {
+        return parte.charAt(0).toUpperCase();
+      })
+      .join("") || "US";
 
     header.innerHTML = [
       '<div class="header-copy">',
@@ -49,13 +83,23 @@
       subtitle ? '<p class="header-subtitle">' + App.ui.escapeHtml(subtitle) + "</p>" : "",
       "</div>",
       '<div class="header-actions">',
-      '<button class="btn btn-ghost" type="button" disabled>Acciones</button>',
-      '<div class="user-chip" aria-label="Área futura de usuario">',
-      '<span class="user-avatar" aria-hidden="true">US</span>',
-      "<span>Usuario</span>",
+      '<button class="btn btn-ghost" type="button" data-logout>Cerrar sesión</button>',
+      '<div class="user-chip" aria-label="Usuario autenticado">',
+      '<span class="user-avatar" aria-hidden="true">' + App.ui.escapeHtml(iniciales) + "</span>",
+      '<span><strong>' + App.ui.escapeHtml(nombre) + "</strong>",
+      rol ? '<small>' + App.ui.escapeHtml(rol) + "</small>" : "",
+      "</span>",
       "</div>",
       "</div>"
     ].join("");
+
+    const logoutButton = header.querySelector("[data-logout]");
+
+    if (logoutButton) {
+      logoutButton.addEventListener("click", function () {
+        App.auth.cerrarSesion();
+      });
+    }
   }
 
   function updateActiveNavigation(routeId) {
@@ -72,17 +116,41 @@
   }
 
   function renderLayout() {
-    renderSidebar();
-    setPageHeader({
-      title: "Dashboard",
-      subtitle: "Base visual del sistema"
-    });
+    const mode = App.auth && App.auth.estaAutenticado() ? "authenticated" : "guest";
+    setShellMode(mode);
+
+    if (mode === "authenticated") {
+      setPageHeader({
+        title: "Dashboard",
+        subtitle: "Base visual del sistema"
+      });
+    }
+  }
+
+  function setShellMode(mode) {
+    const isAuthenticated = mode === "authenticated";
+    const sidebar = document.getElementById("sidebar");
+    const header = document.getElementById("app-header");
+
+    document.body.classList.toggle("is-login-page", !isAuthenticated);
+    sidebar.hidden = !isAuthenticated;
+    header.hidden = !isAuthenticated;
+
+    if (isAuthenticated) {
+      renderSidebar();
+    } else {
+      sidebar.innerHTML = "";
+      header.innerHTML = "";
+      updateActiveNavigation("");
+    }
   }
 
   App.layout = {
     NAV_ITEMS: NAV_ITEMS,
+    getVisibleNavItems: getVisibleNavItems,
     renderLayout: renderLayout,
     setPageHeader: setPageHeader,
+    setShellMode: setShellMode,
     updateActiveNavigation: updateActiveNavigation
   };
 })();

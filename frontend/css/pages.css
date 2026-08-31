@@ -1,3 +1,46 @@
+body.is-login-page #app {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+body.is-login-page .app-shell {
+  grid-template-rows: minmax(0, 1fr);
+}
+
+body.is-login-page .page-root {
+  display: grid;
+  min-height: 100vh;
+  padding: var(--space-lg);
+  place-items: center;
+}
+
+.login-page {
+  display: grid;
+  width: min(100%, 440px);
+  gap: var(--space-lg);
+}
+
+.login-card {
+  display: grid;
+  gap: var(--space-lg);
+  padding: var(--space-xl);
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+}
+
+.login-copy {
+  display: grid;
+  gap: var(--space-xs);
+}
+
+.login-form {
+  display: grid;
+  gap: var(--space-md);
+}
+
 .dashboard-grid {
   display: grid;
   grid-template-columns: minmax(0, 2fr) minmax(280px, 1fr);

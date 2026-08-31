@@ -198,6 +198,61 @@
   line-height: var(--line-height-caption);
 }
 
+.user-chip span:last-child {
+  display: grid;
+  gap: 1px;
+}
+
+.user-chip strong {
+  color: var(--color-on-surface);
+  font-size: var(--font-size-body);
+  font-weight: 600;
+  line-height: var(--line-height-body);
+}
+
+.user-chip small {
+  color: var(--color-on-surface-variant);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+
+.sidebar-logout {
+  min-height: 40px;
+  margin-top: auto;
+  padding: 0 var(--space-md);
+  color: var(--color-on-surface-variant);
+  background: var(--color-surface-low);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+  font-weight: 600;
+}
+
+.sidebar-logout:hover {
+  color: var(--color-on-surface);
+  background: var(--color-surface-container);
+}
+
+.form-message {
+  min-height: 40px;
+  padding: var(--space-sm) var(--space-md);
+  color: var(--color-on-surface-variant);
+  background: var(--color-surface-low);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+}
+
+.form-message.is-error {
+  color: var(--color-error);
+  background: var(--color-error-container);
+  border-color: var(--color-error-container);
+}
+
+.form-message.is-info {
+  color: var(--color-primary);
+  background: var(--color-secondary-container);
+  border-color: var(--color-secondary-container);
+}
+
 @media (max-width: 1100px) {
   .metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
