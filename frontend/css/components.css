@@ -85,6 +85,11 @@
   background: var(--color-error-container);
 }
 
+.badge-neutral {
+  color: var(--color-on-surface-variant);
+  background: var(--color-surface-high);
+}
+
 .filter-bar {
   display: flex;
   flex-wrap: wrap;
