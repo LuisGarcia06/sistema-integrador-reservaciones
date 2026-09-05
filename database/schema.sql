@@ -174,6 +174,7 @@ CREATE TABLE reservaciones (
     id_plataforma INTEGER NOT NULL,
 
     nombre_cliente VARCHAR(120) NOT NULL,
+    telefono_cliente VARCHAR(30),
     habitacion VARCHAR(50),
 
     pax INTEGER NOT NULL,
@@ -188,6 +189,9 @@ CREATE TABLE reservaciones (
     tipo_cambio NUMERIC(10,2),
 
     metodo_pago VARCHAR(50),
+    vendedor VARCHAR(120),
+    observaciones TEXT,
+    id_transporte_operacion INTEGER,
     estado VARCHAR(30) NOT NULL,
 
     fecha_registro TIMESTAMP NOT NULL,
@@ -203,7 +207,11 @@ CREATE TABLE reservaciones (
 
     CONSTRAINT fk_reservaciones_plataformas
         FOREIGN KEY (id_plataforma)
-        REFERENCES plataformas(id_plataforma)
+        REFERENCES plataformas(id_plataforma),
+
+    CONSTRAINT fk_reservaciones_transportes_operacion
+        FOREIGN KEY (id_transporte_operacion)
+        REFERENCES transportes_operacion(id_transporte_operacion)
 );
 
 
