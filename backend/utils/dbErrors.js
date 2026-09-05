@@ -20,6 +20,18 @@ const obtenerRespuestaErrorPostgres = (error) => {
         };
     }
 
+    if (
+        error.code === '23505' &&
+        error.constraint === 'uq_transportes_operacion_operacion_vehiculo'
+    ) {
+        return {
+            status: 409,
+            body: {
+                mensaje: 'Ya existe un transporte con ese vehículo para la operación'
+            }
+        };
+    }
+
     if (error.code === '23505') {
         return {
             status: 409,

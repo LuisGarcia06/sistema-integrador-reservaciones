@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { obtenerTurno } = require('../utils/turno');
 
 const camposActualizables = [
     'fecha',
@@ -18,14 +19,6 @@ const columnasOperacionEnriquecida = `
     g.nombre AS guia,
     ot.estado
 `;
-
-const obtenerTurno = (horaInicio) => {
-    const hora = typeof horaInicio === 'string'
-        ? horaInicio.slice(0, 5)
-        : '';
-
-    return hora <= '12:00' ? 'Mañana' : 'Tarde';
-};
 
 const normalizarFechaResultado = (fecha) => {
     if (fecha instanceof Date) {

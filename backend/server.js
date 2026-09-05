@@ -6,6 +6,7 @@ const bitacoraRoutes = require('./routes/bitacora.routes');
 const dailyRoutes = require('./routes/daily.routes');
 const operacionesRoutes = require('./routes/operaciones.routes');
 const reservacionesRoutes = require('./routes/reservaciones.routes');
+const transportesRoutes = require('./routes/transportes.routes');
 
 const app = express();
 const frontendPath = path.join(__dirname, '..', 'frontend');
@@ -18,6 +19,7 @@ app.use('/api/bitacora', bitacoraRoutes);
 app.use('/api/daily', dailyRoutes);
 app.use('/api/operaciones', operacionesRoutes);
 app.use('/api/reservaciones', reservacionesRoutes);
+app.use('/api/transportes', transportesRoutes);
 
 const PORT = 3000;
 
