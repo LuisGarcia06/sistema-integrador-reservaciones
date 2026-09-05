@@ -16,6 +16,7 @@ const columnasReservacion = `
     id_pais,
     id_plataforma,
     nombre_cliente,
+    telefono_cliente,
     habitacion,
     pax,
     ninos,
@@ -26,6 +27,9 @@ const columnasReservacion = `
     saldo,
     tipo_cambio,
     metodo_pago,
+    vendedor,
+    observaciones,
+    id_transporte_operacion,
     estado,
     fecha_registro,
     ultima_actualizacion
@@ -56,6 +60,7 @@ const insertarReservacionConDb = async (db, reservacion) => {
             id_pais,
             id_plataforma,
             nombre_cliente,
+            telefono_cliente,
             habitacion,
             pax,
             ninos,
@@ -66,6 +71,8 @@ const insertarReservacionConDb = async (db, reservacion) => {
             saldo,
             tipo_cambio,
             metodo_pago,
+            vendedor,
+            observaciones,
             estado,
             fecha_registro,
             ultima_actualizacion
@@ -74,7 +81,8 @@ const insertarReservacionConDb = async (db, reservacion) => {
             $1, $2, $3, $4, $5,
             $6, $7, $8, $9, $10,
             $11, $12, $13, $14, $15,
-            $16, $17, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+            $16, $17, $18, $19, $20,
+            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         )
         RETURNING
             ${columnasReservacion}
@@ -87,6 +95,7 @@ const insertarReservacionConDb = async (db, reservacion) => {
         reservacion.id_pais,
         reservacion.id_plataforma,
         reservacion.nombre_cliente,
+        reservacion.telefono_cliente,
         reservacion.habitacion,
         reservacion.pax,
         reservacion.ninos,
@@ -97,6 +106,8 @@ const insertarReservacionConDb = async (db, reservacion) => {
         reservacion.saldo,
         reservacion.tipo_cambio,
         reservacion.metodo_pago,
+        reservacion.vendedor,
+        reservacion.observaciones,
         reservacion.estado
     ];
 

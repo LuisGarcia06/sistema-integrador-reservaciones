@@ -19,6 +19,7 @@ const camposResultadoReservacion = [
     'id_pais',
     'id_plataforma',
     'nombre_cliente',
+    'telefono_cliente',
     'habitacion',
     'pax',
     'ninos',
@@ -29,6 +30,8 @@ const camposResultadoReservacion = [
     'saldo',
     'tipo_cambio',
     'metodo_pago',
+    'vendedor',
+    'observaciones',
     'estado'
 ];
 
@@ -179,6 +182,32 @@ const validarHora = (valor) => (
 
 const obtenerTextoOpcional = (valor) => resultadoValido(obtenerOpcional(valor));
 
+const crearTransformadorTextoOpcional = ({ maximo } = {}) => (valor) => {
+    if (valor === undefined || valor === null) {
+        return resultadoValido(null);
+    }
+
+    if (typeof valor !== 'string') {
+        return resultadoInvalido();
+    }
+
+    const texto = valor.trim();
+
+    if (texto === '') {
+        return resultadoValido(null);
+    }
+
+    if (maximo && texto.length > maximo) {
+        return resultadoInvalido();
+    }
+
+    return resultadoValido(texto);
+};
+
+const obtenerTelefonoClienteOpcional = crearTransformadorTextoOpcional({ maximo: 30 });
+const obtenerVendedorOpcional = crearTransformadorTextoOpcional({ maximo: 120 });
+const obtenerObservacionesOpcional = crearTransformadorTextoOpcional();
+
 const reglasReservacion = {
     codigo: {
         transformarCreacion: conservarValor,
@@ -213,6 +242,12 @@ const reglasReservacion = {
         transformarCreacion: conservarValor,
         transformarActualizacion: validarTextoNoVacio,
         mensajeActualizacion: 'El campo nombre_cliente no puede estar vacío'
+    },
+    telefono_cliente: {
+        transformarCreacion: obtenerTelefonoClienteOpcional,
+        transformarActualizacion: obtenerTelefonoClienteOpcional,
+        mensajeCreacion: 'El campo telefono_cliente debe ser texto y no exceder 30 caracteres',
+        mensajeActualizacion: 'El campo telefono_cliente debe ser texto y no exceder 30 caracteres'
     },
     habitacion: {
         transformarCreacion: obtenerTextoOpcional,
@@ -268,6 +303,18 @@ const reglasReservacion = {
     metodo_pago: {
         transformarCreacion: obtenerTextoOpcional,
         transformarActualizacion: obtenerTextoOpcional
+    },
+    vendedor: {
+        transformarCreacion: obtenerVendedorOpcional,
+        transformarActualizacion: obtenerVendedorOpcional,
+        mensajeCreacion: 'El campo vendedor debe ser texto y no exceder 120 caracteres',
+        mensajeActualizacion: 'El campo vendedor debe ser texto y no exceder 120 caracteres'
+    },
+    observaciones: {
+        transformarCreacion: obtenerObservacionesOpcional,
+        transformarActualizacion: obtenerObservacionesOpcional,
+        mensajeCreacion: 'El campo observaciones debe ser texto',
+        mensajeActualizacion: 'El campo observaciones debe ser texto'
     },
     estado: {
         transformarCreacion: conservarValor,
@@ -441,16 +488,31 @@ const validarFiltrosReservaciones = (query) => {
 const validarDatosReservacion = (datos) => {
     const errores = [];
     const transformaciones = obtenerTransformacionesReservacion(datos, 'creacion');
+    const camposEnviados = Object.keys(datos);
 
     if (tieneCampo(datos, 'id_reservacion')) {
         errores.push('No se permite enviar id_reservacion');
     }
+
+    camposEnviados.forEach((campo) => {
+        if (campo === 'id_reservacion') {
+            return;
+        }
+
+        if (!camposResultadoReservacion.includes(campo)) {
+            errores.push(`El campo ${campo} no está permitido`);
+        }
+    });
 
     camposObligatorios.forEach((campo) => {
         validarCampoPresente(datos, campo, errores);
     });
 
     camposValidacionCreacion.forEach((campo) => {
+        aplicarReglaCreacion(datos, transformaciones, campo, errores);
+    });
+
+    ['telefono_cliente', 'vendedor', 'observaciones'].forEach((campo) => {
         aplicarReglaCreacion(datos, transformaciones, campo, errores);
     });
 
