@@ -453,6 +453,60 @@ const aplicarReglaActualizacion = (datos, campo, errores, camposActualizacion) =
 
 const validarIdReservacion = (id) => convertirEnteroPositivo(id);
 
+const validarAsignacionTransporteReservacion = (datos) => {
+    const errores = [];
+    const camposEnviados = Object.keys(datos);
+    const asignacion = {};
+
+    if (camposEnviados.length === 0) {
+        errores.push('Debe enviar id_transporte_operacion');
+    }
+
+    camposEnviados.forEach((campo) => {
+        if (campo !== 'id_transporte_operacion') {
+            errores.push(`El campo ${campo} no está permitido`);
+        }
+    });
+
+    if (!tieneCampo(datos, 'id_transporte_operacion')) {
+        return {
+            errores,
+            asignacion
+        };
+    }
+
+    if (datos.id_transporte_operacion === null) {
+        asignacion.id_transporte_operacion = null;
+
+        return {
+            errores,
+            asignacion
+        };
+    }
+
+    const idTransporteOperacion = datos.id_transporte_operacion;
+
+    if (
+        typeof idTransporteOperacion !== 'number' ||
+        !Number.isInteger(idTransporteOperacion) ||
+        idTransporteOperacion <= 0
+    ) {
+        errores.push('El campo id_transporte_operacion debe ser NULL o un entero positivo');
+
+        return {
+            errores,
+            asignacion
+        };
+    }
+
+    asignacion.id_transporte_operacion = idTransporteOperacion;
+
+    return {
+        errores,
+        asignacion
+    };
+};
+
 const validarFiltrosReservaciones = (query) => {
     const errores = [];
     const filtros = {};
@@ -564,6 +618,7 @@ module.exports = {
     validarFiltrosReservaciones,
     validarDatosReservacion,
     validarDatosActualizacionReservacion,
+    validarAsignacionTransporteReservacion,
     esValorVacio,
     convertirEnteroPositivo,
     convertirEnteroNoNegativo,

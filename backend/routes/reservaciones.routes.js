@@ -27,6 +27,13 @@ router.patch(
 );
 
 router.patch(
+    '/:id/transporte',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR),
+    reservacionesController.asignarTransporteReservacion
+);
+
+router.patch(
     '/:id',
     autenticarUsuario,
     autorizarRoles(ROLES.ADMINISTRADOR),

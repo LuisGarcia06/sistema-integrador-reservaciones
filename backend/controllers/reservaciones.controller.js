@@ -3,7 +3,8 @@ const {
     validarIdReservacion,
     validarDatosReservacion,
     validarDatosActualizacionReservacion,
-    validarFiltrosReservaciones
+    validarFiltrosReservaciones,
+    validarAsignacionTransporteReservacion
 } = require('../validators/reservaciones.validator');
 const { obtenerRespuestaErrorPostgres } = require('../utils/dbErrors');
 
@@ -157,6 +158,71 @@ const cancelarReservacion = async (req, res) => {
     }
 };
 
+const asignarTransporteReservacion = async (req, res) => {
+    const idReservacion = validarIdReservacion(req.params.id);
+
+    if (idReservacion === null) {
+        return res.status(400).json({
+            mensaje: 'El id de la reservación debe ser un entero válido'
+        });
+    }
+
+    const { errores, asignacion } = validarAsignacionTransporteReservacion(req.body || {});
+
+    if (errores.length > 0) {
+        return res.status(400).json({
+            mensaje: 'Datos inválidos',
+            errores
+        });
+    }
+
+    try {
+        const idUsuario = req.usuario.id_usuario;
+        const resultado = await reservacionesService.asignarTransporteReservacion(
+            idReservacion,
+            asignacion.id_transporte_operacion,
+            idUsuario
+        );
+
+        if (resultado.tipo === 'no_encontrada') {
+            return res.status(404).json({
+                mensaje: 'Reservación no encontrada'
+            });
+        }
+
+        if (resultado.tipo === 'transporte_no_encontrado') {
+            return res.status(400).json({
+                mensaje: 'Transporte de operación no encontrado'
+            });
+        }
+
+        if (resultado.tipo === 'incompatible') {
+            return res.status(400).json({
+                mensaje: resultado.mensaje
+            });
+        }
+
+        return res.status(200).json({
+            mensaje: resultado.tipo === 'sin_cambios'
+                ? 'La reservación ya tenía asignado ese transporte'
+                : 'Transporte de reservación actualizado correctamente',
+            datos: resultado.reservacion
+        });
+    } catch (error) {
+        const respuestaErrorPostgres = obtenerRespuestaErrorPostgres(error);
+
+        if (respuestaErrorPostgres) {
+            return res.status(respuestaErrorPostgres.status).json(respuestaErrorPostgres.body);
+        }
+
+        console.error('Error al asignar transporte a la reservación:', error);
+
+        return res.status(500).json({
+            mensaje: 'Error al asignar transporte a la reservación'
+        });
+    }
+};
+
 const obtenerReservacionPorId = async (req, res) => {
     const idReservacion = validarIdReservacion(req.params.id);
 
@@ -193,5 +259,6 @@ module.exports = {
     crearReservacion,
     actualizarReservacionParcial,
     cancelarReservacion,
+    asignarTransporteReservacion,
     obtenerReservacionPorId
 };
