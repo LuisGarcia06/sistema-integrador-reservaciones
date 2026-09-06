@@ -3,6 +3,7 @@ const bitacoraService = require('./bitacora.service');
 const capacidadService = require('./capacidad.service');
 const { ACCIONES_BITACORA } = require('../constants/bitacora.actions');
 const { camposEditablesReservacion } = require('../constants/reservaciones.fields');
+const { validarNinosNoExcedePax } = require('../validators/reservaciones.validator');
 const {
     obtenerCambiosReservacion,
     obtenerCamposActualizacionDesdeCambios,
@@ -38,6 +39,13 @@ const columnasReservacion = `
 `;
 
 const camposActualizables = camposEditablesReservacion;
+
+const crearErrorSolicitudInvalida = (mensaje) => {
+    const error = new Error(mensaje);
+    error.statusCode = 400;
+
+    return error;
+};
 
 const obtenerReservacionPorIdConDb = async (db, idReservacion, bloquear = false) => {
     const query = `
@@ -202,6 +210,46 @@ const obtenerTransporteOperacionPorIdConDb = async (db, idTransporteOperacion) =
     return result.rows[0];
 };
 
+const bloquearOperacionesPorIds = async (db, ids) => {
+    const idsOrdenados = capacidadService.obtenerIdsOrdenadosUnicos(ids);
+
+    if (idsOrdenados.length === 0) {
+        return;
+    }
+
+    await db.query(`
+        SELECT id_operacion_tour
+        FROM operaciones_tour
+        WHERE id_operacion_tour = ANY($1::int[])
+        ORDER BY id_operacion_tour ASC
+        FOR UPDATE
+    `, [idsOrdenados]);
+};
+
+const obtenerIdsOperacionesGrupo = async (db, grupo) => {
+    if (!grupo) {
+        return [];
+    }
+
+    const query = `
+        SELECT id_operacion_tour
+        FROM operaciones_tour
+        WHERE fecha = $1
+            AND id_tour = $2
+            AND (
+                CASE
+                    WHEN hora_inicio <= TIME '12:00' THEN 'Mañana'
+                    ELSE 'Tarde'
+                END
+            ) = $3
+        ORDER BY id_operacion_tour ASC
+    `;
+
+    const result = await db.query(query, [grupo.fecha, grupo.id_tour, grupo.turno]);
+
+    return result.rows.map((row) => row.id_operacion_tour);
+};
+
 const validarCompatibilidadReservacionTransporte = (reservacion, transporteOperacion) => {
     const fechaReservacion = normalizarValorParaComparacion('fecha', reservacion.fecha);
     const fechaOperacion = normalizarValorParaComparacion('fecha', transporteOperacion.fecha);
@@ -228,6 +276,113 @@ const crearResultadoCapacidadInvalida = (mensaje) => ({
     mensaje,
     reservacion: null
 });
+
+const tieneCambio = (cambios, campo) => cambios.some((cambio) => cambio.campo === campo);
+
+const proyectarReservacion = (reservacionActual, camposActualizados) => ({
+    ...reservacionActual,
+    ...camposActualizados
+});
+
+const validarIntegridadNinosPax = (reservacion) => {
+    const errorNinosPax = validarNinosNoExcedePax(reservacion.pax, reservacion.ninos);
+
+    if (errorNinosPax) {
+        throw crearErrorSolicitudInvalida(errorNinosPax);
+    }
+};
+
+const validarCapacidadPatchAsignado = async (db, reservacionActual, reservacionFinal, cambios) => {
+    if (reservacionActual.id_transporte_operacion === null || reservacionActual.id_transporte_operacion === undefined) {
+        return;
+    }
+
+    const cambiaFecha = tieneCambio(cambios, 'fecha');
+    const cambiaTour = tieneCambio(cambios, 'id_tour');
+    const cambiaPaxOperativo = (
+        capacidadService.obtenerPaxOperativoReservacion(reservacionActual)
+        !== capacidadService.obtenerPaxOperativoReservacion(reservacionFinal)
+    );
+
+    if (!cambiaFecha && !cambiaTour && !cambiaPaxOperativo) {
+        return;
+    }
+
+    const transporteOperacionPreliminar = await obtenerTransporteOperacionPorIdConDb(
+        db,
+        reservacionActual.id_transporte_operacion
+    );
+
+    if (!transporteOperacionPreliminar) {
+        throw crearErrorSolicitudInvalida('Transporte de operación asignado no encontrado');
+    }
+
+    if (cambiaPaxOperativo) {
+        const grupoPreliminar = capacidadService.obtenerGrupoTransporteOperacion(transporteOperacionPreliminar);
+        const idsTransportesGrupo = await capacidadService.obtenerIdsTransportesGrupo(db, grupoPreliminar);
+        const idsOperacionesGrupo = await obtenerIdsOperacionesGrupo(db, grupoPreliminar);
+
+        await capacidadService.bloquearTransportesPorIds(db, idsTransportesGrupo);
+        await bloquearOperacionesPorIds(db, idsOperacionesGrupo);
+    } else {
+        await capacidadService.bloquearTransportesPorIds(
+            db,
+            [reservacionActual.id_transporte_operacion]
+        );
+        await bloquearOperacionesPorIds(db, [transporteOperacionPreliminar.id_operacion_tour]);
+    }
+
+    const transporteOperacion = await obtenerTransporteOperacionPorIdConDb(
+        db,
+        reservacionActual.id_transporte_operacion
+    );
+
+    if (!transporteOperacion) {
+        throw crearErrorSolicitudInvalida('Transporte de operación asignado no encontrado');
+    }
+
+    const errorCompatibilidad = validarCompatibilidadReservacionTransporte(
+        reservacionFinal,
+        transporteOperacion
+    );
+
+    if (errorCompatibilidad) {
+        throw crearErrorSolicitudInvalida(errorCompatibilidad);
+    }
+
+    if (!cambiaPaxOperativo) {
+        return;
+    }
+
+    const grupo = capacidadService.obtenerGrupoTransporteOperacion(transporteOperacion);
+    const paxOperativoFinal = capacidadService.obtenerPaxOperativoReservacion(reservacionFinal);
+    const totalTransporteActual = await capacidadService.calcularPaxTransporte(
+        db,
+        transporteOperacion.id_transporte_operacion,
+        { excluirIdReservacion: reservacionActual.id_reservacion }
+    );
+    const totalTransporteResultante = totalTransporteActual + paxOperativoFinal;
+    const errorCapacidadTransporte = capacidadService.validarCapacidadTransporte(
+        transporteOperacion,
+        totalTransporteResultante
+    );
+
+    if (errorCapacidadTransporte) {
+        throw crearErrorSolicitudInvalida(errorCapacidadTransporte);
+    }
+
+    const totalGrupoActual = await capacidadService.calcularPaxTourTurno(
+        db,
+        grupo,
+        { excluirIdReservacion: reservacionActual.id_reservacion }
+    );
+    const totalGrupoResultante = totalGrupoActual + paxOperativoFinal;
+    const errorMaximoGrupo = capacidadService.validarMaximoTourTurno(totalGrupoResultante);
+
+    if (errorMaximoGrupo) {
+        throw crearErrorSolicitudInvalida(errorMaximoGrupo);
+    }
+};
 
 const bloquearTransportesAsignacion = async (db, idTransporteOrigen, transporteDestino) => {
     const idsBloqueo = [idTransporteOrigen];
@@ -399,6 +554,17 @@ const actualizarReservacionParcial = async (idReservacion, campos, idUsuario) =>
         }
 
         const camposActualizados = obtenerCamposActualizacionDesdeCambios(cambios);
+        const reservacionFinal = proyectarReservacion(reservacionActual, camposActualizados);
+
+        validarIntegridadNinosPax(reservacionFinal);
+
+        await validarCapacidadPatchAsignado(
+            client,
+            reservacionActual,
+            reservacionFinal,
+            cambios
+        );
+
         const reservacionActualizada = await actualizarReservacionParcialConDb(
             client,
             idReservacion,

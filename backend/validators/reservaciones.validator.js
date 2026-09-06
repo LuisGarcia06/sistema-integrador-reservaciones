@@ -57,6 +57,23 @@ const esValorVacio = (valor) => (
 
 const tieneCampo = (objeto, campo) => Object.prototype.hasOwnProperty.call(objeto, campo);
 
+const validarNinosNoExcedePax = (pax, ninos) => {
+    if (ninos === null || ninos === undefined) {
+        return null;
+    }
+
+    const paxNumero = Number(pax);
+    const ninosNumero = Number(ninos);
+
+    if (!Number.isFinite(paxNumero) || !Number.isFinite(ninosNumero)) {
+        return null;
+    }
+
+    return ninosNumero > paxNumero
+        ? 'El campo ninos no puede ser mayor que pax'
+        : null;
+};
+
 const resultadoValido = (valor) => ({
     valido: true,
     valor
@@ -570,6 +587,15 @@ const validarDatosReservacion = (datos) => {
         aplicarReglaCreacion(datos, transformaciones, campo, errores);
     });
 
+    const errorNinosPax = validarNinosNoExcedePax(
+        transformaciones.pax.valor,
+        transformaciones.ninos.valor
+    );
+
+    if (errorNinosPax) {
+        errores.push(errorNinosPax);
+    }
+
     return {
         errores,
         reservacion: obtenerReservacionTransformada(transformaciones)
@@ -619,6 +645,7 @@ module.exports = {
     validarDatosReservacion,
     validarDatosActualizacionReservacion,
     validarAsignacionTransporteReservacion,
+    validarNinosNoExcedePax,
     esValorVacio,
     convertirEnteroPositivo,
     convertirEnteroNoNegativo,
