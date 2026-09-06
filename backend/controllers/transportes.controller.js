@@ -78,6 +78,12 @@ const crearTransporte = async (req, res) => {
     try {
         const transporteCreado = await transportesService.crearTransporte(transporte);
 
+        if (transporteCreado.tipo === 'capacidad_invalida') {
+            return res.status(400).json({
+                mensaje: transporteCreado.mensaje
+            });
+        }
+
         return res.status(201).json({
             mensaje: 'Transporte creado correctamente',
             datos: transporteCreado
@@ -124,6 +130,12 @@ const actualizarTransporteParcial = async (req, res) => {
         if (!transporteActualizado) {
             return res.status(404).json({
                 mensaje: 'Transporte no encontrado'
+            });
+        }
+
+        if (transporteActualizado.tipo === 'capacidad_invalida') {
+            return res.status(400).json({
+                mensaje: transporteActualizado.mensaje
             });
         }
 

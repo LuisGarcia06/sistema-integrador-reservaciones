@@ -147,6 +147,11 @@ const calcularPaxTourTurno = async (db, grupo, opciones = {}) => {
         condiciones.push(`r.id_reservacion <> $${values.length}`);
     }
 
+    if (opciones.excluirIdTransporteOperacion) {
+        values.push(opciones.excluirIdTransporteOperacion);
+        condiciones.push(`tr.id_transporte_operacion <> $${values.length}`);
+    }
+
     const query = `
         SELECT COALESCE(SUM(r.pax), 0)::int AS total_pax
         FROM reservaciones r
