@@ -1,5 +1,6 @@
 const pool = require('../config/database');
 const bitacoraService = require('./bitacora.service');
+const capacidadService = require('./capacidad.service');
 const { ACCIONES_BITACORA } = require('../constants/bitacora.actions');
 const { camposEditablesReservacion } = require('../constants/reservaciones.fields');
 const {
@@ -183,10 +184,15 @@ const obtenerTransporteOperacionPorIdConDb = async (db, idTransporteOperacion) =
             tr.id_transporte_operacion,
             tr.id_operacion_tour,
             ot.fecha,
-            ot.id_tour
+            ot.id_tour,
+            ot.hora_inicio,
+            tr.id_vehiculo,
+            v.capacidad
         FROM transportes_operacion tr
         INNER JOIN operaciones_tour ot
             ON ot.id_operacion_tour = tr.id_operacion_tour
+        LEFT JOIN vehiculos v
+            ON v.id_vehiculo = tr.id_vehiculo
         WHERE tr.id_transporte_operacion = $1
         LIMIT 1
     `;
@@ -216,6 +222,95 @@ const formatearTransporteReservacion = (valor) => (
         ? 'sin valor'
         : String(valor)
 );
+
+const crearResultadoCapacidadInvalida = (mensaje) => ({
+    tipo: 'capacidad_invalida',
+    mensaje,
+    reservacion: null
+});
+
+const bloquearTransportesAsignacion = async (db, idTransporteOrigen, transporteDestino) => {
+    const idsBloqueo = [idTransporteOrigen];
+    const grupoDestino = capacidadService.obtenerGrupoTransporteOperacion(transporteDestino);
+
+    if (transporteDestino) {
+        idsBloqueo.push(transporteDestino.id_transporte_operacion);
+    }
+
+    if (grupoDestino) {
+        const idsGrupoDestino = await capacidadService.obtenerIdsTransportesGrupo(db, grupoDestino);
+        idsBloqueo.push(...idsGrupoDestino);
+    }
+
+    await capacidadService.bloquearTransportesPorIds(db, idsBloqueo);
+};
+
+const validarCapacidadAsignacion = async (
+    db,
+    reservacion,
+    transporteOrigen,
+    transporteDestino
+) => {
+    const paxOperativoReservacion = capacidadService.obtenerPaxOperativoReservacion(reservacion);
+
+    if (paxOperativoReservacion === 0) {
+        return null;
+    }
+
+    if (transporteOrigen) {
+        const totalOrigenResultante = await capacidadService.calcularPaxTransporte(
+            db,
+            transporteOrigen.id_transporte_operacion,
+            { excluirIdReservacion: reservacion.id_reservacion }
+        );
+        const errorMinimoOrigen = capacidadService.validarMinimoTransporteConVehiculo(
+            transporteOrigen,
+            totalOrigenResultante,
+            'El transporte origen quedaría con menos de 2 pasajeros activos; desasigne el vehículo antes de mover o desasignar reservas'
+        );
+
+        if (errorMinimoOrigen) {
+            return errorMinimoOrigen;
+        }
+    }
+
+    if (transporteDestino) {
+        const totalDestinoActual = await capacidadService.calcularPaxTransporte(
+            db,
+            transporteDestino.id_transporte_operacion,
+            { excluirIdReservacion: reservacion.id_reservacion }
+        );
+        const totalDestinoResultante = totalDestinoActual + paxOperativoReservacion;
+        const errorCapacidadDestino = capacidadService.validarCapacidadTransporte(
+            transporteDestino,
+            totalDestinoResultante
+        );
+
+        if (errorCapacidadDestino) {
+            return errorCapacidadDestino;
+        }
+
+        const grupoOrigen = capacidadService.obtenerGrupoTransporteOperacion(transporteOrigen);
+        const grupoDestino = capacidadService.obtenerGrupoTransporteOperacion(transporteDestino);
+        const cambiaGrupoOperativo = !capacidadService.esMismoGrupoOperativo(grupoOrigen, grupoDestino);
+
+        if (cambiaGrupoOperativo) {
+            const totalGrupoDestinoActual = await capacidadService.calcularPaxTourTurno(
+                db,
+                grupoDestino,
+                { excluirIdReservacion: reservacion.id_reservacion }
+            );
+            const totalGrupoDestinoResultante = totalGrupoDestinoActual + paxOperativoReservacion;
+            const errorMaximoGrupo = capacidadService.validarMaximoTourTurno(totalGrupoDestinoResultante);
+
+            if (errorMaximoGrupo) {
+                return errorMaximoGrupo;
+            }
+        }
+    }
+
+    return null;
+};
 
 const obtenerReservaciones = async (filtros = {}) => {
     const condiciones = [];
@@ -388,10 +483,37 @@ const asignarTransporteReservacion = async (idReservacion, idTransporteOperacion
             };
         }
 
-        if (idTransporteOperacion !== null) {
-            const transporteOperacion = await obtenerTransporteOperacionPorIdConDb(client, idTransporteOperacion);
+        if (reservacionActual.id_transporte_operacion === idTransporteOperacion) {
+            await client.query('COMMIT');
+            return {
+                tipo: 'sin_cambios',
+                reservacion: reservacionActual
+            };
+        }
 
-            if (!transporteOperacion) {
+        const transporteAnterior = reservacionActual.id_transporte_operacion;
+        let transporteDestino = null;
+        let transporteOrigen = null;
+
+        if (idTransporteOperacion !== null) {
+            const transporteDestinoPreliminar = await obtenerTransporteOperacionPorIdConDb(
+                client,
+                idTransporteOperacion
+            );
+
+            if (!transporteDestinoPreliminar) {
+                await client.query('COMMIT');
+                return {
+                    tipo: 'transporte_no_encontrado',
+                    reservacion: null
+                };
+            }
+
+            await bloquearTransportesAsignacion(client, transporteAnterior, transporteDestinoPreliminar);
+
+            transporteDestino = await obtenerTransporteOperacionPorIdConDb(client, idTransporteOperacion);
+
+            if (!transporteDestino) {
                 await client.query('COMMIT');
                 return {
                     tipo: 'transporte_no_encontrado',
@@ -401,7 +523,7 @@ const asignarTransporteReservacion = async (idReservacion, idTransporteOperacion
 
             const errorCompatibilidad = validarCompatibilidadReservacionTransporte(
                 reservacionActual,
-                transporteOperacion
+                transporteDestino
             );
 
             if (errorCompatibilidad) {
@@ -412,17 +534,26 @@ const asignarTransporteReservacion = async (idReservacion, idTransporteOperacion
                     reservacion: null
                 };
             }
+        } else {
+            await bloquearTransportesAsignacion(client, transporteAnterior, null);
         }
 
-        if (reservacionActual.id_transporte_operacion === idTransporteOperacion) {
-            await client.query('COMMIT');
-            return {
-                tipo: 'sin_cambios',
-                reservacion: reservacionActual
-            };
+        if (transporteAnterior !== null) {
+            transporteOrigen = await obtenerTransporteOperacionPorIdConDb(client, transporteAnterior);
         }
 
-        const transporteAnterior = reservacionActual.id_transporte_operacion;
+        const errorCapacidad = await validarCapacidadAsignacion(
+            client,
+            reservacionActual,
+            transporteOrigen,
+            transporteDestino
+        );
+
+        if (errorCapacidad) {
+            await client.query('ROLLBACK');
+            return crearResultadoCapacidadInvalida(errorCapacidad);
+        }
+
         const reservacionActualizada = await actualizarTransporteReservacionConDb(
             client,
             idReservacion,

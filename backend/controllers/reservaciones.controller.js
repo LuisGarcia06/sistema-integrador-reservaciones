@@ -202,6 +202,12 @@ const asignarTransporteReservacion = async (req, res) => {
             });
         }
 
+        if (resultado.tipo === 'capacidad_invalida') {
+            return res.status(400).json({
+                mensaje: resultado.mensaje
+            });
+        }
+
         return res.status(200).json({
             mensaje: resultado.tipo === 'sin_cambios'
                 ? 'La reservación ya tenía asignado ese transporte'
