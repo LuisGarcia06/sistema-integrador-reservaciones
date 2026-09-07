@@ -77,6 +77,39 @@ const bloquearTransportesPorIds = async (db, ids) => {
     return result.rows.map((row) => row.id_transporte_operacion);
 };
 
+const bloquearOperacionesPorIds = async (db, ids) => {
+    const idsOrdenados = obtenerIdsOrdenadosUnicos(ids);
+
+    if (idsOrdenados.length === 0) {
+        return [];
+    }
+
+    const query = `
+        SELECT id_operacion_tour
+        FROM operaciones_tour
+        WHERE id_operacion_tour = ANY($1::int[])
+        ORDER BY id_operacion_tour ASC
+        FOR UPDATE
+    `;
+
+    const result = await db.query(query, [idsOrdenados]);
+
+    return result.rows.map((row) => row.id_operacion_tour);
+};
+
+const obtenerIdsTransportesOperacion = async (db, idOperacion) => {
+    const query = `
+        SELECT id_transporte_operacion
+        FROM transportes_operacion
+        WHERE id_operacion_tour = $1
+        ORDER BY id_transporte_operacion ASC
+    `;
+
+    const result = await db.query(query, [idOperacion]);
+
+    return result.rows.map((row) => row.id_transporte_operacion);
+};
+
 const obtenerIdsTransportesGrupo = async (db, grupo) => {
     if (!grupo) {
         return [];
@@ -101,6 +134,30 @@ const obtenerIdsTransportesGrupo = async (db, grupo) => {
     const result = await db.query(query, [grupo.fecha, grupo.id_tour, grupo.turno]);
 
     return result.rows.map((row) => row.id_transporte_operacion);
+};
+
+const obtenerIdsOperacionesGrupo = async (db, grupo) => {
+    if (!grupo) {
+        return [];
+    }
+
+    const query = `
+        SELECT id_operacion_tour
+        FROM operaciones_tour
+        WHERE fecha = $1
+            AND id_tour = $2
+            AND (
+                CASE
+                    WHEN hora_inicio <= TIME '12:00' THEN 'Mañana'
+                    ELSE 'Tarde'
+                END
+            ) = $3
+        ORDER BY id_operacion_tour ASC
+    `;
+
+    const result = await db.query(query, [grupo.fecha, grupo.id_tour, grupo.turno]);
+
+    return result.rows.map((row) => row.id_operacion_tour);
 };
 
 const calcularPaxTransporte = async (db, idTransporteOperacion, opciones = {}) => {
@@ -152,6 +209,11 @@ const calcularPaxTourTurno = async (db, grupo, opciones = {}) => {
         condiciones.push(`tr.id_transporte_operacion <> $${values.length}`);
     }
 
+    if (opciones.excluirIdOperacion) {
+        values.push(opciones.excluirIdOperacion);
+        condiciones.push(`ot.id_operacion_tour <> $${values.length}`);
+    }
+
     const query = `
         SELECT COALESCE(SUM(r.pax), 0)::int AS total_pax
         FROM reservaciones r
@@ -159,6 +221,31 @@ const calcularPaxTourTurno = async (db, grupo, opciones = {}) => {
             ON tr.id_transporte_operacion = r.id_transporte_operacion
         INNER JOIN operaciones_tour ot
             ON ot.id_operacion_tour = tr.id_operacion_tour
+        WHERE ${condiciones.join('\n            AND ')}
+    `;
+
+    const result = await db.query(query, values);
+
+    return Number(result.rows[0].total_pax) || 0;
+};
+
+const calcularPaxOperacion = async (db, idOperacion, opciones = {}) => {
+    const values = [idOperacion, ESTADO_CANCELADA];
+    const condiciones = [
+        'tr.id_operacion_tour = $1',
+        'r.estado <> $2'
+    ];
+
+    if (opciones.excluirIdReservacion) {
+        values.push(opciones.excluirIdReservacion);
+        condiciones.push(`r.id_reservacion <> $${values.length}`);
+    }
+
+    const query = `
+        SELECT COALESCE(SUM(r.pax), 0)::int AS total_pax
+        FROM transportes_operacion tr
+        INNER JOIN reservaciones r
+            ON r.id_transporte_operacion = tr.id_transporte_operacion
         WHERE ${condiciones.join('\n            AND ')}
     `;
 
@@ -221,9 +308,13 @@ module.exports = {
     esMismoGrupoOperativo,
     obtenerIdsOrdenadosUnicos,
     bloquearTransportesPorIds,
+    bloquearOperacionesPorIds,
+    obtenerIdsTransportesOperacion,
     obtenerIdsTransportesGrupo,
+    obtenerIdsOperacionesGrupo,
     calcularPaxTransporte,
     calcularPaxTourTurno,
+    calcularPaxOperacion,
     validarCapacidadTransporte,
     validarMinimoTransporteConVehiculo,
     validarMaximoTourTurno

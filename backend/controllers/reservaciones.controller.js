@@ -156,6 +156,12 @@ const cancelarReservacion = async (req, res) => {
             datos: resultadoCancelacion.reservacion
         });
     } catch (error) {
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({
+                mensaje: error.message
+            });
+        }
+
         console.error('Error al cancelar la reservación:', error);
 
         return res.status(500).json({

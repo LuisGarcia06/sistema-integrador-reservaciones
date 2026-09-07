@@ -210,46 +210,6 @@ const obtenerTransporteOperacionPorIdConDb = async (db, idTransporteOperacion) =
     return result.rows[0];
 };
 
-const bloquearOperacionesPorIds = async (db, ids) => {
-    const idsOrdenados = capacidadService.obtenerIdsOrdenadosUnicos(ids);
-
-    if (idsOrdenados.length === 0) {
-        return;
-    }
-
-    await db.query(`
-        SELECT id_operacion_tour
-        FROM operaciones_tour
-        WHERE id_operacion_tour = ANY($1::int[])
-        ORDER BY id_operacion_tour ASC
-        FOR UPDATE
-    `, [idsOrdenados]);
-};
-
-const obtenerIdsOperacionesGrupo = async (db, grupo) => {
-    if (!grupo) {
-        return [];
-    }
-
-    const query = `
-        SELECT id_operacion_tour
-        FROM operaciones_tour
-        WHERE fecha = $1
-            AND id_tour = $2
-            AND (
-                CASE
-                    WHEN hora_inicio <= TIME '12:00' THEN 'Mañana'
-                    ELSE 'Tarde'
-                END
-            ) = $3
-        ORDER BY id_operacion_tour ASC
-    `;
-
-    const result = await db.query(query, [grupo.fecha, grupo.id_tour, grupo.turno]);
-
-    return result.rows.map((row) => row.id_operacion_tour);
-};
-
 const validarCompatibilidadReservacionTransporte = (reservacion, transporteOperacion) => {
     const fechaReservacion = normalizarValorParaComparacion('fecha', reservacion.fecha);
     const fechaOperacion = normalizarValorParaComparacion('fecha', transporteOperacion.fecha);
@@ -320,16 +280,16 @@ const validarCapacidadPatchAsignado = async (db, reservacionActual, reservacionF
     if (cambiaPaxOperativo) {
         const grupoPreliminar = capacidadService.obtenerGrupoTransporteOperacion(transporteOperacionPreliminar);
         const idsTransportesGrupo = await capacidadService.obtenerIdsTransportesGrupo(db, grupoPreliminar);
-        const idsOperacionesGrupo = await obtenerIdsOperacionesGrupo(db, grupoPreliminar);
+        const idsOperacionesGrupo = await capacidadService.obtenerIdsOperacionesGrupo(db, grupoPreliminar);
 
         await capacidadService.bloquearTransportesPorIds(db, idsTransportesGrupo);
-        await bloquearOperacionesPorIds(db, idsOperacionesGrupo);
+        await capacidadService.bloquearOperacionesPorIds(db, idsOperacionesGrupo);
     } else {
         await capacidadService.bloquearTransportesPorIds(
             db,
             [reservacionActual.id_transporte_operacion]
         );
-        await bloquearOperacionesPorIds(db, [transporteOperacionPreliminar.id_operacion_tour]);
+        await capacidadService.bloquearOperacionesPorIds(db, [transporteOperacionPreliminar.id_operacion_tour]);
     }
 
     const transporteOperacion = await obtenerTransporteOperacionPorIdConDb(
@@ -381,6 +341,53 @@ const validarCapacidadPatchAsignado = async (db, reservacionActual, reservacionF
 
     if (errorMaximoGrupo) {
         throw crearErrorSolicitudInvalida(errorMaximoGrupo);
+    }
+};
+
+const validarCancelacionReservacion = async (db, reservacionActual) => {
+    if (
+        reservacionActual.id_transporte_operacion === null ||
+        reservacionActual.id_transporte_operacion === undefined
+    ) {
+        return;
+    }
+
+    const transporteOperacionPreliminar = await obtenerTransporteOperacionPorIdConDb(
+        db,
+        reservacionActual.id_transporte_operacion
+    );
+
+    if (!transporteOperacionPreliminar) {
+        throw crearErrorSolicitudInvalida('Transporte de operación asignado no encontrado');
+    }
+
+    const grupo = capacidadService.obtenerGrupoTransporteOperacion(transporteOperacionPreliminar);
+    const idsTransportesGrupo = await capacidadService.obtenerIdsTransportesGrupo(db, grupo);
+
+    await capacidadService.bloquearTransportesPorIds(db, idsTransportesGrupo);
+
+    const transporteOperacion = await obtenerTransporteOperacionPorIdConDb(
+        db,
+        reservacionActual.id_transporte_operacion
+    );
+
+    if (!transporteOperacion) {
+        throw crearErrorSolicitudInvalida('Transporte de operación asignado no encontrado');
+    }
+
+    const totalResultante = await capacidadService.calcularPaxTransporte(
+        db,
+        transporteOperacion.id_transporte_operacion,
+        { excluirIdReservacion: reservacionActual.id_reservacion }
+    );
+    const errorMinimo = capacidadService.validarMinimoTransporteConVehiculo(
+        transporteOperacion,
+        totalResultante,
+        'No se puede cancelar la reservación porque el transporte con vehículo quedaría con menos de 2 pasajeros activos'
+    );
+
+    if (errorMinimo) {
+        throw crearErrorSolicitudInvalida(errorMinimo);
     }
 };
 
@@ -609,6 +616,8 @@ const cancelarReservacion = async (idReservacion, idUsuario) => {
                 yaEstabaCancelada: true
             };
         }
+
+        await validarCancelacionReservacion(client, reservacionActual);
 
         const reservacionCancelada = await cancelarReservacionConDb(client, idReservacion);
 
