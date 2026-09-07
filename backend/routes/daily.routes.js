@@ -20,6 +20,13 @@ router.put(
 );
 
 router.get(
+    '/operativo',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA),
+    dailyController.consultarDailyOperativo
+);
+
+router.get(
     '/',
     autenticarUsuario,
     autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA),

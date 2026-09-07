@@ -33,6 +33,40 @@ const consultarDaily = async (req, res) => {
     }
 };
 
+const consultarDailyOperativo = async (req, res) => {
+    const { errores, filtros } = validarConsultaDaily(req.query || {});
+
+    if (errores.length > 0) {
+        return res.status(400).json({
+            mensaje: 'Consulta Daily operativo inválida',
+            errores
+        });
+    }
+
+    try {
+        const daily = await dailyService.consultarDailyOperativoPorFecha(filtros.fecha);
+
+        return res.status(200).json({
+            mensaje: 'Daily operativo consultado correctamente',
+            fecha: filtros.fecha,
+            total_operaciones: daily.total_operaciones,
+            total_transportes: daily.total_transportes,
+            total_reservaciones: daily.total_reservaciones,
+            total_reservaciones_asignadas: daily.total_reservaciones_asignadas,
+            total_reservaciones_sin_asignar: daily.total_reservaciones_sin_asignar,
+            total_pax_activos: daily.total_pax_activos,
+            operaciones: daily.operaciones,
+            reservaciones_sin_asignar: daily.reservaciones_sin_asignar
+        });
+    } catch (error) {
+        console.error('Error al consultar Daily operativo:', error);
+
+        return res.status(500).json({
+            mensaje: 'Error al consultar Daily operativo'
+        });
+    }
+};
+
 const consultarObservaciones = async (req, res) => {
     const { errores, filtros } = validarConsultaDaily(req.query || {});
 
@@ -97,6 +131,7 @@ const guardarObservaciones = async (req, res) => {
 
 module.exports = {
     consultarDaily,
+    consultarDailyOperativo,
     consultarObservaciones,
     guardarObservaciones
 };
