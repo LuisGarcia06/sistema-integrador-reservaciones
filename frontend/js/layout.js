@@ -4,6 +4,7 @@
   const NAV_ITEMS = [
     { id: "dashboard", label: "Dashboard", route: "#/dashboard", mark: "DB" },
     { id: "reservaciones", label: "Reservaciones", route: "#/reservaciones", mark: "RS" },
+    { id: "operaciones", label: "Operaciones", route: "#/operaciones", mark: "OP" },
     { id: "daily", label: "Daily", route: "#/daily", mark: "DY" },
     { id: "historial", label: "Historial", route: "#/historial", mark: "HS" },
     { id: "bitacora", label: "Bitácora", route: "#/bitacora", mark: "BT", adminOnly: true },
