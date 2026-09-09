@@ -32,6 +32,42 @@ const obtenerRespuestaErrorPostgres = (error) => {
         };
     }
 
+    if (
+        error.code === '23505' &&
+        error.constraint === 'vehiculos_identificador_key'
+    ) {
+        return {
+            status: 409,
+            body: {
+                mensaje: 'Ya existe un vehículo con ese identificador'
+            }
+        };
+    }
+
+    if (
+        error.code === '23505' &&
+        error.constraint === 'vehiculos_placas_key'
+    ) {
+        return {
+            status: 409,
+            body: {
+                mensaje: 'Ya existe un vehículo con esas placas'
+            }
+        };
+    }
+
+    if (
+        error.code === '23514' &&
+        error.constraint === 'chk_vehiculos_capacidad'
+    ) {
+        return {
+            status: 400,
+            body: {
+                mensaje: 'La capacidad del vehículo debe ser mayor a 0 y menor o igual a 12'
+            }
+        };
+    }
+
     if (error.code === '23505') {
         return {
             status: 409,
