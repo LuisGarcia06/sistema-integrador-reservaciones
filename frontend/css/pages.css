@@ -515,22 +515,35 @@ body.is-login-page .page-root {
 
 .operaciones-actions,
 .operaciones-empty-actions,
-.operacion-form-actions {
+.operacion-form-actions,
+.operaciones-row-actions,
+.transportes-panel-actions {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-sm);
 }
 
 .operaciones-message:empty,
-#operacion-form-message:empty {
+#operacion-form-message:empty,
+.transportes-message:empty,
+#transporte-form-message:empty {
   display: none;
 }
 
-.operaciones-loading {
+.operaciones-loading,
+.operaciones-inline-loading {
   display: flex;
   align-items: center;
   gap: var(--space-md);
   min-height: 160px;
+}
+
+.operaciones-inline-loading {
+  min-height: 120px;
+  padding: var(--space-md);
+  background: var(--color-surface-low);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
 }
 
 .operaciones-state-panel {
@@ -552,12 +565,19 @@ body.is-login-page .page-root {
   min-width: 760px;
 }
 
+.operaciones-row-actions {
+  min-width: 0;
+}
+
 .operaciones-table th,
-.operaciones-table td {
+.operaciones-table td,
+.transportes-table th,
+.transportes-table td {
   vertical-align: middle;
 }
 
-.operacion-dialog-backdrop {
+.operacion-dialog-backdrop,
+.transportes-dialog-backdrop {
   position: fixed;
   inset: 0;
   z-index: 30;
@@ -568,6 +588,10 @@ body.is-login-page .page-root {
   place-items: center;
 }
 
+.transportes-dialog-backdrop {
+  place-items: start center;
+}
+
 .operacion-form {
   display: grid;
   width: min(100%, 720px);
@@ -575,7 +599,9 @@ body.is-login-page .page-root {
   padding: var(--space-lg);
 }
 
-.operacion-form-header {
+.operacion-form-header,
+.transportes-panel-header,
+.transporte-form-header {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
@@ -611,6 +637,96 @@ body.is-login-page .page-root {
 
 .operacion-form-actions {
   justify-content: flex-end;
+}
+
+.transportes-panel {
+  display: grid;
+  width: min(100%, 1040px);
+  max-height: calc(100vh - (var(--space-lg) * 2));
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  overflow: auto;
+}
+
+.transportes-panel-header {
+  align-items: center;
+}
+
+.transportes-panel-actions {
+  justify-content: flex-end;
+}
+
+.transportes-list,
+.transporte-form-host {
+  min-width: 0;
+}
+
+.transportes-table-container {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.transportes-table {
+  min-width: 900px;
+}
+
+.transportes-table td strong,
+.transportes-table td span {
+  display: block;
+}
+
+.transportes-observaciones-cell {
+  max-width: 280px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.transportes-empty-state {
+  background: var(--color-surface-low);
+  border: 1px dashed var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+}
+
+.transporte-form {
+  display: grid;
+  gap: var(--space-md);
+  padding: var(--space-md);
+  background: var(--color-surface-low);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+}
+
+.transporte-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.transporte-form-note {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+  padding: var(--space-sm) var(--space-md);
+  color: var(--color-on-surface-variant);
+  background: var(--color-surface-lowest);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+}
+
+.transporte-form-note p {
+  overflow-wrap: anywhere;
+}
+
+.transporte-observaciones-field,
+.transporte-estado-field {
+  grid-column: span 2;
+}
+
+.transporte-textarea {
+  min-height: 96px;
+  padding: var(--space-md);
+  resize: vertical;
 }
 
 @keyframes daily-spin {
@@ -668,17 +784,26 @@ body.is-login-page .page-root {
   }
 
   .operaciones-toolbar,
-  .operacion-form-header {
+  .operacion-form-header,
+  .transportes-panel-header,
+  .transporte-form-header {
     flex-direction: column;
     align-items: stretch;
   }
 
-  .operacion-form-grid {
+  .operacion-form-grid,
+  .transporte-form-grid {
     grid-template-columns: 1fr;
   }
 
-  .operacion-estado-field {
+  .operacion-estado-field,
+  .transporte-observaciones-field,
+  .transporte-estado-field {
     grid-column: auto;
+  }
+
+  .transportes-panel {
+    max-height: none;
   }
 
   .daily-client {
