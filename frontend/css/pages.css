@@ -526,7 +526,8 @@ body.is-login-page .page-root {
 .operaciones-message:empty,
 #operacion-form-message:empty,
 .transportes-message:empty,
-#transporte-form-message:empty {
+#transporte-form-message:empty,
+.reservas-organizacion-message:empty {
   display: none;
 }
 
@@ -729,6 +730,107 @@ body.is-login-page .page-root {
   resize: vertical;
 }
 
+.reservas-organizacion {
+  display: grid;
+  gap: var(--space-md);
+  min-width: 0;
+  padding-top: var(--space-md);
+  border-top: 1px solid var(--color-outline-variant);
+}
+
+.reservas-organizacion-header,
+.reservas-section-header,
+.reservas-transporte-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.reservas-organizacion-content,
+.reservas-section,
+.reservas-transporte-list {
+  display: grid;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+.reservas-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.reservas-section {
+  padding: var(--space-md);
+  background: var(--color-surface-low);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+}
+
+.reservas-transporte-panel {
+  display: grid;
+  gap: var(--space-md);
+  min-width: 0;
+  padding: var(--space-md);
+  background: var(--color-surface-lowest);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+}
+
+.reservas-table-container {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.reservas-table {
+  min-width: 980px;
+}
+
+.reservas-table th,
+.reservas-table td {
+  vertical-align: middle;
+}
+
+.reservas-number-cell {
+  text-align: right;
+}
+
+.reservas-table tr.is-cancelada td:first-child {
+  box-shadow: inset 4px 0 0 var(--color-error);
+}
+
+.reservas-row-code,
+.reservas-cancel-note {
+  display: block;
+  color: var(--color-on-surface-variant);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+
+.reservas-cancel-note {
+  margin-top: var(--space-xs);
+  color: var(--color-error);
+  font-weight: 700;
+}
+
+.reservas-action-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  align-items: end;
+  min-width: 260px;
+}
+
+.reservas-select-field {
+  min-width: 220px;
+}
+
+.reservas-help-text {
+  padding-top: var(--space-xs);
+}
+
 @keyframes daily-spin {
   to {
     transform: rotate(360deg);
@@ -786,7 +888,10 @@ body.is-login-page .page-root {
   .operaciones-toolbar,
   .operacion-form-header,
   .transportes-panel-header,
-  .transporte-form-header {
+  .transporte-form-header,
+  .reservas-organizacion-header,
+  .reservas-section-header,
+  .reservas-transporte-header {
     flex-direction: column;
     align-items: stretch;
   }
@@ -815,7 +920,14 @@ body.is-login-page .page-root {
   .daily-meta-grid,
   .daily-operation-meta,
   .daily-transport-details,
-  .daily-summary {
+  .daily-summary,
+  .reservas-summary {
     grid-template-columns: 1fr;
+  }
+
+  .reservas-action-group,
+  .reservas-select-field {
+    width: 100%;
+    min-width: 0;
   }
 }

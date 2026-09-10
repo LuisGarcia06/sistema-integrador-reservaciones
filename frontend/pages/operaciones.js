@@ -12,11 +12,13 @@
   let catalogosRequestId = 0;
   let transportesRequestId = 0;
   let transporteCatalogosRequestId = 0;
+  let organizacionRequestId = 0;
   let currentFecha = "";
   let operaciones = [];
   let tours = [];
   let guias = [];
   let transportes = [];
+  let organizacionDaily = null;
   let operadores = [];
   let vehiculos = [];
   let catalogosCargados = false;
@@ -24,11 +26,14 @@
   let transporteCatalogosCargados = false;
   let transporteCatalogosLoading = false;
   let transportesLoading = false;
+  let organizacionReservacionesAbierta = false;
+  let organizacionReservacionesLoading = false;
   let selectedTransportOperacion = null;
   let selectedTransporte = null;
   let selectedOperacion = null;
   let submitLoading = false;
   let transporteSubmitLoading = false;
+  let reservacionTransporteLoadingId = null;
 
   function escapeHtml(value) {
     return App.ui.escapeHtml(value === null || value === undefined || value === "" ? EMPTY_VALUE : value);
@@ -99,12 +104,92 @@
     return Number(transporte && transporte.id_transporte_operacion);
   }
 
+  function getReservacionId(reservacion) {
+    return Number(reservacion && reservacion.id_reservacion);
+  }
+
+  function getOperacionFecha(operacion) {
+    const fecha = operacion && operacion.fecha ? String(operacion.fecha) : currentFecha;
+    const match = fecha.match(/^(\d{4}-\d{2}-\d{2})/);
+
+    return match ? match[1] : "";
+  }
+
+  function getArray(value) {
+    return Array.isArray(value) ? value : [];
+  }
+
+  function toMetric(value) {
+    const number = Number(value);
+
+    return Number.isFinite(number) ? String(number) : "0";
+  }
+
+  function normalizeEstado(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
+  function isCancelada(reservacion) {
+    return normalizeEstado(reservacion && reservacion.estado) === "cancelada";
+  }
+
+  function getEstadoBadgeClass(estado) {
+    if (normalizeEstado(estado) === "cancelada") {
+      return " badge-danger";
+    }
+
+    if (!estado || estado === EMPTY_VALUE) {
+      return " badge-neutral";
+    }
+
+    return "";
+  }
+
+  function getReservacionEstado(reservacion) {
+    return isCancelada(reservacion) ? "Cancelada" : (reservacion && reservacion.estado ? reservacion.estado : EMPTY_VALUE);
+  }
+
+  function getVendidoPor(reservacion) {
+    const vendedor = reservacion && reservacion.vendedor !== null && reservacion.vendedor !== undefined
+      ? String(reservacion.vendedor).trim()
+      : "";
+    const plataforma = reservacion && reservacion.plataforma !== null && reservacion.plataforma !== undefined
+      ? String(reservacion.plataforma).trim()
+      : "";
+
+    return vendedor || plataforma || EMPTY_VALUE;
+  }
+
   function findTransporteById(idTransporte) {
     const id = Number(idTransporte);
 
     return transportes.find(function (transporte) {
       return getTransporteId(transporte) === id;
     }) || null;
+  }
+
+  function getOperacionOrganizacion() {
+    const idOperacion = getOperacionId(selectedTransportOperacion);
+
+    return getArray(organizacionDaily && organizacionDaily.operaciones).find(function (operacion) {
+      return getOperacionId(operacion) === idOperacion;
+    }) || null;
+  }
+
+  function getReservacionesPendientesOperacion() {
+    const operacion = selectedTransportOperacion;
+
+    if (!operacion) {
+      return [];
+    }
+
+    const idTour = Number(operacion.id_tour);
+    const fechaOperacion = getOperacionFecha(operacion);
+
+    return getArray(organizacionDaily && organizacionDaily.reservaciones_sin_asignar).filter(function (reservacion) {
+      return Number(reservacion && reservacion.id_tour) === idTour &&
+        getOperacionFecha(reservacion) === fechaOperacion;
+    });
   }
 
   function isAdmin() {
@@ -210,6 +295,40 @@
     }
   }
 
+  function setOrganizacionLoading(isLoading) {
+    organizacionReservacionesLoading = isLoading;
+
+    const button = document.getElementById("reservaciones-organizar");
+    const content = document.getElementById("reservas-organizacion-content");
+
+    if (button) {
+      button.disabled = isLoading;
+      button.textContent = isLoading
+        ? "Cargando reservaciones..."
+        : (organizacionReservacionesAbierta ? "Ocultar organización" : "Organizar reservaciones");
+    }
+
+    if (content) {
+      content.setAttribute("aria-busy", isLoading ? "true" : "false");
+
+      if (isLoading) {
+        content.innerHTML = renderOrganizacionLoading();
+      }
+    }
+  }
+
+  function setOrganizacionMessage(message, type) {
+    const element = document.getElementById("reservas-organizacion-message");
+
+    if (!element) {
+      return;
+    }
+
+    element.textContent = message || "";
+    element.classList.toggle("is-error", type === "error");
+    element.classList.toggle("is-info", type === "info");
+  }
+
   function getBackendMessage(error, fallback) {
     if (error && error.isNetworkError) {
       return "No hay conexión con el backend. Revisa que el servidor esté activo.";
@@ -269,6 +388,27 @@
     return [
       '<section class="operaciones-state-panel">',
       "<h3>No se pudieron cargar los transportes</h3>",
+      '<p class="card-text">' + App.ui.escapeHtml(message) + "</p>",
+      "</section>"
+    ].join("");
+  }
+
+  function renderOrganizacionLoading() {
+    return [
+      '<section class="operaciones-inline-loading" aria-live="polite">',
+      '<span class="daily-spinner" aria-hidden="true"></span>',
+      "<div>",
+      "<h3>Cargando reservaciones</h3>",
+      '<p class="card-text">Consultando el Daily operativo de esta fecha.</p>',
+      "</div>",
+      "</section>"
+    ].join("");
+  }
+
+  function renderOrganizacionError(message) {
+    return [
+      '<section class="operaciones-state-panel reservas-organizacion-state">',
+      "<h3>No se pudieron cargar las reservaciones</h3>",
       '<p class="card-text">' + App.ui.escapeHtml(message) + "</p>",
       "</section>"
     ].join("");
@@ -380,6 +520,272 @@
     ].join("");
   }
 
+  function getTransporteLabel(transporte) {
+    const idTransporte = getTransporteId(transporte);
+
+    if (transporte && transporte.vehiculo) {
+      return [
+        transporte.vehiculo,
+        transporte.operador || "Operador pendiente"
+      ].join(" · ");
+    }
+
+    return "Transporte #" + idTransporte + " · Vehículo pendiente";
+  }
+
+  function renderTransporteDestinoOptions(currentTransporteId) {
+    const currentId = currentTransporteId === null || currentTransporteId === undefined
+      ? null
+      : Number(currentTransporteId);
+    const operacion = getOperacionOrganizacion();
+    const transportesOperacion = getArray(operacion && operacion.transportes).filter(function (transporte) {
+      return getTransporteId(transporte) !== currentId;
+    });
+
+    return [
+      '<option value="">Selecciona transporte</option>',
+      transportesOperacion.map(function (transporte) {
+        const idTransporte = getTransporteId(transporte);
+
+        return '<option value="' + App.ui.escapeHtml(idTransporte) + '">' +
+          App.ui.escapeHtml(getTransporteLabel(transporte)) +
+          "</option>";
+      }).join("")
+    ].join("");
+  }
+
+  function renderReservacionEstado(reservacion) {
+    const estado = getReservacionEstado(reservacion);
+    const nota = isCancelada(reservacion)
+      ? '<span class="reservas-cancel-note">No cuenta en capacidad</span>'
+      : "";
+
+    return '<span class="badge' + getEstadoBadgeClass(estado) + '">' + escapeHtml(estado) + "</span>" + nota;
+  }
+
+  function renderReservacionPendienteRow(reservacion, transportesOperacion) {
+    const idReservacion = getReservacionId(reservacion);
+    const isLoading = reservacionTransporteLoadingId === idReservacion;
+    const canAssign = isAdmin() && transportesOperacion.length > 0;
+    const actionCell = canAssign
+      ? [
+        '<div class="reservas-action-group">',
+        '<label class="field reservas-select-field" for="reservas-asignar-' + App.ui.escapeHtml(idReservacion) + '">',
+        '<span class="field-label">Transporte</span>',
+        '<select class="input" id="reservas-asignar-' + App.ui.escapeHtml(idReservacion) + '" data-reserva-select="' + App.ui.escapeHtml(idReservacion) + '"' + (isLoading ? " disabled" : "") + ">",
+        renderTransporteDestinoOptions(null),
+        "</select>",
+        "</label>",
+        '<button class="btn btn-primary" type="button" data-assign-reserva="' + App.ui.escapeHtml(idReservacion) + '"' + (isLoading ? " disabled" : "") + ">",
+        isLoading ? "Guardando..." : "Asignar",
+        "</button>",
+        "</div>"
+      ].join("")
+      : (isAdmin() ? '<span class="card-text">Primero crea un transporte.</span>' : "");
+
+    return [
+      '<tr class="' + (isCancelada(reservacion) ? "is-cancelada" : "") + '">',
+      '<td><strong>' + escapeHtml(reservacion && reservacion.codigo) + "</strong></td>",
+      "<td>" + escapeHtml(reservacion && reservacion.nombre_cliente) + "</td>",
+      '<td class="reservas-number-cell">' + escapeHtml(reservacion && reservacion.pax) + "</td>",
+      '<td class="reservas-number-cell">' + escapeHtml(reservacion && reservacion.ninos) + "</td>",
+      "<td>" + escapeHtml(reservacion && reservacion.pickup_place) + "</td>",
+      "<td>" + escapeHtml(formatTime(reservacion && reservacion.pickup_time)) + "</td>",
+      "<td>" + escapeHtml(getVendidoPor(reservacion)) + "</td>",
+      "<td>" + renderReservacionEstado(reservacion) + "</td>",
+      isAdmin() ? "<td>" + actionCell + "</td>" : "",
+      "</tr>"
+    ].join("");
+  }
+
+  function renderReservacionAsignadaRow(reservacion, transporte, transportesOperacion) {
+    const idReservacion = getReservacionId(reservacion);
+    const idTransporte = getTransporteId(transporte);
+    const isLoading = reservacionTransporteLoadingId === idReservacion;
+    const otrosTransportes = transportesOperacion.filter(function (item) {
+      return getTransporteId(item) !== idTransporte;
+    });
+    const moveControls = otrosTransportes.length > 0
+      ? [
+        '<label class="field reservas-select-field" for="reservas-mover-' + App.ui.escapeHtml(idReservacion) + '">',
+        '<span class="field-label">Destino</span>',
+        '<select class="input" id="reservas-mover-' + App.ui.escapeHtml(idReservacion) + '" data-reserva-select="' + App.ui.escapeHtml(idReservacion) + '"' + (isLoading ? " disabled" : "") + ">",
+        renderTransporteDestinoOptions(idTransporte),
+        "</select>",
+        "</label>",
+        '<button class="btn" type="button" data-move-reserva="' + App.ui.escapeHtml(idReservacion) + '"' + (isLoading ? " disabled" : "") + ">",
+        isLoading ? "Guardando..." : "Mover",
+        "</button>"
+      ].join("")
+      : "";
+    const actionCell = isAdmin()
+      ? [
+        '<div class="reservas-action-group">',
+        moveControls,
+        '<button class="btn btn-ghost" type="button" data-unassign-reserva="' + App.ui.escapeHtml(idReservacion) + '"' + (isLoading ? " disabled" : "") + ">",
+        isLoading ? "Guardando..." : "Quitar asignación",
+        "</button>",
+        "</div>"
+      ].join("")
+      : "";
+
+    return [
+      '<tr class="' + (isCancelada(reservacion) ? "is-cancelada" : "") + '">',
+      '<td><strong>' + escapeHtml(reservacion && reservacion.nombre_cliente) + '</strong><span class="reservas-row-code">' + escapeHtml(reservacion && reservacion.codigo) + "</span></td>",
+      '<td class="reservas-number-cell">' + escapeHtml(reservacion && reservacion.pax) + "</td>",
+      '<td class="reservas-number-cell">' + escapeHtml(reservacion && reservacion.ninos) + "</td>",
+      "<td>" + escapeHtml(reservacion && reservacion.pickup_place) + "</td>",
+      "<td>" + escapeHtml(formatTime(reservacion && reservacion.pickup_time)) + "</td>",
+      "<td>" + escapeHtml(getVendidoPor(reservacion)) + "</td>",
+      "<td>" + renderReservacionEstado(reservacion) + "</td>",
+      isAdmin() ? "<td>" + actionCell + "</td>" : "",
+      "</tr>"
+    ].join("");
+  }
+
+  function renderReservacionesTable(headers, rowsHtml, emptyMessage, className) {
+    if (!rowsHtml) {
+      return '<div class="daily-empty-inline">' + App.ui.escapeHtml(emptyMessage) + "</div>";
+    }
+
+    const headerCells = headers.map(function (header) {
+      return '<th scope="col">' + App.ui.escapeHtml(header) + "</th>";
+    }).join("");
+
+    return [
+      '<div class="table-container reservas-table-container">',
+      '<table class="data-table reservas-table ' + App.ui.escapeHtml(className || "") + '">',
+      "<thead><tr>" + headerCells + "</tr></thead>",
+      "<tbody>" + rowsHtml + "</tbody>",
+      "</table>",
+      "</div>"
+    ].join("");
+  }
+
+  function renderReservacionesPendientes(operacion) {
+    const pendientes = getReservacionesPendientesOperacion();
+    const transportesOperacion = getArray(operacion && operacion.transportes);
+    const headers = ["Código", "Nombre", "PAX", "Niños", "Pickup", "Hora", "Vendido por", "Estado"]
+      .concat(isAdmin() ? ["Acciones"] : []);
+    const emptyMessage = transportesOperacion.length === 0
+      ? "Primero crea un transporte para poder asignar reservaciones."
+      : "No hay reservaciones pendientes de asignar para este tour y fecha.";
+
+    return [
+      '<section class="reservas-section">',
+      '<div class="reservas-section-header">',
+      "<div>",
+      "<h3>Reservaciones sin asignar</h3>",
+      '<p class="card-text">Misma fecha y mismo tour de la operación seleccionada.</p>',
+      "</div>",
+      '<span class="badge badge-warning">' + escapeHtml(pendientes.length) + "</span>",
+      "</div>",
+      renderReservacionesTable(
+        headers,
+        pendientes.map(function (reservacion) {
+          return renderReservacionPendienteRow(reservacion, transportesOperacion);
+        }).join(""),
+        emptyMessage,
+        "reservas-pendientes-table"
+      ),
+      "</section>"
+    ].join("");
+  }
+
+  function renderReservacionesTransporte(transporte, transportesOperacion) {
+    const reservaciones = getArray(transporte && transporte.reservaciones);
+    const headers = ["Nombre", "PAX", "Niños", "Pickup", "Hora", "Vendido por", "Estado"]
+      .concat(isAdmin() ? ["Acciones"] : []);
+
+    return [
+      '<section class="reservas-transporte-panel">',
+      '<div class="reservas-transporte-header">',
+      "<div>",
+      "<h4>" + escapeHtml(getTransporteLabel(transporte)) + "</h4>",
+      '<p class="card-text">' + escapeHtml(transporte && transporte.estado) + "</p>",
+      "</div>",
+      '<div class="daily-badges">',
+      '<span class="badge">' + escapeHtml(toMetric(transporte && transporte.total_pax_activos)) + " PAX activos</span>",
+      '<span class="badge badge-neutral">' + escapeHtml(toMetric(transporte && transporte.total_reservaciones)) + " reservaciones</span>",
+      "</div>",
+      "</div>",
+      renderReservacionesTable(
+        headers,
+        reservaciones.map(function (reservacion) {
+          return renderReservacionAsignadaRow(reservacion, transporte, transportesOperacion);
+        }).join(""),
+        "No hay reservaciones asignadas a este transporte.",
+        "reservas-asignadas-table"
+      ),
+      "</section>"
+    ].join("");
+  }
+
+  function renderReservacionesAsignadas(operacion) {
+    const transportesOperacion = getArray(operacion && operacion.transportes);
+
+    return [
+      '<section class="reservas-section">',
+      '<div class="reservas-section-header">',
+      "<div>",
+      "<h3>Reservaciones asignadas</h3>",
+      '<p class="card-text">Movimientos acotados a los transportes de esta operación.</p>',
+      "</div>",
+      '<span class="badge">' + escapeHtml(transportesOperacion.length) + " transportes</span>",
+      "</div>",
+      transportesOperacion.length
+        ? '<div class="reservas-transporte-list">' + transportesOperacion.map(function (transporte) {
+          return renderReservacionesTransporte(transporte, transportesOperacion);
+        }).join("") + "</div>"
+        : '<div class="daily-empty-inline">Primero crea un transporte para poder asignar reservaciones.</div>',
+      '<p class="card-text reservas-help-text">Si el backend rechaza dejar un vehículo con menos de 2 PAX, quita o reorganiza el vehículo antes de mover esas reservaciones.</p>',
+      "</section>"
+    ].join("");
+  }
+
+  function renderOrganizacionReservaciones() {
+    const content = document.getElementById("reservas-organizacion-content");
+
+    if (!content || !organizacionReservacionesAbierta) {
+      return;
+    }
+
+    const operacion = getOperacionOrganizacion();
+
+    if (!operacion) {
+      content.innerHTML = renderOrganizacionError("No se encontró la operación seleccionada en el Daily operativo.");
+      return;
+    }
+
+    content.innerHTML = [
+      '<div class="reservas-summary">',
+      '<span class="daily-transport-meta"><span>Operación</span><strong>' + App.ui.escapeHtml(getOperacionTitle(selectedTransportOperacion)) + "</strong></span>",
+      '<span class="daily-transport-meta"><span>Transportes</span><strong>' + escapeHtml(getArray(operacion.transportes).length) + "</strong></span>",
+      '<span class="daily-transport-meta"><span>PAX activos</span><strong>' + escapeHtml(toMetric(operacion.total_pax_activos)) + "</strong></span>",
+      "</div>",
+      renderReservacionesPendientes(operacion),
+      renderReservacionesAsignadas(operacion)
+    ].join("");
+  }
+
+  function renderOrganizacionShell() {
+    return [
+      '<section class="reservas-organizacion" id="reservas-organizacion" aria-labelledby="reservas-organizacion-title">',
+      '<div class="reservas-organizacion-header">',
+      "<div>",
+      '<p class="field-label">Organización</p>',
+      '<h3 id="reservas-organizacion-title">Reservaciones por transporte</h3>',
+      '<p class="card-text">' + App.ui.escapeHtml(getOperacionTitle(selectedTransportOperacion)) + "</p>",
+      "</div>",
+      "</div>",
+      '<p class="form-message reservas-organizacion-message" id="reservas-organizacion-message" role="status" aria-live="polite"></p>',
+      '<div class="reservas-organizacion-content" id="reservas-organizacion-content" aria-live="polite">',
+      renderOrganizacionLoading(),
+      "</div>",
+      "</section>"
+    ].join("");
+  }
+
   function renderTransportesTable() {
     const headers = ["ID", "Vehículo", "Operador", "Observaciones", "Estado"];
     const headerCells = headers
@@ -440,6 +846,7 @@
       '<p class="card-text">' + App.ui.escapeHtml(getOperacionTitle(operacion)) + "</p>",
       "</div>",
       '<div class="transportes-panel-actions">',
+      '<button class="btn" id="reservaciones-organizar" type="button">Organizar reservaciones</button>',
       adminButton,
       '<button class="btn btn-ghost" id="transportes-close" type="button" aria-label="Cerrar transportes">Cerrar</button>',
       "</div>",
@@ -449,6 +856,7 @@
       '<section class="transportes-list" id="transportes-list" aria-live="polite">',
       renderTransportesLoading(),
       "</section>",
+      '<div id="reservas-organizacion-host"></div>',
       "</section>",
       "</div>"
     ].join("");
@@ -956,11 +1364,16 @@
 
     transportesRequestId += 1;
     transporteCatalogosRequestId += 1;
+    organizacionRequestId += 1;
     selectedTransportOperacion = null;
     selectedTransporte = null;
     transportes = [];
+    organizacionDaily = null;
     operadores = [];
     vehiculos = [];
+    organizacionReservacionesAbierta = false;
+    organizacionReservacionesLoading = false;
+    reservacionTransporteLoadingId = null;
     transporteCatalogosCargados = false;
     transporteCatalogosLoading = false;
     transportesLoading = false;
@@ -1100,6 +1513,10 @@
       setTransporteSubmitLoading(false);
       closeTransporteForm();
       await loadTransportes(selectedTransportOperacion);
+
+      if (organizacionReservacionesAbierta) {
+        await loadOrganizacionReservaciones(selectedTransportOperacion);
+      }
     } catch (error) {
       setTransporteFormMessage(getBackendMessage(error, "No fue posible guardar el transporte. Intenta nuevamente."), "error");
       setTransporteSubmitLoading(false);
@@ -1122,7 +1539,9 @@
   function bindTransportesPanelEvents() {
     const closeButton = document.getElementById("transportes-close");
     const newButton = document.getElementById("transporte-new");
+    const organizarButton = document.getElementById("reservaciones-organizar");
     const list = document.getElementById("transportes-list");
+    const organizacionHost = document.getElementById("reservas-organizacion-host");
 
     if (closeButton) {
       closeButton.addEventListener("click", closeTransportesPanel);
@@ -1132,6 +1551,10 @@
       newButton.addEventListener("click", function () {
         openTransporteForm(TRANSPORTE_FORM_CREATE, null);
       });
+    }
+
+    if (organizarButton) {
+      organizarButton.addEventListener("click", toggleOrganizacionReservaciones);
     }
 
     if (list) {
@@ -1148,6 +1571,162 @@
           openTransporteForm(TRANSPORTE_FORM_EDIT, findTransporteById(editButton.dataset.editTransporte));
         }
       });
+    }
+
+    if (organizacionHost) {
+      organizacionHost.addEventListener("click", function (event) {
+        const assignButton = event.target.closest ? event.target.closest("[data-assign-reserva]") : null;
+        const moveButton = event.target.closest ? event.target.closest("[data-move-reserva]") : null;
+        const unassignButton = event.target.closest ? event.target.closest("[data-unassign-reserva]") : null;
+
+        if (assignButton) {
+          handleReservacionTransporteSubmit(assignButton.dataset.assignReserva, false);
+          return;
+        }
+
+        if (moveButton) {
+          handleReservacionTransporteSubmit(moveButton.dataset.moveReserva, false);
+          return;
+        }
+
+        if (unassignButton) {
+          handleReservacionTransporteSubmit(unassignButton.dataset.unassignReserva, true);
+        }
+      });
+    }
+  }
+
+  async function loadOrganizacionReservaciones(operacion, options) {
+    if (!operacion) {
+      return;
+    }
+
+    const config = options || {};
+    const fecha = getOperacionFecha(operacion);
+
+    if (!isValidDateValue(fecha)) {
+      setOrganizacionMessage("No se pudo determinar la fecha de la operación.", "error");
+      return;
+    }
+
+    const activeRequestId = organizacionRequestId + 1;
+    organizacionRequestId = activeRequestId;
+    setOrganizacionLoading(true);
+
+    if (!config.keepMessage) {
+      setOrganizacionMessage("", "");
+    }
+
+    try {
+      const daily = await App.api.apiFetch("/api/daily/operativo?fecha=" + encodeURIComponent(fecha));
+
+      if (activeRequestId !== organizacionRequestId || getOperacionId(selectedTransportOperacion) !== getOperacionId(operacion)) {
+        return;
+      }
+
+      organizacionDaily = daily || { fecha: fecha, operaciones: [], reservaciones_sin_asignar: [] };
+      renderOrganizacionReservaciones();
+    } catch (error) {
+      if (activeRequestId !== organizacionRequestId || getOperacionId(selectedTransportOperacion) !== getOperacionId(operacion)) {
+        return;
+      }
+
+      organizacionDaily = null;
+      const message = getBackendMessage(error, "No fue posible cargar las reservaciones de la operación.");
+      setOrganizacionMessage(message, "error");
+
+      const content = document.getElementById("reservas-organizacion-content");
+
+      if (content) {
+        content.innerHTML = renderOrganizacionError(message);
+      }
+    } finally {
+      if (activeRequestId === organizacionRequestId && getOperacionId(selectedTransportOperacion) === getOperacionId(operacion)) {
+        setOrganizacionLoading(false);
+      }
+    }
+  }
+
+  function toggleOrganizacionReservaciones() {
+    const host = document.getElementById("reservas-organizacion-host");
+
+    if (!host || organizacionReservacionesLoading || reservacionTransporteLoadingId !== null) {
+      return;
+    }
+
+    if (organizacionReservacionesAbierta) {
+      organizacionReservacionesAbierta = false;
+      organizacionDaily = null;
+      host.innerHTML = "";
+      setOrganizacionLoading(false);
+      return;
+    }
+
+    organizacionReservacionesAbierta = true;
+    organizacionDaily = null;
+    host.innerHTML = renderOrganizacionShell();
+    loadOrganizacionReservaciones(selectedTransportOperacion);
+  }
+
+  function getSelectedReservaDestino(idReservacion) {
+    const select = Array.prototype.find.call(
+      document.querySelectorAll("[data-reserva-select]"),
+      function (element) {
+        return String(element.dataset.reservaSelect) === String(idReservacion);
+      }
+    );
+
+    if (!select || !select.value) {
+      return null;
+    }
+
+    const idTransporte = Number(select.value);
+
+    return Number.isInteger(idTransporte) && idTransporte > 0 ? idTransporte : null;
+  }
+
+  function setReservacionActionLoading(idReservacion) {
+    reservacionTransporteLoadingId = idReservacion;
+    renderOrganizacionReservaciones();
+  }
+
+  async function handleReservacionTransporteSubmit(idReservacionRaw, quitarAsignacion) {
+    if (!isAdmin() || reservacionTransporteLoadingId !== null || !selectedTransportOperacion) {
+      return;
+    }
+
+    const idReservacion = Number(idReservacionRaw);
+
+    if (!Number.isInteger(idReservacion) || idReservacion <= 0) {
+      setOrganizacionMessage("No se pudo identificar la reservación seleccionada.", "error");
+      return;
+    }
+
+    const idTransporteOperacion = quitarAsignacion ? null : getSelectedReservaDestino(idReservacion);
+
+    if (!quitarAsignacion && idTransporteOperacion === null) {
+      setOrganizacionMessage("Selecciona un transporte destino.", "error");
+      return;
+    }
+
+    setOrganizacionMessage("", "");
+    setReservacionActionLoading(idReservacion);
+
+    try {
+      const response = await App.api.apiFetch("/api/reservaciones/" + encodeURIComponent(idReservacion) + "/transporte", {
+        method: "PATCH",
+        body: {
+          id_transporte_operacion: idTransporteOperacion
+        }
+      });
+
+      reservacionTransporteLoadingId = null;
+      await loadOrganizacionReservaciones(selectedTransportOperacion, { keepMessage: true });
+      setOrganizacionMessage(response && response.mensaje ? response.mensaje : "Asignación actualizada correctamente.", "info");
+    } catch (error) {
+      reservacionTransporteLoadingId = null;
+      await loadOrganizacionReservaciones(selectedTransportOperacion, { keepMessage: true });
+      setOrganizacionMessage(getBackendMessage(error, "No fue posible actualizar la asignación de la reservación."), "error");
     }
   }
 
@@ -1410,9 +1989,11 @@
 
       operacionesRequestId += 1;
       catalogosRequestId += 1;
+      organizacionRequestId += 1;
       currentFecha = "";
       operaciones = [];
       transportes = [];
+      organizacionDaily = null;
       operadores = [];
       vehiculos = [];
       selectedOperacion = null;
@@ -1420,6 +2001,9 @@
       selectedTransporte = null;
       submitLoading = false;
       transporteSubmitLoading = false;
+      organizacionReservacionesAbierta = false;
+      organizacionReservacionesLoading = false;
+      reservacionTransporteLoadingId = null;
       catalogosCargados = false;
       catalogosLoading = false;
       transporteCatalogosCargados = false;
