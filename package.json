@@ -2,9 +2,10 @@
   "name": "sistema-integrador-reservaciones",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "electron/main.js",
   "scripts": {
-    "start": "node backend/server.js"
+    "start": "node backend/server.js",
+    "desktop": "electron ."
   },
   "keywords": [],
   "author": "",
