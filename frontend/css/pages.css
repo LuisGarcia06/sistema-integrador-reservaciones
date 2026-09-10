@@ -266,6 +266,19 @@ body.is-login-page .page-root {
   color: var(--color-warning);
 }
 
+.daily-print-warning {
+  padding: var(--space-sm) var(--space-md);
+  color: var(--color-on-surface-variant);
+  background: var(--color-surface-low);
+  border: 1px solid var(--color-outline-variant);
+  border-left: 4px solid var(--color-warning);
+  border-radius: var(--radius-lg);
+}
+
+.daily-print-root {
+  display: none;
+}
+
 .daily-observaciones-card {
   display: grid;
   gap: var(--space-md);
@@ -929,5 +942,274 @@ body.is-login-page .page-root {
   .reservas-select-field {
     width: 100%;
     min-width: 0;
+  }
+}
+
+@media print {
+  @page {
+    size: Letter landscape;
+    margin: 8mm;
+  }
+
+  html,
+  body {
+    min-height: auto;
+    color: #000;
+    background: #fff;
+  }
+
+  *,
+  *::before,
+  *::after {
+    color: #000 !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+
+  #app,
+  .app-shell,
+  .page-root,
+  .page.daily-page {
+    display: block !important;
+    width: auto;
+    max-width: none;
+    min-height: auto;
+    padding: 0;
+    overflow: visible;
+    background: #fff;
+  }
+
+  #sidebar,
+  #app-header,
+  .daily-toolbar,
+  .daily-message,
+  .daily-print-warning,
+  .daily-layout {
+    display: none !important;
+  }
+
+  .daily-print-root {
+    display: block !important;
+    width: 100%;
+    background: #fff;
+    font-family: var(--font-family-base);
+  }
+
+  .daily-print-sheet {
+    display: block;
+    width: 100%;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .daily-print-sheet:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  .daily-print-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px;
+    padding-bottom: 6px;
+    margin-bottom: 8px;
+    border-bottom: 2px solid #000;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .daily-print-brand-block,
+  .daily-print-summary-block {
+    display: grid;
+    gap: 4px;
+  }
+
+  .daily-print-summary-block {
+    grid-template-columns: repeat(2, minmax(90px, 1fr));
+    min-width: 260px;
+  }
+
+  .daily-print-company {
+    font-size: 17px;
+    font-weight: 700;
+    line-height: 20px;
+  }
+
+  .daily-print-subtitle,
+  .daily-print-secondary {
+    color: #333 !important;
+    font-size: 8.5px;
+    line-height: 11px;
+  }
+
+  .daily-print-meta-grid {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin-bottom: 8px;
+    border-top: 1px solid #000;
+    border-left: 1px solid #000;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .daily-print-meta-item {
+    display: grid;
+    gap: 1px;
+    min-width: 0;
+    padding: 4px 6px;
+    border-right: 1px solid #000;
+    border-bottom: 1px solid #000;
+  }
+
+  .daily-print-meta-item span {
+    font-size: 7.5px;
+    font-weight: 700;
+    line-height: 10px;
+    text-transform: uppercase;
+  }
+
+  .daily-print-meta-item strong {
+    overflow-wrap: anywhere;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 12px;
+  }
+
+  .daily-print-table {
+    width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: 8.6px;
+    line-height: 10.5px;
+  }
+
+  .daily-print-table thead {
+    display: table-header-group;
+  }
+
+  .daily-print-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .daily-print-table th,
+  .daily-print-table td {
+    padding: 3.5px 4px;
+    overflow-wrap: anywhere;
+    vertical-align: top;
+    background: #fff;
+    border: 1px solid #000;
+  }
+
+  .daily-print-table th {
+    font-size: 7.4px;
+    font-weight: 700;
+    line-height: 9px;
+    letter-spacing: 0;
+  }
+
+  .daily-print-table th:nth-child(1),
+  .daily-print-table td:nth-child(1) {
+    width: 13%;
+  }
+
+  .daily-print-table th:nth-child(2),
+  .daily-print-table td:nth-child(2) {
+    width: 5%;
+    text-align: center;
+  }
+
+  .daily-print-table th:nth-child(3),
+  .daily-print-table td:nth-child(3) {
+    width: 13%;
+  }
+
+  .daily-print-table th:nth-child(4),
+  .daily-print-table td:nth-child(4) {
+    width: 5%;
+  }
+
+  .daily-print-table th:nth-child(5),
+  .daily-print-table td:nth-child(5) {
+    width: 9%;
+  }
+
+  .daily-print-table th:nth-child(6),
+  .daily-print-table td:nth-child(6) {
+    width: 6%;
+    text-align: center;
+  }
+
+  .daily-print-table th:nth-child(7),
+  .daily-print-table td:nth-child(7),
+  .daily-print-table th:nth-child(8),
+  .daily-print-table td:nth-child(8),
+  .daily-print-table th:nth-child(9),
+  .daily-print-table td:nth-child(9) {
+    width: 7%;
+    text-align: right;
+  }
+
+  .daily-print-table th:nth-child(10),
+  .daily-print-table td:nth-child(10) {
+    width: 10%;
+  }
+
+  .daily-print-table th:nth-child(11),
+  .daily-print-table td:nth-child(11) {
+    width: 18%;
+  }
+
+  .daily-print-number-cell,
+  .daily-print-time-cell,
+  .daily-print-money-cell {
+    white-space: nowrap;
+  }
+
+  .daily-print-table tr.is-cancelada td {
+    background: #f2f2f2;
+  }
+
+  .daily-print-cancel-tag {
+    display: inline-block;
+    padding: 1px 4px;
+    margin-top: 3px;
+    font-size: 7px;
+    font-weight: 800;
+    line-height: 9px;
+    border: 1px solid #000;
+  }
+
+  .daily-print-empty-cell {
+    height: 28px;
+    text-align: center;
+  }
+
+  .daily-print-operator-notes {
+    display: grid;
+    gap: 4px;
+    margin-top: 8px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .daily-print-operator-notes h2 {
+    font-size: 9px;
+    font-weight: 800;
+    line-height: 11px;
+    letter-spacing: 0;
+  }
+
+  .daily-print-operator-notes p {
+    min-height: 30px;
+    padding: 5px 6px;
+    overflow-wrap: anywhere;
+    font-size: 9px;
+    line-height: 12px;
+    white-space: pre-wrap;
+    border: 1px solid #000;
   }
 }

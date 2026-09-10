@@ -10,13 +10,20 @@
 
   let requestId = 0;
   let currentFecha = "";
+  let currentDaily = null;
+  let isDailyLoading = false;
+  let hasDailyError = false;
 
   function escapeHtml(value) {
-    return App.ui.escapeHtml(value === null || value === undefined || value === "" ? EMPTY_VALUE : value);
+    if (value === null || value === undefined || value === "" || typeof value === "object") {
+      return App.ui.escapeHtml(EMPTY_VALUE);
+    }
+
+    return App.ui.escapeHtml(value);
   }
 
   function escapeOptionalText(value, fallback) {
-    const text = value === null || value === undefined ? "" : String(value).trim();
+    const text = value === null || value === undefined || typeof value === "object" ? "" : String(value).trim();
     return App.ui.escapeHtml(text || fallback || EMPTY_VALUE);
   }
 
@@ -49,8 +56,17 @@
     });
   }
 
+  function formatPrintDate(value) {
+    if (!isValidDateValue(value)) {
+      return EMPTY_VALUE;
+    }
+
+    const parts = value.split("-");
+    return parts[2] + "/" + parts[1] + "/" + parts[0];
+  }
+
   function formatTime(value) {
-    if (value === null || value === undefined || value === "") {
+    if (value === null || value === undefined || value === "" || typeof value === "object") {
       return EMPTY_VALUE;
     }
 
@@ -61,7 +77,7 @@
   }
 
   function formatMoney(value) {
-    if (value === null || value === undefined || value === "") {
+    if (value === null || value === undefined || value === "" || typeof value === "object") {
       return EMPTY_VALUE;
     }
 
@@ -99,10 +115,10 @@
   }
 
   function getVendidoPor(reservacion) {
-    const vendedor = reservacion && reservacion.vendedor !== null && reservacion.vendedor !== undefined
+    const vendedor = reservacion && reservacion.vendedor !== null && reservacion.vendedor !== undefined && typeof reservacion.vendedor !== "object"
       ? String(reservacion.vendedor).trim()
       : "";
-    const plataforma = reservacion && reservacion.plataforma !== null && reservacion.plataforma !== undefined
+    const plataforma = reservacion && reservacion.plataforma !== null && reservacion.plataforma !== undefined && typeof reservacion.plataforma !== "object"
       ? String(reservacion.plataforma).trim()
       : "";
 
@@ -116,7 +132,7 @@
   function getJoinedText(values, fallback) {
     const parts = values
       .map(function (value) {
-        return value === null || value === undefined ? "" : String(value).trim();
+        return value === null || value === undefined || typeof value === "object" ? "" : String(value).trim();
       })
       .filter(Boolean);
 
@@ -149,6 +165,8 @@
   }
 
   function setLoading(isLoading) {
+    isDailyLoading = isLoading;
+
     const content = document.getElementById("daily-content");
 
     if (content) {
@@ -158,6 +176,66 @@
     if (content && isLoading) {
       content.innerHTML = renderLoading();
     }
+
+    updateActionButtons();
+  }
+
+  function getTotalTransportes(daily) {
+    const parsedTotal = Number(daily && daily.total_transportes);
+
+    if (Number.isFinite(parsedTotal)) {
+      return parsedTotal;
+    }
+
+    return getArray(daily && daily.operaciones).reduce(function (total, operacion) {
+      return total + getArray(operacion && operacion.transportes).length;
+    }, 0);
+  }
+
+  function updateActionButtons() {
+    const printButton = document.getElementById("daily-print-button");
+    const pdfButton = document.getElementById("daily-pdf-button");
+    const canPrint = !isDailyLoading && !hasDailyError && getTotalTransportes(currentDaily) > 0;
+
+    if (printButton) {
+      printButton.disabled = !canPrint;
+      printButton.title = canPrint
+        ? "Imprimir Daily operativo"
+        : isDailyLoading
+          ? "Cargando Daily operativo"
+          : hasDailyError
+            ? "No disponible por error de carga"
+            : "No hay transportes preparados para imprimir";
+    }
+
+    if (pdfButton) {
+      pdfButton.disabled = true;
+      pdfButton.title = "Disponible próximamente";
+    }
+  }
+
+  function updateUnassignedWarning(daily) {
+    const warning = document.getElementById("daily-print-warning");
+    const total = Number(daily && daily.total_reservaciones_sin_asignar) || 0;
+
+    if (!warning) {
+      return;
+    }
+
+    warning.hidden = total <= 0;
+    warning.textContent = total > 0
+      ? "Hay " + total + " reservaciones sin asignar que no se incluirán en la impresión."
+      : "";
+  }
+
+  function updatePrintRoot(daily) {
+    const printRoot = document.getElementById("daily-print-root");
+
+    if (!printRoot) {
+      return;
+    }
+
+    printRoot.innerHTML = daily ? renderPrintSheets(daily) : "";
   }
 
   function getDailyErrorMessage(error) {
@@ -252,6 +330,144 @@
       "No hay reservaciones asignadas a este transporte.",
       "daily-reservaciones-table"
     );
+  }
+
+  function renderPrintMeta(label, value) {
+    return [
+      '<div class="daily-print-meta-item">',
+      '<span>' + App.ui.escapeHtml(label) + "</span>",
+      "<strong>" + escapeHtml(value) + "</strong>",
+      "</div>"
+    ].join("");
+  }
+
+  function renderPrintPax(reservacion) {
+    const ninos = Number(reservacion && reservacion.ninos) || 0;
+    const ninosText = ninos === 1 ? "1 niño" : ninos + " niños";
+
+    return [
+      '<strong>' + escapeHtml(reservacion && reservacion.pax) + "</strong>",
+      ninos > 0 ? '<span class="daily-print-secondary">(' + App.ui.escapeHtml(ninosText) + ")</span>" : ""
+    ].join("");
+  }
+
+  function renderPrintReservacionRow(reservacion) {
+    const cancelada = isCancelada(reservacion);
+
+    return [
+      '<tr class="' + (cancelada ? "is-cancelada" : "") + '">',
+      "<td>",
+      '<strong>' + escapeHtml(reservacion && reservacion.nombre_cliente) + "</strong>",
+      '<span class="daily-print-secondary">' + escapeHtml(reservacion && reservacion.codigo) + "</span>",
+      cancelada ? '<span class="daily-print-cancel-tag">CANCELADA</span>' : "",
+      "</td>",
+      '<td class="daily-print-number-cell">' + renderPrintPax(reservacion) + "</td>",
+      "<td>" + escapeHtml(reservacion && reservacion.pickup_place) + "</td>",
+      "<td>" + escapeHtml(reservacion && reservacion.habitacion) + "</td>",
+      "<td>" + escapeHtml(reservacion && reservacion.telefono_cliente) + "</td>",
+      '<td class="daily-print-time-cell">' + escapeHtml(formatTime(reservacion && reservacion.pickup_time)) + "</td>",
+      '<td class="daily-print-money-cell">' + escapeHtml(formatMoney(reservacion && reservacion.precio_total)) + "</td>",
+      '<td class="daily-print-money-cell">' + escapeHtml(formatMoney(reservacion && reservacion.deposito)) + "</td>",
+      '<td class="daily-print-money-cell">' + escapeHtml(formatMoney(reservacion && reservacion.saldo)) + "</td>",
+      "<td>" + escapeHtml(getVendidoPor(reservacion)) + "</td>",
+      "<td>" + escapeHtml(reservacion && reservacion.observaciones) + "</td>",
+      "</tr>"
+    ].join("");
+  }
+
+  function renderPrintReservacionesTable(reservaciones) {
+    const rows = getArray(reservaciones).map(renderPrintReservacionRow).join("");
+
+    if (!rows) {
+      return [
+        '<table class="daily-print-table">',
+        "<thead><tr>",
+        "<th>NOMBRE</th>",
+        "<th>PAX</th>",
+        "<th>HOTEL / PICKUP</th>",
+        "<th>HAB</th>",
+        "<th># CEL</th>",
+        "<th>HORARIO</th>",
+        "<th>TOTAL</th>",
+        "<th>DEPÓSITO</th>",
+        "<th>SALDO</th>",
+        "<th>VENDIDO POR</th>",
+        "<th>OBSERVACIONES</th>",
+        "</tr></thead>",
+        '<tbody><tr><td colspan="11" class="daily-print-empty-cell">No hay reservaciones asignadas a este transporte.</td></tr></tbody>',
+        "</table>"
+      ].join("");
+    }
+
+    return [
+      '<table class="daily-print-table">',
+      "<thead><tr>",
+      "<th>NOMBRE</th>",
+      "<th>PAX</th>",
+      "<th>HOTEL / PICKUP</th>",
+      "<th>HAB</th>",
+      "<th># CEL</th>",
+      "<th>HORARIO</th>",
+      "<th>TOTAL</th>",
+      "<th>DEPÓSITO</th>",
+      "<th>SALDO</th>",
+      "<th>VENDIDO POR</th>",
+      "<th>OBSERVACIONES</th>",
+      "</tr></thead>",
+      "<tbody>",
+      rows,
+      "</tbody>",
+      "</table>"
+    ].join("");
+  }
+
+  function renderPrintSheet(daily, operacion, transporte) {
+    const fecha = daily && daily.fecha ? daily.fecha : currentFecha;
+    const observacionesOperador = transporte && typeof transporte.observaciones_operador === "string"
+      ? transporte.observaciones_operador.trim()
+      : "";
+
+    return [
+      '<section class="daily-print-sheet">',
+      '<header class="daily-print-header">',
+      '<div class="daily-print-brand-block">',
+      '<p class="daily-print-company">Community Tours Sian Ka\'an</p>',
+      '<p class="daily-print-subtitle">Daily operativo</p>',
+      "</div>",
+      '<div class="daily-print-summary-block">',
+      renderPrintMeta("Fecha", formatPrintDate(fecha)),
+      renderPrintMeta("PAX activos", toMetric(transporte && transporte.total_pax_activos)),
+      "</div>",
+      "</header>",
+      '<div class="daily-print-meta-grid">',
+      renderPrintMeta("Tour", operacion && operacion.tour),
+      renderPrintMeta("Hora", formatTime(operacion && operacion.hora_inicio)),
+      renderPrintMeta("Turno", operacion && operacion.turno),
+      renderPrintMeta("Guía", operacion && operacion.guia),
+      renderPrintMeta("Vehículo", transporte && transporte.vehiculo),
+      renderPrintMeta("Color", transporte && transporte.color),
+      renderPrintMeta("Placas", transporte && transporte.placas),
+      renderPrintMeta("Operador", transporte && transporte.operador),
+      "</div>",
+      renderPrintReservacionesTable(transporte && transporte.reservaciones),
+      '<section class="daily-print-operator-notes">',
+      "<h2>OBSERVACIONES PARA EL OPERADOR</h2>",
+      "<p>" + escapeOptionalText(observacionesOperador, EMPTY_VALUE) + "</p>",
+      "</section>",
+      "</section>"
+    ].join("");
+  }
+
+  function renderPrintSheets(daily) {
+    const sheets = [];
+
+    getArray(daily && daily.operaciones).forEach(function (operacion) {
+      getArray(operacion && operacion.transportes).forEach(function (transporte) {
+        sheets.push(renderPrintSheet(daily, operacion, transporte));
+      });
+    });
+
+    return sheets.join("");
   }
 
   function renderSinAsignarRow(reservacion) {
@@ -440,6 +656,9 @@
     if (totalOperaciones === 0 && totalReservaciones === 0) {
       content.innerHTML = renderEmptyDaily(daily);
       renderSummary(daily);
+      updateUnassignedWarning(daily);
+      updatePrintRoot(daily);
+      updateActionButtons();
       return;
     }
 
@@ -450,6 +669,9 @@
     ].join("");
 
     renderSummary(daily);
+    updateUnassignedWarning(daily);
+    updatePrintRoot(daily);
+    updateActionButtons();
   }
 
   function renderSummary(daily) {
@@ -469,7 +691,11 @@
     const activeRequestId = requestId + 1;
     requestId = activeRequestId;
     currentFecha = fecha;
+    currentDaily = null;
+    hasDailyError = false;
     setMessage("", "");
+    updateUnassignedWarning(null);
+    updatePrintRoot(null);
     setLoading(true);
     renderSummary({});
 
@@ -480,7 +706,8 @@
         return;
       }
 
-      renderDailyData(daily || { fecha: fecha, operaciones: [], reservaciones_sin_asignar: [] });
+      currentDaily = daily || { fecha: fecha, operaciones: [], reservaciones_sin_asignar: [] };
+      renderDailyData(currentDaily);
     } catch (error) {
       if (activeRequestId !== requestId) {
         return;
@@ -489,7 +716,11 @@
       const content = document.getElementById("daily-content");
       const message = getDailyErrorMessage(error);
 
+      currentDaily = null;
+      hasDailyError = true;
       setMessage(message, "error");
+      updateUnassignedWarning(null);
+      updatePrintRoot(null);
 
       if (content) {
         content.innerHTML = renderError(message);
@@ -503,6 +734,7 @@
 
   function bindDailyEvents() {
     const dateInput = document.getElementById("daily-fecha");
+    const printButton = document.getElementById("daily-print-button");
 
     if (!dateInput) {
       return;
@@ -515,6 +747,16 @@
 
       loadDaily(dateInput.value);
     });
+
+    if (printButton) {
+      printButton.addEventListener("click", function () {
+        if (printButton.disabled) {
+          return;
+        }
+
+        window.print();
+      });
+    }
   }
 
   App.pages.daily = {
@@ -529,11 +771,12 @@
         '<input class="input" id="daily-fecha" type="date">',
         "</label>",
         '<div class="daily-actions" aria-label="Acciones futuras">',
-        '<button class="btn" type="button" disabled title="Disponible próximamente">Exportar PDF</button>',
-        '<button class="btn" type="button" disabled title="Disponible próximamente">Imprimir</button>',
+        '<button class="btn" id="daily-pdf-button" type="button" disabled title="Disponible próximamente">Exportar PDF</button>',
+        '<button class="btn btn-primary" id="daily-print-button" type="button" disabled title="No hay transportes preparados para imprimir">Imprimir</button>',
         "</div>",
         "</div>",
         '<p class="form-message daily-message" id="daily-message" role="status" aria-live="polite"></p>',
+        '<p class="daily-print-warning" id="daily-print-warning" role="status" aria-live="polite" hidden></p>',
         '<div class="daily-layout">',
         '<section class="daily-main" id="daily-content" aria-live="polite">',
         renderLoading(),
@@ -561,6 +804,7 @@
         "</article>",
         "</aside>",
         "</div>",
+        '<div class="daily-print-root" id="daily-print-root" aria-hidden="true"></div>',
         "</section>"
       ].join("");
     },
@@ -570,8 +814,12 @@
 
       requestId += 1;
       currentFecha = "";
+      currentDaily = null;
+      isDailyLoading = false;
+      hasDailyError = false;
 
       bindDailyEvents();
+      updateActionButtons();
 
       if (dateInput) {
         dateInput.value = fecha;
