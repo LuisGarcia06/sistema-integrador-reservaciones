@@ -29,6 +29,25 @@
     ].join("");
   }
 
+  function renderUnauthorized() {
+    App.layout.setShellMode("authenticated");
+    App.layout.updateActiveNavigation("");
+    App.layout.setPageHeader({
+      title: "Acceso no autorizado",
+      subtitle: "Tu usuario no tiene permisos para esta sección"
+    });
+
+    document.getElementById("page-root").innerHTML = [
+      '<section class="page">',
+      App.ui.emptyState(
+        "Acceso no autorizado",
+        "Esta sección está disponible solo para Administrador."
+      ),
+      '<a class="btn btn-primary" href="#/dashboard">Volver a Dashboard</a>',
+      "</section>"
+    ].join("");
+  }
+
   function isPublicRoute(routeId) {
     return PUBLIC_ROUTES.includes(routeId);
   }
@@ -51,6 +70,12 @@
 
     if (!page) {
       renderUnknown(routeId);
+      return;
+    }
+
+    if (page.adminOnly && (!App.auth || !App.auth.esAdministrador())) {
+      renderUnauthorized();
+      pageRoot.focus({ preventScroll: true });
       return;
     }
 

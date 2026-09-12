@@ -504,6 +504,63 @@ body.is-login-page .page-root {
   gap: var(--space-md);
 }
 
+.bitacora-page {
+  min-width: 0;
+}
+
+.bitacora-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(180px, 220px)) max-content minmax(180px, 1fr);
+}
+
+.bitacora-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.bitacora-message {
+  min-width: 0;
+}
+
+.bitacora-message:empty {
+  display: none;
+}
+
+.bitacora-table-container {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.bitacora-table {
+  min-width: 920px;
+}
+
+.bitacora-table th,
+.bitacora-table td {
+  vertical-align: top;
+}
+
+.bitacora-primary-text,
+.bitacora-secondary-text {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.bitacora-secondary-text {
+  margin-top: var(--space-xs);
+  color: var(--color-on-surface-variant);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+
+.bitacora-description-cell {
+  min-width: 320px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .stack {
   display: grid;
   gap: var(--space-md);
@@ -942,6 +999,18 @@ body.is-login-page .page-root {
   .reservas-select-field {
     width: 100%;
     min-width: 0;
+  }
+
+  .bitacora-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .bitacora-filter-actions {
+    width: 100%;
+  }
+
+  .bitacora-filter-actions .btn {
+    flex: 1 1 160px;
   }
 }
 
