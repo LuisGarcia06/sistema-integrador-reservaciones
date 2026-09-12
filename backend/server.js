@@ -14,9 +14,45 @@ const vehiculosRoutes = require('./routes/vehiculos.routes');
 
 const app = express();
 const frontendPath = path.join(__dirname, '..', 'frontend');
+const PORT = 3000;
+const HOST = '127.0.0.1';
+const CONTENT_SECURITY_POLICY = [
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self'",
+    "img-src 'self' data:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "frame-ancestors 'none'",
+    "form-action 'self'"
+].join('; ');
+
+app.disable('x-powered-by');
 
 app.use(express.json());
-app.use('/app', express.static(frontendPath));
+
+app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    next();
+});
+
+app.use('/app', (req, res, next) => {
+    res.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY);
+    next();
+});
+
+app.use('/app', express.static(frontendPath, {
+    setHeaders: (res, filePath) => {
+        if (path.basename(filePath).toLowerCase() === 'index.html') {
+            res.setHeader('Cache-Control', 'no-store');
+        }
+    }
+}));
 
 app.use('/api/auth', authRoutes);
 app.use('/api/bitacora', bitacoraRoutes);
@@ -28,8 +64,6 @@ app.use('/api/reservaciones', reservacionesRoutes);
 app.use('/api/transportes', transportesRoutes);
 app.use('/api/tours', toursRoutes);
 app.use('/api/vehiculos', vehiculosRoutes);
-
-const PORT = 3000;
 
 app.get('/', (req, res) => {
     res.send('API del Sistema Integrador de Reservaciones funcionando');
@@ -52,6 +86,6 @@ app.get('/api/test-db', async (req, res) => {
     }
 });
 
-app.listen(PORT, () => {
-    console.log(`Servidor ejecutándose en http://localhost:${PORT}`);
+app.listen(PORT, HOST, () => {
+    console.log(`Servidor ejecutándose en http://${HOST}:${PORT}`);
 });
