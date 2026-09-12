@@ -10,6 +10,18 @@ const obtenerRespuestaErrorPostgres = (error) => {
 
     if (
         error.code === '23505' &&
+        error.constraint === 'usuarios_correo_key'
+    ) {
+        return {
+            status: 409,
+            body: {
+                mensaje: 'Ya existe un usuario con ese correo.'
+            }
+        };
+    }
+
+    if (
+        error.code === '23505' &&
         error.constraint === 'uq_operaciones_tour_fecha_tour_hora'
     ) {
         return {

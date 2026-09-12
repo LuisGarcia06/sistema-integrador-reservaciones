@@ -996,6 +996,98 @@ body.is-login-page .page-root {
   }
 }
 
+.usuarios-page {
+  min-width: 0;
+}
+
+.usuarios-filter-bar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1.2fr) minmax(160px, 0.7fr) minmax(160px, 0.7fr) auto;
+  align-items: end;
+}
+
+.usuarios-filter-actions,
+.usuarios-row-actions,
+.usuarios-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.usuarios-filter-actions {
+  justify-content: flex-end;
+}
+
+.usuarios-message {
+  grid-column: 1 / -1;
+}
+
+.usuarios-message:empty,
+#usuarios-form-message:empty {
+  display: none;
+}
+
+.usuarios-table-container {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.usuarios-table {
+  min-width: 900px;
+}
+
+.usuarios-table td {
+  vertical-align: middle;
+}
+
+.usuarios-table td strong {
+  overflow-wrap: anywhere;
+}
+
+.usuarios-row-actions {
+  min-width: 320px;
+}
+
+.usuarios-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  padding: var(--space-lg);
+  overflow-y: auto;
+  background: rgba(24, 28, 28, 0.42);
+  place-items: center;
+}
+
+.usuarios-form {
+  display: grid;
+  width: min(100%, 680px);
+  gap: var(--space-md);
+  padding: var(--space-lg);
+}
+
+.usuarios-form-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.usuarios-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.usuarios-password-field {
+  grid-column: span 2;
+}
+
+.usuarios-form-actions {
+  justify-content: flex-end;
+}
+
 @media (max-width: 1180px) {
   .dashboard-grid,
   .daily-layout,
@@ -1014,6 +1106,14 @@ body.is-login-page .page-root {
   .daily-operation-meta,
   .daily-transport-details {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usuarios-filter-bar {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .usuarios-filter-actions {
+    justify-content: flex-start;
   }
 }
 
@@ -1112,6 +1212,29 @@ body.is-login-page .page-root {
 
   .historial-filter-actions .btn {
     flex: 1 1 160px;
+  }
+
+  .usuarios-filter-bar,
+  .usuarios-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .usuarios-filter-actions {
+    width: 100%;
+  }
+
+  .usuarios-filter-actions .btn,
+  .usuarios-form-actions .btn {
+    flex: 1 1 160px;
+  }
+
+  .usuarios-password-field {
+    grid-column: auto;
+  }
+
+  .usuarios-dialog-backdrop {
+    align-items: start;
+    padding: var(--space-md);
   }
 }
 

@@ -10,6 +10,7 @@ const operacionesRoutes = require('./routes/operaciones.routes');
 const reservacionesRoutes = require('./routes/reservaciones.routes');
 const transportesRoutes = require('./routes/transportes.routes');
 const toursRoutes = require('./routes/tours.routes');
+const usuariosRoutes = require('./routes/usuarios.routes');
 const vehiculosRoutes = require('./routes/vehiculos.routes');
 
 const app = express();
@@ -63,6 +64,7 @@ app.use('/api/operaciones', operacionesRoutes);
 app.use('/api/reservaciones', reservacionesRoutes);
 app.use('/api/transportes', transportesRoutes);
 app.use('/api/tours', toursRoutes);
+app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/vehiculos', vehiculosRoutes);
 
 app.get('/', (req, res) => {
