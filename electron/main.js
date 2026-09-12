@@ -1,5 +1,6 @@
-const { app, BrowserWindow, dialog } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain } = require('electron');
 const { spawn } = require('child_process');
+const fs = require('fs/promises');
 const http = require('http');
 const path = require('path');
 
@@ -11,10 +12,12 @@ const HEALTH_URL_PATH = '/';
 const HEALTH_RESPONSE_TEXT = 'API del Sistema Integrador de Reservaciones funcionando';
 const STARTUP_TIMEOUT_MS = 15000;
 const RETRY_INTERVAL_MS = 350;
+const EXPORT_DAILY_PDF_CHANNEL = 'daily:export-pdf';
 
 let mainWindow = null;
 let backendProcess = null;
 let isQuitting = false;
+let isExportingDailyPdf = false;
 
 const gotSingleInstanceLock = app.requestSingleInstanceLock();
 
@@ -138,6 +141,73 @@ function isAllowedAppUrl(targetUrl) {
     return parsedUrl.origin === APP_ORIGIN && parsedUrl.pathname.startsWith('/app/');
 }
 
+function isExpectedSender(event) {
+    if (!mainWindow || event.sender !== mainWindow.webContents) {
+        return false;
+    }
+
+    const senderUrl = event.senderFrame && event.senderFrame.url
+        ? event.senderFrame.url
+        : event.sender.getURL();
+
+    return isAllowedAppUrl(senderUrl);
+}
+
+function normalizeDailyDate(value) {
+    const text = typeof value === 'string' ? value : '';
+
+    return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : 'sin-fecha';
+}
+
+function buildDailyPdfFileName(fecha) {
+    return `Daily_${normalizeDailyDate(fecha)}.pdf`;
+}
+
+function ensurePdfExtension(filePath) {
+    return path.extname(filePath).toLowerCase() === '.pdf' ? filePath : `${filePath}.pdf`;
+}
+
+ipcMain.handle(EXPORT_DAILY_PDF_CHANNEL, async (event, payload) => {
+    if (!isExpectedSender(event)) {
+        return { ok: false, error: 'not_allowed' };
+    }
+
+    if (isExportingDailyPdf) {
+        return { ok: false, busy: true };
+    }
+
+    isExportingDailyPdf = true;
+
+    try {
+        const fecha = normalizeDailyDate(payload && payload.fecha);
+        const pdfBuffer = await event.sender.printToPDF({
+            printBackground: true,
+            preferCSSPageSize: true
+        });
+        const saveResult = await dialog.showSaveDialog(mainWindow, {
+            title: 'Guardar Daily en PDF',
+            defaultPath: buildDailyPdfFileName(fecha),
+            filters: [
+                { name: 'PDF', extensions: ['pdf'] }
+            ],
+            properties: ['createDirectory', 'showOverwriteConfirmation']
+        });
+
+        if (saveResult.canceled || !saveResult.filePath) {
+            return { ok: false, canceled: true };
+        }
+
+        await fs.writeFile(ensurePdfExtension(saveResult.filePath), pdfBuffer);
+
+        return { ok: true };
+    } catch (error) {
+        console.error('No se pudo exportar el Daily a PDF.', error);
+        return { ok: false, error: 'pdf_failed' };
+    } finally {
+        isExportingDailyPdf = false;
+    }
+});
+
 function createMainWindow() {
     mainWindow = new BrowserWindow({
         width: 1366,
@@ -146,6 +216,7 @@ function createMainWindow() {
         minHeight: 640,
         show: false,
         webPreferences: {
+            preload: path.join(__dirname, 'preload.js'),
             nodeIntegration: false,
             contextIsolation: true,
             sandbox: true,

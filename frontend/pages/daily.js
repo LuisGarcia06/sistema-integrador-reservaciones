@@ -12,6 +12,7 @@
   let currentFecha = "";
   let currentDaily = null;
   let isDailyLoading = false;
+  let isPdfExportLoading = false;
   let hasDailyError = false;
 
   function escapeHtml(value) {
@@ -180,6 +181,25 @@
     updateActionButtons();
   }
 
+  function hasDesktopPdfExport() {
+    return Boolean(
+      window.desktopAPI &&
+      typeof window.desktopAPI.exportDailyPdf === "function"
+    );
+  }
+
+  function setPdfExportLoading(isLoading) {
+    isPdfExportLoading = isLoading;
+
+    const pdfButton = document.getElementById("daily-pdf-button");
+
+    if (pdfButton) {
+      pdfButton.textContent = isLoading ? "Exportando..." : "Exportar PDF";
+    }
+
+    updateActionButtons();
+  }
+
   function getTotalTransportes(daily) {
     const parsedTotal = Number(daily && daily.total_transportes);
 
@@ -196,6 +216,8 @@
     const printButton = document.getElementById("daily-print-button");
     const pdfButton = document.getElementById("daily-pdf-button");
     const canPrint = !isDailyLoading && !hasDailyError && getTotalTransportes(currentDaily) > 0;
+    const hasPdfExport = hasDesktopPdfExport();
+    const canExportPdf = canPrint && hasPdfExport && !isPdfExportLoading;
 
     if (printButton) {
       printButton.disabled = !canPrint;
@@ -209,8 +231,18 @@
     }
 
     if (pdfButton) {
-      pdfButton.disabled = true;
-      pdfButton.title = "Disponible próximamente";
+      pdfButton.disabled = !canExportPdf;
+      pdfButton.title = canExportPdf
+        ? "Exportar Daily operativo a PDF"
+        : isPdfExportLoading
+          ? "Exportando Daily operativo"
+          : !hasPdfExport
+            ? "Disponible en la aplicación de escritorio"
+            : isDailyLoading
+              ? "Cargando Daily operativo"
+              : hasDailyError
+                ? "No disponible por error de carga"
+                : "No hay transportes preparados para exportar";
     }
   }
 
@@ -732,8 +764,46 @@
     }
   }
 
+  async function exportDailyPdf() {
+    const dailyToExport = currentDaily;
+    const fechaToExport = dailyToExport && dailyToExport.fecha ? dailyToExport.fecha : currentFecha;
+
+    if (
+      isPdfExportLoading ||
+      !hasDesktopPdfExport() ||
+      isDailyLoading ||
+      hasDailyError ||
+      getTotalTransportes(dailyToExport) <= 0
+    ) {
+      return;
+    }
+
+    setPdfExportLoading(true);
+    setMessage("", "");
+
+    try {
+      const result = await window.desktopAPI.exportDailyPdf({ fecha: fechaToExport });
+
+      if (result && result.canceled) {
+        return;
+      }
+
+      if (result && result.ok) {
+        setMessage("PDF guardado correctamente.", "info");
+        return;
+      }
+
+      throw new Error("PDF export failed");
+    } catch (error) {
+      setMessage("No se pudo generar el PDF.", "error");
+    } finally {
+      setPdfExportLoading(false);
+    }
+  }
+
   function bindDailyEvents() {
     const dateInput = document.getElementById("daily-fecha");
+    const pdfButton = document.getElementById("daily-pdf-button");
     const printButton = document.getElementById("daily-print-button");
 
     if (!dateInput) {
@@ -757,6 +827,12 @@
         window.print();
       });
     }
+
+    if (pdfButton) {
+      pdfButton.addEventListener("click", function () {
+        exportDailyPdf();
+      });
+    }
   }
 
   App.pages.daily = {
@@ -770,8 +846,8 @@
         '<span class="field-label">Fecha</span>',
         '<input class="input" id="daily-fecha" type="date">',
         "</label>",
-        '<div class="daily-actions" aria-label="Acciones futuras">',
-        '<button class="btn" id="daily-pdf-button" type="button" disabled title="Disponible próximamente">Exportar PDF</button>',
+        '<div class="daily-actions" aria-label="Acciones del Daily">',
+        '<button class="btn" id="daily-pdf-button" type="button" disabled title="Disponible en la aplicación de escritorio">Exportar PDF</button>',
         '<button class="btn btn-primary" id="daily-print-button" type="button" disabled title="No hay transportes preparados para imprimir">Imprimir</button>',
         "</div>",
         "</div>",
@@ -816,6 +892,7 @@
       currentFecha = "";
       currentDaily = null;
       isDailyLoading = false;
+      isPdfExportLoading = false;
       hasDailyError = false;
 
       bindDailyEvents();
