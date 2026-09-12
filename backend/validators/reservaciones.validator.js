@@ -9,7 +9,10 @@ const camposEditables = camposEditablesReservacion;
 const filtrosReservacionesPermitidos = [
     'codigo',
     'nombre',
-    'fecha'
+    'fecha',
+    'fecha_desde',
+    'fecha_hasta',
+    'id_tour'
 ];
 
 const camposResultadoReservacion = [
@@ -398,6 +401,57 @@ const reglasFiltrosReservaciones = {
                 valor: fecha
             };
         }
+    },
+    fecha_desde: {
+        validar: (valor) => {
+            const fecha = normalizarTextoFiltro(valor);
+
+            if (!esFechaValida(fecha)) {
+                return {
+                    valido: false,
+                    mensaje: 'El filtro fecha_desde debe tener formato YYYY-MM-DD y ser una fecha válida'
+                };
+            }
+
+            return {
+                valido: true,
+                valor: fecha
+            };
+        }
+    },
+    fecha_hasta: {
+        validar: (valor) => {
+            const fecha = normalizarTextoFiltro(valor);
+
+            if (!esFechaValida(fecha)) {
+                return {
+                    valido: false,
+                    mensaje: 'El filtro fecha_hasta debe tener formato YYYY-MM-DD y ser una fecha válida'
+                };
+            }
+
+            return {
+                valido: true,
+                valor: fecha
+            };
+        }
+    },
+    id_tour: {
+        validar: (valor) => {
+            const idTour = convertirEnteroPositivo(valor);
+
+            if (idTour === null) {
+                return {
+                    valido: false,
+                    mensaje: 'El filtro id_tour debe ser un entero positivo'
+                };
+            }
+
+            return {
+                valido: true,
+                valor: idTour
+            };
+        }
     }
 };
 
@@ -549,6 +603,14 @@ const validarFiltrosReservaciones = (query) => {
 
         filtros[filtro] = resultado.valor;
     });
+
+    if (
+        filtros.fecha_desde &&
+        filtros.fecha_hasta &&
+        filtros.fecha_desde > filtros.fecha_hasta
+    ) {
+        errores.push('El filtro fecha_desde debe ser menor o igual a fecha_hasta');
+    }
 
     return {
         errores,

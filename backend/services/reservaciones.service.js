@@ -12,6 +12,36 @@ const {
 } = require('../utils/cambiosReservacion');
 
 const columnasReservacion = `
+    r.id_reservacion,
+    r.codigo,
+    r.fecha,
+    r.id_tour,
+    t.nombre AS tour,
+    r.id_pais,
+    p.nombre AS pais,
+    r.id_plataforma,
+    pl.nombre AS plataforma,
+    r.nombre_cliente,
+    r.telefono_cliente,
+    r.habitacion,
+    r.pax,
+    r.ninos,
+    r.pickup_place,
+    r.pickup_time,
+    r.precio_total,
+    r.deposito,
+    r.saldo,
+    r.tipo_cambio,
+    r.metodo_pago,
+    r.vendedor,
+    r.observaciones,
+    r.id_transporte_operacion,
+    r.estado,
+    r.fecha_registro,
+    r.ultima_actualizacion
+`;
+
+const columnasReservacionBase = `
     id_reservacion,
     codigo,
     fecha,
@@ -50,7 +80,7 @@ const crearErrorSolicitudInvalida = (mensaje) => {
 const obtenerReservacionPorIdConDb = async (db, idReservacion, bloquear = false) => {
     const query = `
         SELECT
-            ${columnasReservacion}
+            ${columnasReservacionBase}
         FROM reservaciones
         WHERE id_reservacion = $1
         ${bloquear ? 'FOR UPDATE' : ''}
@@ -95,7 +125,7 @@ const insertarReservacionConDb = async (db, reservacion) => {
             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         )
         RETURNING
-            ${columnasReservacion}
+            ${columnasReservacionBase}
     `;
 
     const values = [
@@ -146,7 +176,7 @@ const actualizarReservacionParcialConDb = async (db, idReservacion, campos) => {
             ultima_actualizacion = CURRENT_TIMESTAMP
         WHERE id_reservacion = $${values.length}
         RETURNING
-            ${columnasReservacion}
+            ${columnasReservacionBase}
     `;
 
     const result = await db.query(query, values);
@@ -162,7 +192,7 @@ const cancelarReservacionConDb = async (db, idReservacion) => {
             ultima_actualizacion = CURRENT_TIMESTAMP
         WHERE id_reservacion = $2
         RETURNING
-            ${columnasReservacion}
+            ${columnasReservacionBase}
     `;
 
     const result = await db.query(query, ['Cancelada', idReservacion]);
@@ -178,7 +208,7 @@ const actualizarTransporteReservacionConDb = async (db, idReservacion, idTranspo
             ultima_actualizacion = CURRENT_TIMESTAMP
         WHERE id_reservacion = $2
         RETURNING
-            ${columnasReservacion}
+            ${columnasReservacionBase}
     `;
 
     const result = await db.query(query, [idTransporteOperacion, idReservacion]);
@@ -480,17 +510,32 @@ const obtenerReservaciones = async (filtros = {}) => {
 
     if (filtros.codigo) {
         values.push(filtros.codigo);
-        condiciones.push(`codigo = $${values.length}`);
+        condiciones.push(`r.codigo = $${values.length}`);
     }
 
     if (filtros.nombre) {
         values.push(`%${filtros.nombre}%`);
-        condiciones.push(`nombre_cliente ILIKE $${values.length}`);
+        condiciones.push(`r.nombre_cliente ILIKE $${values.length}`);
     }
 
     if (filtros.fecha) {
         values.push(filtros.fecha);
-        condiciones.push(`fecha = $${values.length}`);
+        condiciones.push(`r.fecha = $${values.length}`);
+    }
+
+    if (filtros.fecha_desde) {
+        values.push(filtros.fecha_desde);
+        condiciones.push(`r.fecha >= $${values.length}`);
+    }
+
+    if (filtros.fecha_hasta) {
+        values.push(filtros.fecha_hasta);
+        condiciones.push(`r.fecha <= $${values.length}`);
+    }
+
+    if (filtros.id_tour) {
+        values.push(filtros.id_tour);
+        condiciones.push(`r.id_tour = $${values.length}`);
     }
 
     const where = condiciones.length > 0
@@ -500,9 +545,15 @@ const obtenerReservaciones = async (filtros = {}) => {
     const query = `
         SELECT
             ${columnasReservacion}
-        FROM reservaciones
+        FROM reservaciones r
+        INNER JOIN tours t
+            ON t.id_tour = r.id_tour
+        INNER JOIN paises p
+            ON p.id_pais = r.id_pais
+        INNER JOIN plataformas pl
+            ON pl.id_plataforma = r.id_plataforma
         ${where}
-        ORDER BY fecha_registro DESC, id_reservacion DESC
+        ORDER BY r.fecha_registro DESC, r.id_reservacion DESC
     `;
 
     const result = await pool.query(query, values);

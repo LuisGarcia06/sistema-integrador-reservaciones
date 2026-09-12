@@ -561,6 +561,95 @@ body.is-login-page .page-root {
   white-space: pre-wrap;
 }
 
+.historial-page {
+  min-width: 0;
+}
+
+.historial-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(160px, 1fr)) repeat(2, minmax(180px, 1fr));
+}
+
+.historial-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.historial-message {
+  grid-column: 1 / -1;
+}
+
+.historial-message:empty,
+.historial-tour-summary:empty {
+  display: none;
+}
+
+.historial-tour-summary {
+  display: grid;
+  gap: var(--space-sm);
+  min-width: 0;
+  padding: var(--space-md);
+  background: var(--color-surface-lowest);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+}
+
+.historial-summary-label {
+  color: var(--color-on-surface-variant);
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  line-height: var(--line-height-caption);
+  text-transform: uppercase;
+}
+
+.historial-summary-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.historial-tour-badge {
+  gap: var(--space-xs);
+}
+
+.historial-table-container {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.historial-table {
+  min-width: 1080px;
+}
+
+.historial-table th,
+.historial-table td {
+  vertical-align: top;
+}
+
+.historial-table tbody tr.is-cancelada td:first-child {
+  box-shadow: inset 4px 0 0 var(--color-error);
+}
+
+.historial-primary-text,
+.historial-secondary-text {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.historial-secondary-text {
+  margin-top: var(--space-xs);
+  color: var(--color-on-surface-variant);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+
+.historial-number-cell,
+.historial-money-cell {
+  white-space: nowrap;
+}
+
 .stack {
   display: grid;
   gap: var(--space-md);
@@ -1010,6 +1099,18 @@ body.is-login-page .page-root {
   }
 
   .bitacora-filter-actions .btn {
+    flex: 1 1 160px;
+  }
+
+  .historial-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .historial-filter-actions {
+    width: 100%;
+  }
+
+  .historial-filter-actions .btn {
     flex: 1 1 160px;
   }
 }
