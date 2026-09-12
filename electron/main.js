@@ -13,6 +13,15 @@ const HEALTH_RESPONSE_TEXT = 'API del Sistema Integrador de Reservaciones funcio
 const STARTUP_TIMEOUT_MS = 15000;
 const RETRY_INTERVAL_MS = 350;
 const EXPORT_DAILY_PDF_CHANNEL = 'daily:export-pdf';
+const PACKAGED_CONFIG_FILE = 'config.env';
+const REQUIRED_CONFIG_KEYS = [
+    'DB_HOST',
+    'DB_PORT',
+    'DB_NAME',
+    'DB_USER',
+    'DB_PASSWORD',
+    'JWT_SECRET'
+];
 
 let mainWindow = null;
 let backendProcess = null;
@@ -86,14 +95,102 @@ async function waitForBackend(timeoutMs = STARTUP_TIMEOUT_MS) {
     return false;
 }
 
-function startBackend() {
-    const serverPath = path.join(__dirname, '..', 'backend', 'server.js');
+function getRuntimeRoot() {
+    if (app.isPackaged) {
+        return path.join(process.resourcesPath, 'app.asar.unpacked');
+    }
+
+    return path.join(__dirname, '..');
+}
+
+function getBackendServerPath() {
+    return path.join(getRuntimeRoot(), 'backend', 'server.js');
+}
+
+function getPackagedConfigPath() {
+    return path.join(app.getPath('userData'), PACKAGED_CONFIG_FILE);
+}
+
+function createConfigError(code, message, configPath) {
+    const error = new Error(message);
+    error.code = code;
+    error.configPath = configPath;
+    return error;
+}
+
+function parseEnvKeys(content) {
+    const keys = new Map();
+
+    content.split(/\r?\n/).forEach((line) => {
+        const trimmedLine = line.trim();
+
+        if (!trimmedLine || trimmedLine.startsWith('#')) {
+            return;
+        }
+
+        const separatorIndex = trimmedLine.indexOf('=');
+
+        if (separatorIndex <= 0) {
+            return;
+        }
+
+        const key = trimmedLine.slice(0, separatorIndex).trim();
+        const value = trimmedLine.slice(separatorIndex + 1).trim();
+
+        keys.set(key, value);
+    });
+
+    return keys;
+}
+
+async function validatePackagedConfig() {
+    const configPath = getPackagedConfigPath();
+    let content;
+
+    try {
+        content = await fs.readFile(configPath, 'utf8');
+    } catch (error) {
+        throw createConfigError(
+            'config_missing',
+            'La aplicacion no esta configurada para conectarse a la base de datos.',
+            configPath
+        );
+    }
+
+    const keys = parseEnvKeys(content);
+    const missingKeys = REQUIRED_CONFIG_KEYS.filter((key) => !keys.get(key));
+
+    if (missingKeys.length > 0) {
+        throw createConfigError(
+            'config_invalid',
+            'La configuracion de la aplicacion esta incompleta.',
+            configPath
+        );
+    }
+
+    return configPath;
+}
+
+async function buildBackendEnvironment() {
+    const env = Object.assign({}, process.env, {
+        ELECTRON_RUN_AS_NODE: '1'
+    });
+
+    if (app.isPackaged) {
+        env.APP_CONFIG_PATH = await validatePackagedConfig();
+    }
+
+    return env;
+}
+
+async function startBackend() {
+    const runtimeRoot = getRuntimeRoot();
+    const serverPath = getBackendServerPath();
+    const backendEnv = await buildBackendEnvironment();
 
     backendProcess = spawn(process.execPath, [serverPath], {
-        cwd: path.join(__dirname, '..'),
-        env: Object.assign({}, process.env, {
-            ELECTRON_RUN_AS_NODE: '1'
-        }),
+        cwd: runtimeRoot,
+        env: backendEnv,
         stdio: ['ignore', 'pipe', 'pipe'],
         windowsHide: true
     });
@@ -120,7 +217,7 @@ async function ensureBackend() {
         return;
     }
 
-    startBackend();
+    await startBackend();
 
     if (await waitForBackend()) {
         return;
@@ -257,6 +354,14 @@ function createMainWindow() {
 
 function showStartupError(error) {
     console.error(error);
+
+    if (error && (error.code === 'config_missing' || error.code === 'config_invalid')) {
+        dialog.showErrorBox(
+            'Configuracion requerida',
+            `${error.message}\n\nArchivo esperado:\n${error.configPath}`
+        );
+        return;
+    }
 
     dialog.showErrorBox(
         'No se pudo abrir la aplicacion',

@@ -5,7 +5,9 @@
   "main": "electron/main.js",
   "scripts": {
     "start": "node backend/server.js",
-    "desktop": "electron ."
+    "desktop": "electron .",
+    "pack:win": "electron-builder --win --x64 --dir",
+    "dist:win": "electron-builder --win --x64"
   },
   "keywords": [],
   "author": "",
@@ -18,6 +20,47 @@
     "pg": "^8.23.0"
   },
   "devDependencies": {
-    "electron": "^43.4.1"
+    "electron": "^43.4.1",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "com.communitytours.reservaciones",
+    "productName": "Sistema Integrador de Reservaciones",
+    "artifactName": "Sistema-Integrador-Reservaciones-${version}-${arch}.${ext}",
+    "files": [
+      "electron/**/*",
+      "backend/**/*",
+      "frontend/**/*",
+      "package.json",
+      "!**/.env",
+      "!**/.env.*",
+      "!database/**/*",
+      "!docs/**/*",
+      "!referencias/**/*",
+      "!scripts/**/*",
+      "!.git/**/*",
+      "!dist/**/*"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "backend/**/*",
+      "frontend/**/*",
+      "node_modules/**/*"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": false
+    }
   }
 }
