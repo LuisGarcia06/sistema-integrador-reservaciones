@@ -504,6 +504,157 @@ body.is-login-page .page-root {
   gap: var(--space-md);
 }
 
+.catalogos-page {
+  min-width: 0;
+}
+
+.catalogos-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+  padding: var(--space-sm);
+  background: var(--color-surface-lowest);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+}
+
+.catalogos-tab.is-active {
+  color: var(--color-on-primary);
+  background: var(--color-primary);
+  border-color: var(--color-primary);
+}
+
+.catalogos-panel {
+  display: grid;
+  gap: var(--space-md);
+  min-width: 0;
+  padding: var(--space-md);
+  background: var(--color-surface-lowest);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+}
+
+.catalogos-panel-header {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.catalogos-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: end;
+  justify-content: flex-end;
+  gap: var(--space-sm);
+}
+
+.catalogos-search-field {
+  width: min(360px, 100%);
+}
+
+.catalogos-readonly-note {
+  margin-top: var(--space-xs);
+}
+
+.catalogos-message:empty,
+#catalogo-form-message:empty {
+  display: none;
+}
+
+.catalogos-table-container {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.catalogos-table {
+  min-width: 760px;
+}
+
+.catalogos-table th,
+.catalogos-table td {
+  vertical-align: top;
+}
+
+.catalogos-row-actions,
+.catalogos-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.catalogos-row-actions {
+  min-width: 210px;
+}
+
+.catalogos-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  padding: var(--space-lg);
+  overflow-y: auto;
+  background: rgba(24, 28, 28, 0.42);
+  place-items: start center;
+}
+
+.catalogos-form {
+  display: grid;
+  width: min(100%, 720px);
+  gap: var(--space-md);
+  padding: var(--space-lg);
+}
+
+.catalogos-form-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.catalogos-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.catalogos-full-field {
+  grid-column: 1 / -1;
+}
+
+.catalogos-textarea {
+  min-height: 112px;
+  padding: var(--space-md);
+  resize: vertical;
+}
+
+.catalogos-checkbox-field {
+  align-content: start;
+}
+
+.catalogos-checkbox-control {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-sm);
+  min-height: 40px;
+  color: var(--color-on-surface);
+  font-weight: 600;
+}
+
+.catalogos-checkbox-control input {
+  width: 18px;
+  height: 18px;
+}
+
+.catalogos-form-actions {
+  justify-content: flex-end;
+}
+
+.catalogos-upcoming {
+  opacity: 0.9;
+}
+
 .bitacora-page {
   min-width: 0;
 }
@@ -1377,6 +1528,43 @@ body.is-login-page .page-root {
   }
 
   .reservaciones-form-actions .btn {
+    flex: 1 1 160px;
+  }
+
+  .catalogos-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+  }
+
+  .catalogos-tab {
+    flex: 0 0 auto;
+  }
+
+  .catalogos-panel-header,
+  .catalogos-toolbar,
+  .catalogos-form-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .catalogos-toolbar .btn,
+  .catalogos-search-field {
+    width: 100%;
+  }
+
+  .catalogos-dialog-backdrop {
+    padding: var(--space-md);
+  }
+
+  .catalogos-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .catalogos-full-field {
+    grid-column: auto;
+  }
+
+  .catalogos-form-actions .btn {
     flex: 1 1 160px;
   }
 

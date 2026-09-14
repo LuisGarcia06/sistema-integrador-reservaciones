@@ -12,6 +12,20 @@ router.get(
     toursController.listarTours
 );
 
+router.post(
+    '/',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR),
+    toursController.crearTour
+);
+
+router.patch(
+    '/:id',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR),
+    toursController.actualizarTourParcial
+);
+
 router.get(
     '/:id',
     autenticarUsuario,
