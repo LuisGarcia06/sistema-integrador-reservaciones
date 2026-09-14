@@ -114,6 +114,8 @@ CREATE TABLE operaciones_tour (
     fecha DATE NOT NULL,
     id_tour INTEGER NOT NULL,
     hora_inicio TIME NOT NULL,
+    turno VARCHAR(10) NOT NULL,
+    numero_grupo INTEGER NOT NULL,
     id_guia INTEGER,
     estado VARCHAR(30) NOT NULL,
 
@@ -125,8 +127,14 @@ CREATE TABLE operaciones_tour (
         FOREIGN KEY (id_guia)
         REFERENCES guias(id_guia),
 
-    CONSTRAINT uq_operaciones_tour_fecha_tour_hora
-        UNIQUE (fecha, id_tour, hora_inicio)
+    CONSTRAINT chk_operaciones_tour_turno
+        CHECK (turno IN ('Mañana', 'Tarde')),
+
+    CONSTRAINT chk_operaciones_tour_numero_grupo
+        CHECK (numero_grupo >= 1 AND numero_grupo <= 2),
+
+    CONSTRAINT uq_operaciones_tour_fecha_tour_turno_grupo
+        UNIQUE (fecha, id_tour, turno, numero_grupo)
 );
 
 

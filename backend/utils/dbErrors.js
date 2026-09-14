@@ -22,12 +22,15 @@ const obtenerRespuestaErrorPostgres = (error) => {
 
     if (
         error.code === '23505' &&
-        error.constraint === 'uq_operaciones_tour_fecha_tour_hora'
+        (
+            error.constraint === 'uq_operaciones_tour_fecha_tour_hora' ||
+            error.constraint === 'uq_operaciones_tour_fecha_tour_turno_grupo'
+        )
     ) {
         return {
             status: 409,
             body: {
-                mensaje: 'Ya existe una operación para esa fecha, tour y hora de inicio'
+                mensaje: 'Ya existe una operación para esa fecha, tour, turno y grupo'
             }
         };
     }

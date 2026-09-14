@@ -1,6 +1,5 @@
 const pool = require('../config/database');
 const capacidadService = require('./capacidad.service');
-const { obtenerTurno } = require('../utils/turno');
 
 const camposActualizables = [
     'fecha',
@@ -16,6 +15,8 @@ const columnasOperacionEnriquecida = `
     ot.id_tour,
     t.nombre AS tour,
     ot.hora_inicio,
+    ot.turno,
+    ot.numero_grupo,
     ot.id_guia,
     g.nombre AS guia,
     ot.estado
@@ -54,8 +55,7 @@ const mapearOperacion = (operacion) => {
     return {
         ...operacion,
         fecha: normalizarFechaResultado(operacion.fecha),
-        hora_inicio: horaInicio,
-        turno: obtenerTurno(horaInicio)
+        hora_inicio: horaInicio
     };
 };
 
@@ -84,6 +84,8 @@ const obtenerOperacionBasicaPorIdConDb = async (db, idOperacion, bloquear = fals
             fecha,
             id_tour,
             hora_inicio,
+            turno,
+            numero_grupo,
             id_guia,
             estado
         FROM operaciones_tour
@@ -415,5 +417,4 @@ module.exports = {
     obtenerOperacionPorId,
     crearOperacion,
     actualizarOperacionParcial,
-    obtenerTurno
 };
