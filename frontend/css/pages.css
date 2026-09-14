@@ -650,6 +650,139 @@ body.is-login-page .page-root {
   white-space: nowrap;
 }
 
+.reservaciones-page {
+  min-width: 0;
+}
+
+.reservaciones-filter-bar {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr)) repeat(2, minmax(180px, 1fr));
+}
+
+.reservaciones-filter-actions,
+.reservaciones-row-actions,
+.reservaciones-form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.reservaciones-filter-actions {
+  grid-column: 1 / -1;
+}
+
+.reservaciones-message {
+  grid-column: 1 / -1;
+}
+
+.reservaciones-message:empty,
+#reservaciones-form-message:empty {
+  display: none;
+}
+
+.reservaciones-table-container {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.reservaciones-table {
+  min-width: 1180px;
+}
+
+.reservaciones-table th,
+.reservaciones-table td {
+  vertical-align: top;
+}
+
+.reservaciones-table tbody tr.is-cancelada td:first-child {
+  box-shadow: inset 4px 0 0 var(--color-error);
+}
+
+.reservaciones-primary-text,
+.reservaciones-secondary-text {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+.reservaciones-secondary-text {
+  margin-top: var(--space-xs);
+  color: var(--color-on-surface-variant);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+
+.reservaciones-number-cell,
+.reservaciones-money-cell {
+  white-space: nowrap;
+}
+
+.reservaciones-row-actions {
+  min-width: 220px;
+}
+
+.reservaciones-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  padding: var(--space-lg);
+  overflow-y: auto;
+  background: rgba(24, 28, 28, 0.42);
+  place-items: start center;
+}
+
+.reservaciones-form {
+  display: grid;
+  width: min(100%, 900px);
+  gap: var(--space-md);
+  padding: var(--space-lg);
+}
+
+.reservaciones-form-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.reservaciones-form-section {
+  display: grid;
+  gap: var(--space-sm);
+  min-width: 0;
+  padding: var(--space-md);
+  background: var(--color-surface-low);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+}
+
+.reservaciones-form-section h3 {
+  color: var(--color-on-surface);
+  font-size: var(--font-size-body);
+  font-weight: 700;
+  line-height: var(--line-height-body);
+}
+
+.reservaciones-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.reservaciones-full-field {
+  grid-column: 1 / -1;
+}
+
+.reservaciones-textarea {
+  min-height: 104px;
+  padding: var(--space-md);
+  resize: vertical;
+}
+
+.reservaciones-form-actions {
+  justify-content: flex-end;
+}
+
 .stack {
   display: grid;
   gap: var(--space-md);
@@ -1206,11 +1339,44 @@ body.is-login-page .page-root {
     grid-template-columns: 1fr;
   }
 
+  .reservaciones-filter-bar {
+    grid-template-columns: 1fr;
+  }
+
   .historial-filter-actions {
     width: 100%;
   }
 
+  .reservaciones-filter-actions {
+    width: 100%;
+  }
+
   .historial-filter-actions .btn {
+    flex: 1 1 160px;
+  }
+
+  .reservaciones-filter-actions .btn {
+    flex: 1 1 160px;
+  }
+
+  .reservaciones-form-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .reservaciones-dialog-backdrop {
+    padding: var(--space-md);
+  }
+
+  .reservaciones-form-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .reservaciones-full-field {
+    grid-column: auto;
+  }
+
+  .reservaciones-form-actions .btn {
     flex: 1 1 160px;
   }
 

@@ -12,7 +12,9 @@ const filtrosReservacionesPermitidos = [
     'fecha',
     'fecha_desde',
     'fecha_hasta',
-    'id_tour'
+    'id_tour',
+    'estado',
+    'id_plataforma'
 ];
 
 const camposResultadoReservacion = [
@@ -450,6 +452,30 @@ const reglasFiltrosReservaciones = {
             return {
                 valido: true,
                 valor: idTour
+            };
+        }
+    },
+    estado: {
+        validar: crearValidadorFiltroTexto({
+            maximo: 30,
+            mensajeVacio: 'El filtro estado no puede estar vacío',
+            mensajeInvalido: 'El filtro estado no puede exceder 30 caracteres'
+        })
+    },
+    id_plataforma: {
+        validar: (valor) => {
+            const idPlataforma = convertirEnteroPositivo(valor);
+
+            if (idPlataforma === null) {
+                return {
+                    valido: false,
+                    mensaje: 'El filtro id_plataforma debe ser un entero positivo'
+                };
+            }
+
+            return {
+                valido: true,
+                valor: idPlataforma
             };
         }
     }

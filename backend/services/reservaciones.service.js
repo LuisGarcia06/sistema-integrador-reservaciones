@@ -538,6 +538,16 @@ const obtenerReservaciones = async (filtros = {}) => {
         condiciones.push(`r.id_tour = $${values.length}`);
     }
 
+    if (filtros.estado) {
+        values.push(filtros.estado);
+        condiciones.push(`r.estado = $${values.length}`);
+    }
+
+    if (filtros.id_plataforma) {
+        values.push(filtros.id_plataforma);
+        condiciones.push(`r.id_plataforma = $${values.length}`);
+    }
+
     const where = condiciones.length > 0
         ? `WHERE ${condiciones.join('\n            AND ')}`
         : '';
