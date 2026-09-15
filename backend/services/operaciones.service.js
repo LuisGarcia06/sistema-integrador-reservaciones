@@ -176,6 +176,7 @@ const obtenerReservacionesOperacionConDb = async (db, idOperacion, bloquear = fa
             r.id_reservacion,
             r.fecha,
             r.id_tour,
+            r.turno,
             r.pax,
             r.estado
         FROM reservaciones r
@@ -203,6 +204,12 @@ const afectaGrupoOperativo = (camposActualizados) => (
     tieneCampo(camposActualizados, 'id_tour') ||
     tieneCampo(camposActualizados, 'turno') ||
     tieneCampo(camposActualizados, 'numero_grupo')
+);
+
+const afectaCompatibilidadReservaciones = (camposActualizados) => (
+    tieneCampo(camposActualizados, 'fecha') ||
+    tieneCampo(camposActualizados, 'id_tour') ||
+    tieneCampo(camposActualizados, 'turno')
 );
 
 const bloquearDependenciasOperacion = async (db, operacionActual, operacionFinal) => {
@@ -241,7 +248,8 @@ const validarReservacionesCompatibles = (reservaciones, operacionFinal) => {
     const fechaOperacion = normalizarFechaResultado(operacionFinal.fecha);
     const reservacionIncompatible = reservaciones.find((reservacion) => (
         normalizarFechaResultado(reservacion.fecha) !== fechaOperacion ||
-        Number(reservacion.id_tour) !== Number(operacionFinal.id_tour)
+        Number(reservacion.id_tour) !== Number(operacionFinal.id_tour) ||
+        reservacion.turno !== operacionFinal.turno
     ));
 
     if (!reservacionIncompatible) {
@@ -252,14 +260,23 @@ const validarReservacionesCompatibles = (reservaciones, operacionFinal) => {
         return 'La nueva fecha de la operación es incompatible con reservaciones asignadas';
     }
 
-    return 'El nuevo tour de la operación es incompatible con reservaciones asignadas';
+    if (Number(reservacionIncompatible.id_tour) !== Number(operacionFinal.id_tour)) {
+        return 'El nuevo tour de la operación es incompatible con reservaciones asignadas';
+    }
+
+    return 'El nuevo turno de la operación es incompatible con reservaciones asignadas';
 };
 
-const validarIntegridadOperacion = async (db, operacionActual, operacionFinal, reservacionesAsignadas) => {
-    const errorCompatibilidad = validarReservacionesCompatibles(
-        reservacionesAsignadas,
-        operacionFinal
-    );
+const validarIntegridadOperacion = async (
+    db,
+    operacionActual,
+    operacionFinal,
+    reservacionesAsignadas,
+    camposActualizados
+) => {
+    const errorCompatibilidad = afectaCompatibilidadReservaciones(camposActualizados)
+        ? validarReservacionesCompatibles(reservacionesAsignadas, operacionFinal)
+        : null;
 
     if (errorCompatibilidad) {
         throw crearErrorSolicitudInvalida(errorCompatibilidad);
@@ -555,7 +572,8 @@ const actualizarOperacionParcial = async (idOperacion, campos) => {
                 client,
                 operacionActual,
                 operacionFinal,
-                reservacionesAsignadas
+                reservacionesAsignadas,
+                camposActualizados
             );
         }
 

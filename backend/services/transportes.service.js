@@ -155,6 +155,7 @@ const obtenerReservacionesTransporteConDb = async (db, idTransporte) => {
             id_reservacion,
             fecha,
             id_tour,
+            turno,
             pax,
             estado
         FROM reservaciones
@@ -179,10 +180,11 @@ const validarReservacionesCompatiblesOperacion = (reservaciones, operacionDestin
     const reservacionIncompatible = reservaciones.find((reservacion) => (
         capacidadService.normalizarFechaResultado(reservacion.fecha) !== fechaOperacion
         || Number(reservacion.id_tour) !== Number(operacionDestino.id_tour)
+        || reservacion.turno !== operacionDestino.turno
     ));
 
     if (reservacionIncompatible) {
-        return 'El transporte tiene reservaciones asignadas incompatibles con la nueva operación por fecha o tour';
+        return 'El transporte tiene reservaciones asignadas incompatibles con la nueva operación por fecha, tour o turno';
     }
 
     return null;
