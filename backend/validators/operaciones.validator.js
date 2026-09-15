@@ -8,6 +8,8 @@ const {
 const camposOperacionPermitidos = [
     'fecha',
     'id_tour',
+    'turno',
+    'numero_grupo',
     'hora_inicio',
     'id_guia',
     'estado'
@@ -16,8 +18,9 @@ const camposOperacionPermitidos = [
 const camposObligatoriosOperacion = [
     'fecha',
     'id_tour',
+    'turno',
+    'numero_grupo',
     'hora_inicio',
-    'estado'
 ];
 
 const filtrosOperacionesPermitidos = [
@@ -52,6 +55,28 @@ const validarEstado = (valor) => {
     }
 
     return estado;
+};
+
+const validarTurno = (valor) => {
+    if (typeof valor !== 'string') {
+        return null;
+    }
+
+    const turno = valor.trim();
+
+    return turno === 'Mañana' || turno === 'Tarde'
+        ? turno
+        : null;
+};
+
+const validarNumeroGrupo = (valor) => {
+    const numeroGrupo = Number(valor);
+
+    if (!Number.isInteger(numeroGrupo) || numeroGrupo < 1 || numeroGrupo > 2) {
+        return null;
+    }
+
+    return numeroGrupo;
 };
 
 const validarIdOperacion = (id) => convertirEnteroPositivo(id);
@@ -94,6 +119,22 @@ const validarCampoOperacion = (campo, valor) => {
             : { valido: true, valor: idTour };
     }
 
+    if (campo === 'turno') {
+        const turno = validarTurno(valor);
+
+        return turno === null
+            ? { valido: false, mensaje: 'El campo turno debe ser Mañana o Tarde' }
+            : { valido: true, valor: turno };
+    }
+
+    if (campo === 'numero_grupo') {
+        const numeroGrupo = validarNumeroGrupo(valor);
+
+        return numeroGrupo === null
+            ? { valido: false, mensaje: 'El campo numero_grupo debe ser 1 o 2' }
+            : { valido: true, valor: numeroGrupo };
+    }
+
     if (campo === 'hora_inicio') {
         const horaInicio = normalizarHora(valor);
 
@@ -131,12 +172,8 @@ const validarCamposNoPermitidos = (datos, errores, mensajeId) => {
         errores.push(mensajeId);
     }
 
-    if (tieneCampo(datos, 'turno')) {
-        errores.push('No se permite enviar turno');
-    }
-
     camposEnviados.forEach((campo) => {
-        if (campo === 'id_operacion_tour' || campo === 'turno') {
+        if (campo === 'id_operacion_tour') {
             return;
         }
 
@@ -175,6 +212,10 @@ const validarDatosOperacion = (datos) => {
 
     if (!tieneCampo(operacion, 'id_guia')) {
         operacion.id_guia = null;
+    }
+
+    if (!tieneCampo(operacion, 'estado')) {
+        operacion.estado = 'Activa';
     }
 
     return {

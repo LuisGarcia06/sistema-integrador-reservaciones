@@ -30,7 +30,7 @@ const obtenerRespuestaErrorPostgres = (error) => {
         return {
             status: 409,
             body: {
-                mensaje: 'Ya existe una operación para esa fecha, tour, turno y grupo'
+                mensaje: 'Ya existe ese grupo para el tour, fecha y turno.'
             }
         };
     }

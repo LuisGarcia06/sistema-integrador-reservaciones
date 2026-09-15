@@ -1,6 +1,5 @@
 const pool = require('../config/database');
 const capacidadService = require('./capacidad.service');
-const { obtenerTurno } = require('../utils/turno');
 
 const camposActualizables = [
     'id_operacion_tour',
@@ -15,6 +14,8 @@ const columnasTransporteEnriquecido = `
     tr.id_operacion_tour,
     ot.fecha,
     ot.hora_inicio,
+    ot.turno,
+    ot.numero_grupo,
     t.nombre AS tour,
     tr.id_vehiculo,
     v.identificador AS vehiculo,
@@ -53,8 +54,7 @@ const mapearTransporte = (transporte) => {
     return {
         ...transporte,
         fecha: normalizarFechaResultado(transporte.fecha),
-        hora_inicio: horaInicio,
-        turno: obtenerTurno(horaInicio)
+        hora_inicio: horaInicio
     };
 };
 
@@ -105,7 +105,9 @@ const obtenerOperacionBasicaPorIdConDb = async (db, idOperacion, bloquear = fals
             id_operacion_tour,
             fecha,
             id_tour,
-            hora_inicio
+            hora_inicio,
+            turno,
+            numero_grupo
         FROM operaciones_tour
         WHERE id_operacion_tour = $1
         ${bloquear ? 'FOR UPDATE' : ''}
@@ -235,6 +237,17 @@ const validarCambioOperacion = async (
     const grupoActual = capacidadService.obtenerGrupoTransporteOperacion(operacionActual);
     const grupoDestino = capacidadService.obtenerGrupoTransporteOperacion(operacionDestino);
     const cambiaGrupo = !capacidadService.esMismoGrupoOperativo(grupoActual, grupoDestino);
+    const totalOperacionDestino = await capacidadService.calcularPaxOperacion(
+        db,
+        operacionDestino.id_operacion_tour,
+        { excluirIdTransporteOperacion: transporteActual.id_transporte_operacion }
+    );
+    const totalOperacionResultante = totalOperacionDestino + paxTransporte;
+    const errorMaximoOperacion = capacidadService.validarMaximoOperacion(totalOperacionResultante);
+
+    if (errorMaximoOperacion) {
+        return errorMaximoOperacion;
+    }
 
     if (!cambiaGrupo) {
         return null;
@@ -340,8 +353,10 @@ const obtenerTransportes = async (filtros = {}) => {
         ${where}
         ORDER BY
             ot.fecha ASC,
-            ot.hora_inicio ASC,
             t.nombre ASC,
+            CASE ot.turno WHEN 'Mañana' THEN 1 ELSE 2 END ASC,
+            ot.numero_grupo ASC,
+            ot.hora_inicio ASC,
             tr.id_transporte_operacion ASC
     `;
 

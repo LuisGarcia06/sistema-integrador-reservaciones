@@ -1,6 +1,5 @@
-const { obtenerTurno } = require('../utils/turno');
-
 const MAX_PAX_TRANSPORTE = 12;
+const MAX_PAX_OPERACION = 12;
 const MAX_PAX_TOUR_TURNO = 24;
 const ESTADO_CANCELADA = 'Cancelada';
 
@@ -33,12 +32,10 @@ const obtenerGrupoTransporteOperacion = (transporteOperacion) => {
         return null;
     }
 
-    const horaInicio = normalizarHoraResultado(transporteOperacion.hora_inicio);
-
     return {
         fecha: normalizarFechaResultado(transporteOperacion.fecha),
         id_tour: Number(transporteOperacion.id_tour),
-        turno: obtenerTurno(horaInicio)
+        turno: transporteOperacion.turno
     };
 };
 
@@ -122,12 +119,7 @@ const obtenerIdsTransportesGrupo = async (db, grupo) => {
             ON ot.id_operacion_tour = tr.id_operacion_tour
         WHERE ot.fecha = $1
             AND ot.id_tour = $2
-            AND (
-                CASE
-                    WHEN ot.hora_inicio <= TIME '12:00' THEN 'Mañana'
-                    ELSE 'Tarde'
-                END
-            ) = $3
+            AND ot.turno = $3
         ORDER BY tr.id_transporte_operacion ASC
     `;
 
@@ -146,12 +138,7 @@ const obtenerIdsOperacionesGrupo = async (db, grupo) => {
         FROM operaciones_tour
         WHERE fecha = $1
             AND id_tour = $2
-            AND (
-                CASE
-                    WHEN hora_inicio <= TIME '12:00' THEN 'Mañana'
-                    ELSE 'Tarde'
-                END
-            ) = $3
+            AND turno = $3
         ORDER BY id_operacion_tour ASC
     `;
 
@@ -190,12 +177,7 @@ const calcularPaxTourTurno = async (db, grupo, opciones = {}) => {
     const condiciones = [
         'ot.fecha = $1',
         'ot.id_tour = $2',
-        `(
-            CASE
-                WHEN ot.hora_inicio <= TIME '12:00' THEN 'Mañana'
-                ELSE 'Tarde'
-            END
-        ) = $3`,
+        'ot.turno = $3',
         'r.estado <> $4'
     ];
 
@@ -239,6 +221,11 @@ const calcularPaxOperacion = async (db, idOperacion, opciones = {}) => {
     if (opciones.excluirIdReservacion) {
         values.push(opciones.excluirIdReservacion);
         condiciones.push(`r.id_reservacion <> $${values.length}`);
+    }
+
+    if (opciones.excluirIdTransporteOperacion) {
+        values.push(opciones.excluirIdTransporteOperacion);
+        condiciones.push(`tr.id_transporte_operacion <> $${values.length}`);
     }
 
     const query = `
@@ -297,8 +284,17 @@ const validarMaximoTourTurno = (totalPax) => {
     return null;
 };
 
+const validarMaximoOperacion = (totalPax) => {
+    if (totalPax > MAX_PAX_OPERACION) {
+        return `La operación/grupo excede el máximo operativo de ${MAX_PAX_OPERACION} pasajeros`;
+    }
+
+    return null;
+};
+
 module.exports = {
     MAX_PAX_TRANSPORTE,
+    MAX_PAX_OPERACION,
     MAX_PAX_TOUR_TURNO,
     ESTADO_CANCELADA,
     normalizarFechaResultado,
@@ -317,5 +313,6 @@ module.exports = {
     calcularPaxOperacion,
     validarCapacidadTransporte,
     validarMinimoTransporteConVehiculo,
-    validarMaximoTourTurno
+    validarMaximoTourTurno,
+    validarMaximoOperacion
 };

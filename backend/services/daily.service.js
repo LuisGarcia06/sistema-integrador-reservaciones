@@ -1,6 +1,4 @@
 const pool = require('../config/database');
-const { obtenerTurno } = require('../utils/turno');
-
 const ESTADO_CANCELADA = 'Cancelada';
 
 const normalizarFechaResultado = (fecha) => {
@@ -101,6 +99,8 @@ const consultarOperacionesOperativasPorFecha = async (fecha) => {
             ot.id_tour,
             t.nombre AS tour,
             ot.hora_inicio,
+            ot.turno,
+            ot.numero_grupo,
             ot.id_guia,
             g.nombre AS guia,
             ot.estado
@@ -111,8 +111,10 @@ const consultarOperacionesOperativasPorFecha = async (fecha) => {
             ON g.id_guia = ot.id_guia
         WHERE ot.fecha = $1
         ORDER BY
-            ot.hora_inicio ASC,
             t.nombre ASC,
+            CASE ot.turno WHEN 'Mañana' THEN 1 ELSE 2 END ASC,
+            ot.numero_grupo ASC,
+            ot.hora_inicio ASC,
             ot.id_operacion_tour ASC
     `;
 
@@ -262,7 +264,8 @@ const crearOperacionOperativa = (operacion) => {
         id_tour: operacion.id_tour,
         tour: operacion.tour,
         hora_inicio: horaInicio,
-        turno: obtenerTurno(horaInicio),
+        turno: operacion.turno,
+        numero_grupo: operacion.numero_grupo,
         id_guia: operacion.id_guia,
         guia: operacion.guia,
         estado: operacion.estado,

@@ -4,6 +4,8 @@ const capacidadService = require('./capacidad.service');
 const camposActualizables = [
     'fecha',
     'id_tour',
+    'turno',
+    'numero_grupo',
     'hora_inicio',
     'id_guia',
     'estado'
@@ -129,7 +131,8 @@ const tieneCampo = (objeto, campo) => Object.prototype.hasOwnProperty.call(objet
 const afectaGrupoOperativo = (camposActualizados) => (
     tieneCampo(camposActualizados, 'fecha') ||
     tieneCampo(camposActualizados, 'id_tour') ||
-    tieneCampo(camposActualizados, 'hora_inicio')
+    tieneCampo(camposActualizados, 'turno') ||
+    tieneCampo(camposActualizados, 'numero_grupo')
 );
 
 const bloquearDependenciasOperacion = async (db, operacionActual, operacionFinal) => {
@@ -196,6 +199,11 @@ const validarIntegridadOperacion = async (db, operacionActual, operacionFinal, r
         db,
         operacionActual.id_operacion_tour
     );
+    const errorMaximoOperacion = capacidadService.validarMaximoOperacion(paxActivosOperacion);
+
+    if (errorMaximoOperacion) {
+        throw crearErrorSolicitudInvalida(errorMaximoOperacion);
+    }
 
     if (paxActivosOperacion === 0) {
         return;
@@ -246,8 +254,10 @@ const obtenerOperaciones = async (filtros = {}) => {
         ${where}
         ORDER BY
             ot.fecha ASC,
-            ot.hora_inicio ASC,
             t.nombre ASC,
+            CASE ot.turno WHEN 'Mañana' THEN 1 ELSE 2 END ASC,
+            ot.numero_grupo ASC,
+            ot.hora_inicio ASC,
             ot.id_operacion_tour ASC
     `;
 
@@ -265,11 +275,13 @@ const crearOperacion = async (operacion) => {
         INSERT INTO operaciones_tour (
             fecha,
             id_tour,
+            turno,
+            numero_grupo,
             hora_inicio,
             id_guia,
             estado
         )
-        VALUES ($1, $2, $3, $4, $5)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING
             id_operacion_tour
     `;
@@ -277,6 +289,8 @@ const crearOperacion = async (operacion) => {
     const values = [
         operacion.fecha,
         operacion.id_tour,
+        operacion.turno,
+        operacion.numero_grupo,
         operacion.hora_inicio,
         operacion.id_guia,
         operacion.estado

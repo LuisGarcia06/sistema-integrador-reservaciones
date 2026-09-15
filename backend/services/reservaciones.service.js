@@ -224,6 +224,8 @@ const obtenerTransporteOperacionPorIdConDb = async (db, idTransporteOperacion) =
             ot.fecha,
             ot.id_tour,
             ot.hora_inicio,
+            ot.turno,
+            ot.numero_grupo,
             tr.id_vehiculo,
             v.capacidad
         FROM transportes_operacion tr
@@ -361,6 +363,18 @@ const validarCapacidadPatchAsignado = async (db, reservacionActual, reservacionF
         throw crearErrorSolicitudInvalida(errorCapacidadTransporte);
     }
 
+    const totalOperacionActual = await capacidadService.calcularPaxOperacion(
+        db,
+        transporteOperacion.id_operacion_tour,
+        { excluirIdReservacion: reservacionActual.id_reservacion }
+    );
+    const totalOperacionResultante = totalOperacionActual + paxOperativoFinal;
+    const errorCapacidadOperacion = capacidadService.validarMaximoOperacion(totalOperacionResultante);
+
+    if (errorCapacidadOperacion) {
+        throw crearErrorSolicitudInvalida(errorCapacidadOperacion);
+    }
+
     const totalGrupoActual = await capacidadService.calcularPaxTourTurno(
         db,
         grupo,
@@ -480,6 +494,18 @@ const validarCapacidadAsignacion = async (
 
         if (errorCapacidadDestino) {
             return errorCapacidadDestino;
+        }
+
+        const totalOperacionDestinoActual = await capacidadService.calcularPaxOperacion(
+            db,
+            transporteDestino.id_operacion_tour,
+            { excluirIdReservacion: reservacion.id_reservacion }
+        );
+        const totalOperacionDestinoResultante = totalOperacionDestinoActual + paxOperativoReservacion;
+        const errorCapacidadOperacion = capacidadService.validarMaximoOperacion(totalOperacionDestinoResultante);
+
+        if (errorCapacidadOperacion) {
+            return errorCapacidadOperacion;
         }
 
         const grupoOrigen = capacidadService.obtenerGrupoTransporteOperacion(transporteOrigen);
