@@ -999,6 +999,85 @@ body.is-login-page .page-root {
   justify-content: center;
 }
 
+.operaciones-sugeridas-section,
+.operaciones-preparadas-section {
+  display: grid;
+  gap: var(--space-md);
+  min-width: 0;
+}
+
+.operaciones-preparadas-section {
+  margin-top: var(--space-lg);
+}
+
+.operaciones-section-header,
+.operaciones-sugeridas-card-header,
+.operaciones-sugeridas-grupo {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.operaciones-sugeridas-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-md);
+}
+
+.operaciones-sugeridas-card {
+  display: grid;
+  gap: var(--space-md);
+  min-width: 0;
+  padding: var(--space-md);
+}
+
+.operaciones-sugeridas-card h3 {
+  overflow-wrap: anywhere;
+}
+
+.operaciones-sugeridas-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.operaciones-sugeridas-metrics span,
+.operacion-fixed-field {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--color-surface-low);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+}
+
+.operaciones-sugeridas-metrics strong,
+.operacion-fixed-field strong {
+  overflow-wrap: anywhere;
+}
+
+.operaciones-sugeridas-metrics small {
+  color: var(--color-on-surface-variant);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+
+.operaciones-sugeridas-grupos {
+  display: grid;
+  gap: var(--space-sm);
+  min-width: 0;
+}
+
+.operaciones-sugeridas-grupo {
+  align-items: center;
+  padding: var(--space-sm);
+  background: var(--color-surface-lowest);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-md);
+}
+
 .operaciones-table-container {
   width: 100%;
   max-width: 100%;
@@ -1429,6 +1508,9 @@ body.is-login-page .page-root {
   }
 
   .operaciones-toolbar,
+  .operaciones-section-header,
+  .operaciones-sugeridas-card-header,
+  .operaciones-sugeridas-grupo,
   .operacion-form-header,
   .transportes-panel-header,
   .transporte-form-header,
@@ -1440,7 +1522,9 @@ body.is-login-page .page-root {
   }
 
   .operacion-form-grid,
-  .transporte-form-grid {
+  .transporte-form-grid,
+  .operaciones-sugeridas-grid,
+  .operaciones-sugeridas-metrics {
     grid-template-columns: 1fr;
   }
 

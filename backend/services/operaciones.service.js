@@ -11,6 +11,14 @@ const camposActualizables = [
     'estado'
 ];
 
+const ESTADOS_RESERVACION_SUGERIDA = [
+    'Pendiente',
+    'Confirmada',
+    'Activa'
+];
+
+const MAX_PAX_TOUR_TURNO = 24;
+
 const columnasOperacionEnriquecida = `
     ot.id_operacion_tour,
     ot.fecha,
@@ -58,6 +66,68 @@ const mapearOperacion = (operacion) => {
         ...operacion,
         fecha: normalizarFechaResultado(operacion.fecha),
         hora_inicio: horaInicio
+    };
+};
+
+const crearGrupoSugerido = (numeroGrupo, operacion) => ({
+    numero_grupo: numeroGrupo,
+    preparado: Boolean(operacion),
+    id_operacion_tour: operacion ? operacion.id_operacion_tour : null,
+    hora_inicio: operacion ? operacion.hora_inicio : null,
+    id_guia: operacion ? operacion.id_guia : null,
+    guia: operacion ? operacion.guia : null,
+    estado: operacion ? operacion.estado : null
+});
+
+const crearClaveSugerencia = (fecha, idTour, turno) => [
+    normalizarFechaResultado(fecha),
+    Number(idTour),
+    turno
+].join('|');
+
+const calcularGruposNecesarios = (paxTotal) => {
+    if (paxTotal <= 0) {
+        return 0;
+    }
+
+    if (paxTotal <= 12) {
+        return 1;
+    }
+
+    return 2;
+};
+
+const mapearSugerencia = (salida, operacionesPorClave) => {
+    const fecha = normalizarFechaResultado(salida.fecha);
+    const idTour = Number(salida.id_tour);
+    const paxTotal = Number(salida.pax_total) || 0;
+    const gruposNecesarios = calcularGruposNecesarios(paxTotal);
+    const excedeCapacidad = paxTotal > MAX_PAX_TOUR_TURNO;
+    const operacionesContexto = operacionesPorClave.get(
+        crearClaveSugerencia(fecha, idTour, salida.turno)
+    ) || new Map();
+    const gruposExistentes = Array.from(operacionesContexto.keys());
+    const ultimoGrupo = Math.min(
+        2,
+        Math.max(gruposNecesarios, ...gruposExistentes, 0)
+    );
+    const grupos = [];
+
+    for (let numeroGrupo = 1; numeroGrupo <= ultimoGrupo; numeroGrupo += 1) {
+        grupos.push(crearGrupoSugerido(numeroGrupo, operacionesContexto.get(numeroGrupo)));
+    }
+
+    return {
+        fecha,
+        id_tour: idTour,
+        tour: salida.tour,
+        turno: salida.turno,
+        total_reservaciones: Number(salida.total_reservaciones) || 0,
+        pax_total: paxTotal,
+        grupos_necesarios: gruposNecesarios,
+        excede_capacidad: excedeCapacidad,
+        pax_excedente: Math.max(paxTotal - MAX_PAX_TOUR_TURNO, 0),
+        grupos
     };
 };
 
@@ -266,6 +336,84 @@ const obtenerOperaciones = async (filtros = {}) => {
     return result.rows.map(mapearOperacion);
 };
 
+const obtenerOperacionesSugeridas = async (fecha) => {
+    const reservacionesQuery = `
+        SELECT
+            r.fecha,
+            r.id_tour,
+            t.nombre AS tour,
+            r.turno,
+            COUNT(*)::int AS total_reservaciones,
+            COALESCE(SUM(r.pax), 0)::int AS pax_total
+        FROM reservaciones r
+        INNER JOIN tours t
+            ON t.id_tour = r.id_tour
+        WHERE r.fecha = $1
+            AND r.turno IS NOT NULL
+            AND r.estado = ANY($2::varchar[])
+        GROUP BY
+            r.fecha,
+            r.id_tour,
+            t.nombre,
+            r.turno
+        HAVING COALESCE(SUM(r.pax), 0) > 0
+        ORDER BY
+            CASE r.turno WHEN 'Mañana' THEN 1 ELSE 2 END ASC,
+            t.nombre ASC,
+            r.id_tour ASC
+    `;
+    const operacionesQuery = `
+        SELECT
+            ${columnasOperacionEnriquecida}
+        FROM operaciones_tour ot
+        INNER JOIN tours t
+            ON t.id_tour = ot.id_tour
+        LEFT JOIN guias g
+            ON g.id_guia = ot.id_guia
+        WHERE ot.fecha = $1
+        ORDER BY
+            CASE ot.turno WHEN 'Mañana' THEN 1 ELSE 2 END ASC,
+            t.nombre ASC,
+            ot.numero_grupo ASC,
+            ot.id_operacion_tour ASC
+    `;
+    const sinTurnoQuery = `
+        SELECT COUNT(*)::int AS total
+        FROM reservaciones
+        WHERE fecha = $1
+            AND turno IS NULL
+            AND estado = ANY($2::varchar[])
+    `;
+
+    const [reservacionesResult, operacionesResult, sinTurnoResult] = await Promise.all([
+        pool.query(reservacionesQuery, [fecha, ESTADOS_RESERVACION_SUGERIDA]),
+        pool.query(operacionesQuery, [fecha]),
+        pool.query(sinTurnoQuery, [fecha, ESTADOS_RESERVACION_SUGERIDA])
+    ]);
+    const operacionesPorClave = new Map();
+
+    operacionesResult.rows.map(mapearOperacion).forEach((operacion) => {
+        const clave = crearClaveSugerencia(
+            operacion.fecha,
+            operacion.id_tour,
+            operacion.turno
+        );
+
+        if (!operacionesPorClave.has(clave)) {
+            operacionesPorClave.set(clave, new Map());
+        }
+
+        operacionesPorClave.get(clave).set(Number(operacion.numero_grupo), operacion);
+    });
+
+    return {
+        fecha,
+        total_salidas_detectadas: reservacionesResult.rows.length,
+        reservaciones_sin_turno: Number(sinTurnoResult.rows[0].total) || 0,
+        datos: reservacionesResult.rows.map((salida) => mapearSugerencia(salida, operacionesPorClave))
+    };
+};
+
 const obtenerOperacionPorId = async (idOperacion) => {
     return obtenerOperacionEnriquecidaPorIdConDb(pool, idOperacion);
 };
@@ -428,6 +576,7 @@ const actualizarOperacionParcial = async (idOperacion, campos) => {
 
 module.exports = {
     obtenerOperaciones,
+    obtenerOperacionesSugeridas,
     obtenerOperacionPorId,
     crearOperacion,
     actualizarOperacionParcial,

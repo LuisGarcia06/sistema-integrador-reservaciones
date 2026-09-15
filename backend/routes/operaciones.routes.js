@@ -6,6 +6,13 @@ const { ROLES } = require('../constants/roles');
 const router = express.Router();
 
 router.get(
+    '/sugeridas',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA),
+    operacionesController.listarOperacionesSugeridas
+);
+
+router.get(
     '/',
     autenticarUsuario,
     autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA),

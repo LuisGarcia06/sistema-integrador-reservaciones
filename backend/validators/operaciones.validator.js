@@ -27,6 +27,10 @@ const filtrosOperacionesPermitidos = [
     'fecha'
 ];
 
+const filtrosOperacionesSugeridasPermitidos = [
+    'fecha'
+];
+
 const tieneCampo = (objeto, campo) => Object.prototype.hasOwnProperty.call(objeto, campo);
 
 const normalizarTexto = (valor) => (
@@ -293,13 +297,54 @@ const validarFiltrosOperaciones = (query) => {
     };
 };
 
+const validarFiltrosOperacionesSugeridas = (query) => {
+    const errores = [];
+    const filtros = {};
+    const parametrosEnviados = Object.keys(query);
+
+    parametrosEnviados.forEach((parametro) => {
+        if (!filtrosOperacionesSugeridasPermitidos.includes(parametro)) {
+            errores.push(`El filtro ${parametro} no está permitido`);
+        }
+    });
+
+    if (!tieneCampo(query, 'fecha')) {
+        errores.push('El filtro fecha es obligatorio');
+
+        return {
+            errores,
+            filtros
+        };
+    }
+
+    const fecha = normalizarTexto(query.fecha);
+
+    if (!esFechaValida(fecha)) {
+        errores.push('El filtro fecha debe tener formato YYYY-MM-DD y ser una fecha válida');
+
+        return {
+            errores,
+            filtros
+        };
+    }
+
+    filtros.fecha = fecha;
+
+    return {
+        errores,
+        filtros
+    };
+};
+
 module.exports = {
     camposOperacionPermitidos,
     camposObligatoriosOperacion,
     filtrosOperacionesPermitidos,
+    filtrosOperacionesSugeridasPermitidos,
     validarIdOperacion,
     validarDatosOperacion,
     validarDatosActualizacionOperacion,
     validarFiltrosOperaciones,
+    validarFiltrosOperacionesSugeridas,
     normalizarHora
 };

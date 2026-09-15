@@ -3,7 +3,8 @@ const {
     validarIdOperacion,
     validarDatosOperacion,
     validarDatosActualizacionOperacion,
-    validarFiltrosOperaciones
+    validarFiltrosOperaciones,
+    validarFiltrosOperacionesSugeridas
 } = require('../validators/operaciones.validator');
 const { obtenerRespuestaErrorPostgres } = require('../utils/dbErrors');
 
@@ -30,6 +31,35 @@ const listarOperaciones = async (req, res) => {
 
         return res.status(500).json({
             mensaje: 'Error al consultar operaciones'
+        });
+    }
+};
+
+const listarOperacionesSugeridas = async (req, res) => {
+    const { errores, filtros } = validarFiltrosOperacionesSugeridas(req.query || {});
+
+    if (errores.length > 0) {
+        return res.status(400).json({
+            mensaje: 'Filtros inválidos',
+            errores
+        });
+    }
+
+    try {
+        const resultado = await operacionesService.obtenerOperacionesSugeridas(filtros.fecha);
+
+        return res.status(200).json({
+            mensaje: 'Salidas detectadas por reservaciones consultadas correctamente',
+            fecha: resultado.fecha,
+            total_salidas_detectadas: resultado.total_salidas_detectadas,
+            reservaciones_sin_turno: resultado.reservaciones_sin_turno,
+            datos: resultado.datos
+        });
+    } catch (error) {
+        console.error('Error al consultar operaciones sugeridas:', error);
+
+        return res.status(500).json({
+            mensaje: 'Error al consultar operaciones sugeridas'
         });
     }
 };
@@ -154,6 +184,7 @@ const actualizarOperacionParcial = async (req, res) => {
 
 module.exports = {
     listarOperaciones,
+    listarOperacionesSugeridas,
     obtenerOperacionPorId,
     crearOperacion,
     actualizarOperacionParcial

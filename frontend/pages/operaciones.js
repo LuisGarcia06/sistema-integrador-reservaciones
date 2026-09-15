@@ -5,6 +5,7 @@
   const EMPTY_VALUE = "--";
   const FORM_MODE_CREATE = "create";
   const FORM_MODE_EDIT = "edit";
+  const FORM_MODE_SUGGESTION = "suggestion";
   const TRANSPORTE_FORM_CREATE = "create";
   const TRANSPORTE_FORM_EDIT = "edit";
   const MAX_PAX_GRUPO = 12;
@@ -18,6 +19,8 @@
   let organizacionRequestId = 0;
   let currentFecha = "";
   let operaciones = [];
+  let salidasSugeridas = [];
+  let reservacionesSinTurno = 0;
   let tours = [];
   let guias = [];
   let transportes = [];
@@ -35,6 +38,7 @@
   let selectedTransportOperacion = null;
   let selectedTransporte = null;
   let selectedOperacion = null;
+  let selectedSugerencia = null;
   let submitLoading = false;
   let transporteSubmitLoading = false;
   let reservacionTransporteLoadingId = null;
@@ -133,6 +137,18 @@
     const grupo = Number(numeroGrupo);
 
     return Number.isInteger(grupo) && grupo > 0 ? "Grupo " + grupo : EMPTY_VALUE;
+  }
+
+  function getSugerenciaGrupo(salida, numeroGrupo) {
+    return getArray(salida && salida.grupos).find(function (grupo) {
+      return Number(grupo && grupo.numero_grupo) === Number(numeroGrupo);
+    }) || null;
+  }
+
+  function getSugerenciaByIndex(index) {
+    const number = Number(index);
+
+    return Number.isInteger(number) && number >= 0 ? salidasSugeridas[number] || null : null;
   }
 
   function getOperacionContext(operacion) {
@@ -514,6 +530,93 @@
     ].join("");
   }
 
+  function renderSugerenciaGrupo(salidaIndex, grupo) {
+    const preparado = Boolean(grupo && grupo.preparado);
+    const numeroGrupo = Number(grupo && grupo.numero_grupo);
+    const detalles = preparado
+      ? [
+          grupo.hora_inicio ? "Hora " + formatTime(grupo.hora_inicio) : "",
+          grupo.guia ? "Guía " + grupo.guia : "Sin guía asignada",
+          grupo.estado || ""
+        ].filter(Boolean).join(" · ")
+      : "Pendiente de preparar";
+    const action = !preparado && isAdmin()
+      ? '<button class="btn btn-primary" type="button" data-prepare-suggestion="' + App.ui.escapeHtml(salidaIndex) + '" data-prepare-group="' + App.ui.escapeHtml(numeroGrupo) + '">Preparar ' + App.ui.escapeHtml(getGrupoLabel(numeroGrupo)) + "</button>"
+      : "";
+
+    return [
+      '<div class="operaciones-sugeridas-grupo">',
+      "<div>",
+      '<strong>' + escapeHtml(getGrupoLabel(numeroGrupo)) + "</strong>",
+      '<span class="card-text">' + escapeHtml(detalles) + "</span>",
+      "</div>",
+      '<span class="badge ' + (preparado ? "" : "badge-warning") + '">' + (preparado ? "Preparado" : "Pendiente") + "</span>",
+      action,
+      "</div>"
+    ].join("");
+  }
+
+  function renderSugerenciaCard(salida, index) {
+    const grupos = getArray(salida && salida.grupos)
+      .slice()
+      .sort(function (a, b) {
+        return Number(a && a.numero_grupo) - Number(b && b.numero_grupo);
+      })
+      .map(function (grupo) {
+        return renderSugerenciaGrupo(index, grupo);
+      })
+      .join("");
+    const alerta = salida && salida.excede_capacidad
+      ? '<p class="form-message is-error">Esta salida supera la capacidad operativa de 24 PAX. Excedente: ' + App.ui.escapeHtml(salida.pax_excedente || 0) + ' PAX.</p>'
+      : "";
+
+    return [
+      '<article class="card operaciones-sugeridas-card">',
+      '<div class="operaciones-sugeridas-card-header">',
+      "<div>",
+      "<h3>" + escapeHtml(salida && salida.tour) + "</h3>",
+      '<p class="card-text">' + escapeHtml(salida && salida.turno) + "</p>",
+      "</div>",
+      '<span class="badge badge-neutral">' + escapeHtml((salida && salida.grupos_necesarios) + " grupos necesarios") + "</span>",
+      "</div>",
+      '<div class="operaciones-sugeridas-metrics">',
+      '<span><strong>' + escapeHtml(salida && salida.total_reservaciones) + '</strong><small>Reservaciones</small></span>',
+      '<span><strong>' + escapeHtml(salida && salida.pax_total) + '</strong><small>PAX</small></span>',
+      '<span><strong>' + escapeHtml(salida && salida.grupos_necesarios) + '</strong><small>Grupos</small></span>',
+      "</div>",
+      alerta,
+      '<div class="operaciones-sugeridas-grupos">',
+      grupos,
+      "</div>",
+      "</article>"
+    ].join("");
+  }
+
+  function renderSugerencias() {
+    const warning = reservacionesSinTurno > 0
+      ? '<p class="form-message is-info">Hay ' + App.ui.escapeHtml(reservacionesSinTurno) + ' reservaciones sin turno y no pueden incluirse en las sugerencias.</p>'
+      : "";
+    const body = salidasSugeridas.length > 0
+      ? '<div class="operaciones-sugeridas-grid">' + salidasSugeridas.map(renderSugerenciaCard).join("") + "</div>"
+      : App.ui.emptyState(
+          "No hay salidas detectadas por reservaciones para esta fecha.",
+          "El listado manual de operaciones sigue disponible debajo."
+        );
+
+    return [
+      '<section class="operaciones-sugeridas-section">',
+      '<div class="operaciones-section-header">',
+      "<div>",
+      "<h2>Salidas detectadas por reservaciones</h2>",
+      '<p class="card-text">Sugerencias por fecha, tour y turno; el grupo se prepara manualmente.</p>',
+      "</div>",
+      "</div>",
+      warning,
+      body,
+      "</section>"
+    ].join("");
+  }
+
   function renderOperacionRow(operacion) {
     const idOperacion = getOperacionId(operacion);
     const dailyOperacion = getDailyOperacion(operacion);
@@ -566,6 +669,20 @@
       "<tbody>" + rows + "</tbody>",
       "</table>",
       "</div>"
+    ].join("");
+  }
+
+  function renderOperacionesPreparadas() {
+    return [
+      '<section class="operaciones-preparadas-section">',
+      '<div class="operaciones-section-header">',
+      "<div>",
+      "<h2>Operaciones preparadas</h2>",
+      '<p class="card-text">Grupos creados para la fecha seleccionada.</p>',
+      "</div>",
+      "</div>",
+      operaciones.length ? renderTable() : renderEmpty(),
+      "</section>"
     ].join("");
   }
 
@@ -1084,7 +1201,7 @@
       return;
     }
 
-    content.innerHTML = operaciones.length ? renderTable() : renderEmpty();
+    content.innerHTML = renderSugerencias() + renderOperacionesPreparadas();
   }
 
   function renderTourOptions(selectedTourId, includeInactiveSelection) {
@@ -1159,17 +1276,38 @@
 
   function renderDialog(mode, operacion) {
     const isEdit = mode === FORM_MODE_EDIT;
-    const fecha = isEdit && operacion ? operacion.fecha : currentFecha;
+    const isSuggestion = mode === FORM_MODE_SUGGESTION;
+    const sugerencia = isSuggestion ? selectedSugerencia : null;
+    const salidaSugerida = sugerencia && sugerencia.salida ? sugerencia.salida : null;
+    const numeroGrupoSugerido = sugerencia ? sugerencia.numeroGrupo : "";
+    const fecha = isSuggestion && salidaSugerida ? salidaSugerida.fecha : (isEdit && operacion ? operacion.fecha : currentFecha);
     const horaInicio = isEdit && operacion ? normalizeTimeForInput(operacion.hora_inicio) : "";
     const estado = isEdit && operacion ? String(operacion.estado || "") : "";
-    const selectedTourId = isEdit && operacion ? operacion.id_tour : "";
+    const selectedTourId = isSuggestion && salidaSugerida ? salidaSugerida.id_tour : (isEdit && operacion ? operacion.id_tour : "");
     const selectedGuiaId = isEdit && operacion ? operacion.id_guia : null;
-    const selectedTurno = isEdit && operacion ? operacion.turno : "";
-    const selectedGrupo = isEdit && operacion ? operacion.numero_grupo : "";
-    const title = isEdit ? "Editar operación" : "Nueva operación";
+    const selectedTurno = isSuggestion && salidaSugerida ? salidaSugerida.turno : (isEdit && operacion ? operacion.turno : "");
+    const selectedGrupo = isSuggestion ? numeroGrupoSugerido : (isEdit && operacion ? operacion.numero_grupo : "");
+    const title = isSuggestion ? "Preparar " + getGrupoLabel(numeroGrupoSugerido) : (isEdit ? "Editar operación" : "Nueva operación");
     const estadoField = isEdit
       ? '<label class="field operacion-estado-field" for="operacion-estado"><span class="field-label">Estado</span><input class="input" id="operacion-estado" name="estado" type="text" maxlength="30" value="' + App.ui.escapeHtml(estado) + '"></label>'
       : '<div class="operacion-estado-field operacion-turno-preview"><span class="field-label">Estado inicial</span><strong>Activa</strong></div>';
+    const contextFields = isSuggestion
+      ? [
+          '<input type="hidden" id="operacion-fecha" value="' + App.ui.escapeHtml(fecha || "") + '">',
+          '<input type="hidden" id="operacion-tour" value="' + App.ui.escapeHtml(selectedTourId || "") + '">',
+          '<input type="hidden" id="operacion-turno" value="' + App.ui.escapeHtml(selectedTurno || "") + '">',
+          '<input type="hidden" id="operacion-grupo" value="' + App.ui.escapeHtml(selectedGrupo || "") + '">',
+          '<div class="operacion-fixed-field"><span class="field-label">Fecha</span><strong>' + escapeHtml(fecha) + "</strong></div>",
+          '<div class="operacion-fixed-field"><span class="field-label">Tour</span><strong>' + escapeHtml(salidaSugerida && salidaSugerida.tour) + "</strong></div>",
+          '<div class="operacion-fixed-field"><span class="field-label">Turno</span><strong>' + escapeHtml(selectedTurno) + "</strong></div>",
+          '<div class="operacion-fixed-field"><span class="field-label">Grupo</span><strong>' + escapeHtml(getGrupoLabel(selectedGrupo)) + "</strong></div>"
+        ].join("")
+      : [
+          '<label class="field" for="operacion-fecha"><span class="field-label">Fecha</span><input class="input" id="operacion-fecha" name="fecha" type="date" value="' + App.ui.escapeHtml(fecha || "") + '"></label>',
+          '<label class="field" for="operacion-tour"><span class="field-label">Tour</span><select class="input" id="operacion-tour" name="id_tour">' + renderTourOptions(selectedTourId, isEdit) + "</select></label>",
+          '<label class="field" for="operacion-turno"><span class="field-label">Turno</span><select class="input" id="operacion-turno" name="turno">' + renderTurnoOptions(selectedTurno) + "</select></label>",
+          '<label class="field" for="operacion-grupo"><span class="field-label">Grupo</span><select class="input" id="operacion-grupo" name="numero_grupo">' + renderGrupoOptions(selectedGrupo) + "</select></label>"
+        ].join("");
 
     return [
       '<div class="operacion-dialog-backdrop" id="operacion-dialog" role="dialog" aria-modal="true" aria-labelledby="operacion-dialog-title">',
@@ -1177,18 +1315,15 @@
       '<div class="operacion-form-header">',
       '<div>',
       '<h2 id="operacion-dialog-title">' + App.ui.escapeHtml(title) + "</h2>",
-      '<p class="card-text">Selecciona turno y grupo; la hora solo indica el primer pickup.</p>',
+      '<p class="card-text">La hora la decide el usuario: primera hora de pickup del grupo.</p>',
       "</div>",
       '<button class="btn btn-ghost" id="operacion-close" type="button" aria-label="Cerrar formulario">Cerrar</button>',
       "</div>",
       '<input type="hidden" id="operacion-mode" value="' + App.ui.escapeHtml(mode) + '">',
       '<input type="hidden" id="operacion-id" value="' + App.ui.escapeHtml(isEdit && operacion ? getOperacionId(operacion) : "") + '">',
       '<div class="operacion-form-grid">',
-      '<label class="field" for="operacion-fecha"><span class="field-label">Fecha</span><input class="input" id="operacion-fecha" name="fecha" type="date" value="' + App.ui.escapeHtml(fecha || "") + '"></label>',
-      '<label class="field" for="operacion-tour"><span class="field-label">Tour</span><select class="input" id="operacion-tour" name="id_tour">' + renderTourOptions(selectedTourId, isEdit) + "</select></label>",
-      '<label class="field" for="operacion-turno"><span class="field-label">Turno</span><select class="input" id="operacion-turno" name="turno">' + renderTurnoOptions(selectedTurno) + "</select></label>",
-      '<label class="field" for="operacion-grupo"><span class="field-label">Grupo</span><select class="input" id="operacion-grupo" name="numero_grupo">' + renderGrupoOptions(selectedGrupo) + "</select></label>",
-      '<label class="field" for="operacion-hora"><span class="field-label">Hora de inicio / primer pickup</span><input class="input" id="operacion-hora" name="hora_inicio" type="time" value="' + App.ui.escapeHtml(horaInicio) + '"></label>',
+      contextFields,
+      '<label class="field" for="operacion-hora"><span class="field-label">Primera hora de pickup del grupo</span><input class="input" id="operacion-hora" name="hora_inicio" type="time" value="' + App.ui.escapeHtml(horaInicio) + '"></label>',
       '<label class="field" for="operacion-guia"><span class="field-label">Guía</span><select class="input" id="operacion-guia" name="id_guia">' + renderGuiaOptions(selectedGuiaId, isEdit) + "</select></label>",
       estadoField,
       "</div>",
@@ -1219,11 +1354,51 @@
     }
 
     selectedOperacion = mode === FORM_MODE_EDIT ? operacion : null;
+    selectedSugerencia = null;
     dialogHost.innerHTML = renderDialog(mode, operacion);
 
     bindFormEvents();
 
     const firstInput = document.getElementById("operacion-fecha");
+
+    if (firstInput) {
+      firstInput.focus();
+    }
+  }
+
+  function openSuggestionForm(salida, numeroGrupo) {
+    if (!isAdmin() || catalogosLoading) {
+      return;
+    }
+
+    if (!catalogosCargados) {
+      setMessage("No fue posible abrir el formulario porque tours y guías no están cargados.", "error");
+      return;
+    }
+
+    const grupo = getSugerenciaGrupo(salida, numeroGrupo);
+
+    if (!salida || !grupo || grupo.preparado) {
+      setMessage("El grupo seleccionado ya está preparado o no está disponible.", "error");
+      return;
+    }
+
+    const dialogHost = document.getElementById("operacion-dialog-host");
+
+    if (!dialogHost) {
+      return;
+    }
+
+    selectedOperacion = null;
+    selectedSugerencia = {
+      salida: salida,
+      numeroGrupo: Number(numeroGrupo)
+    };
+    dialogHost.innerHTML = renderDialog(FORM_MODE_SUGGESTION, null);
+
+    bindFormEvents();
+
+    const firstInput = document.getElementById("operacion-hora");
 
     if (firstInput) {
       firstInput.focus();
@@ -1238,6 +1413,7 @@
     const dialogHost = document.getElementById("operacion-dialog-host");
 
     selectedOperacion = null;
+    selectedSugerencia = null;
 
     if (dialogHost) {
       dialogHost.innerHTML = "";
@@ -1411,6 +1587,11 @@
       await loadOperaciones(currentFecha);
     } catch (error) {
       setFormMessage(getBackendMessage(error, "No fue posible guardar la operación. Intenta nuevamente."), "error");
+
+      if (error && error.status === 409) {
+        await loadOperaciones(currentFecha);
+      }
+
       setSubmitLoading(false);
     }
   }
@@ -2046,6 +2227,7 @@
 
     try {
       const responses = await Promise.all([
+        App.api.apiFetch("/api/operaciones/sugeridas?fecha=" + encodeURIComponent(fecha)),
         App.api.apiFetch("/api/operaciones?fecha=" + encodeURIComponent(fecha)),
         App.api.apiFetch("/api/daily/operativo?fecha=" + encodeURIComponent(fecha))
       ]);
@@ -2054,9 +2236,12 @@
         return;
       }
 
-      const daily = responses[1] || { operaciones: [] };
+      const sugeridas = responses[0] || { datos: [], reservaciones_sin_turno: 0 };
+      const daily = responses[2] || { operaciones: [] };
 
-      operaciones = getArrayResponse(responses[0]).slice().sort(compareOperaciones);
+      salidasSugeridas = getArrayResponse(sugeridas);
+      reservacionesSinTurno = Number(sugeridas.reservaciones_sin_turno) || 0;
+      operaciones = getArrayResponse(responses[1]).slice().sort(compareOperaciones);
       operacionesDailyById = new Map();
 
       getArray(daily.operaciones).forEach(function (operacionDaily) {
@@ -2072,6 +2257,8 @@
       const message = getBackendMessage(error, "No fue posible cargar operaciones. Intenta nuevamente.");
 
       operaciones = [];
+      salidasSugeridas = [];
+      reservacionesSinTurno = 0;
       operacionesDailyById = new Map();
       setMessage(message, "error");
 
@@ -2115,9 +2302,18 @@
         const createButton = event.target.closest ? event.target.closest("[data-open-create]") : null;
         const editButton = event.target.closest ? event.target.closest("[data-edit-operacion]") : null;
         const transportesButton = event.target.closest ? event.target.closest("[data-manage-transportes]") : null;
+        const prepareButton = event.target.closest ? event.target.closest("[data-prepare-suggestion]") : null;
 
         if (createButton) {
           openForm(FORM_MODE_CREATE, null);
+          return;
+        }
+
+        if (prepareButton) {
+          openSuggestionForm(
+            getSugerenciaByIndex(prepareButton.dataset.prepareSuggestion),
+            prepareButton.dataset.prepareGroup
+          );
           return;
         }
 
@@ -2168,12 +2364,15 @@
       organizacionRequestId += 1;
       currentFecha = "";
       operaciones = [];
+      salidasSugeridas = [];
+      reservacionesSinTurno = 0;
       operacionesDailyById = new Map();
       transportes = [];
       organizacionDaily = null;
       operadores = [];
       vehiculos = [];
       selectedOperacion = null;
+      selectedSugerencia = null;
       selectedTransportOperacion = null;
       selectedTransporte = null;
       submitLoading = false;
