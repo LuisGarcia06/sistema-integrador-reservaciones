@@ -4,6 +4,7 @@ const pool = require('./config/database');
 const authRoutes = require('./routes/auth.routes');
 const bitacoraRoutes = require('./routes/bitacora.routes');
 const dailyRoutes = require('./routes/daily.routes');
+const dashboardRoutes = require('./routes/dashboard.routes');
 const guiasRoutes = require('./routes/guias.routes');
 const operadoresRoutes = require('./routes/operadores.routes');
 const operacionesRoutes = require('./routes/operaciones.routes');
@@ -60,6 +61,7 @@ app.use('/app', express.static(frontendPath, {
 app.use('/api/auth', authRoutes);
 app.use('/api/bitacora', bitacoraRoutes);
 app.use('/api/daily', dailyRoutes);
+app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/guias', guiasRoutes);
 app.use('/api/operadores', operadoresRoutes);
 app.use('/api/operaciones', operacionesRoutes);
