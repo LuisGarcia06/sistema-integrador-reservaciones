@@ -37,6 +37,18 @@ const obtenerRespuestaErrorPostgres = (error) => {
 
     if (
         error.code === '23505' &&
+        error.constraint === 'uq_transportes_operacion_operacion'
+    ) {
+        return {
+            status: 409,
+            body: {
+                mensaje: 'Esta operación ya tiene un transporte asignado.'
+            }
+        };
+    }
+
+    if (
+        error.code === '23505' &&
         error.constraint === 'uq_transportes_operacion_operacion_vehiculo'
     ) {
         return {

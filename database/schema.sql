@@ -162,6 +162,9 @@ CREATE TABLE transportes_operacion (
         FOREIGN KEY (id_operador)
         REFERENCES operadores(id_operador),
 
+    CONSTRAINT uq_transportes_operacion_operacion
+        UNIQUE (id_operacion_tour),
+
     CONSTRAINT uq_transportes_operacion_operacion_vehiculo
         UNIQUE (id_operacion_tour, id_vehiculo)
 );
