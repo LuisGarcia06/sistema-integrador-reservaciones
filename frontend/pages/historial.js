@@ -167,10 +167,6 @@
       return "badge badge-danger";
     }
 
-    if (estado === "Programada") {
-      return "badge";
-    }
-
     return "badge badge-neutral";
   }
 

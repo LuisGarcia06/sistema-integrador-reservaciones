@@ -857,11 +857,6 @@
         '<div id="catalogos-host">',
         renderCatalogPanel(renderLoading(getConfig())),
         "</div>",
-        '<section class="settings-grid catalogos-upcoming">',
-        '<article class="card stack"><span class="badge badge-neutral">Próximamente</span><h2>Perfil</h2><p class="card-text">Espacio reservado para datos de usuario.</p></article>',
-        '<article class="card stack"><span class="badge badge-neutral">Próximamente</span><h2>Notificaciones</h2><p class="card-text">Espacio reservado para preferencias futuras.</p></article>',
-        '<article class="card stack"><span class="badge badge-neutral">Próximamente</span><h2>Integraciones</h2><p class="card-text">Las integraciones externas se abordarán en una fase posterior.</p></article>',
-        "</section>",
         "</section>"
       ].join("");
     },

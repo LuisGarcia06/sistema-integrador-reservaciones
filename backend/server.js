@@ -1,6 +1,5 @@
 const express = require('express');
 const path = require('path');
-const pool = require('./config/database');
 const authRoutes = require('./routes/auth.routes');
 const bitacoraRoutes = require('./routes/bitacora.routes');
 const dailyRoutes = require('./routes/daily.routes');
@@ -75,23 +74,6 @@ app.use('/api/vehiculos', vehiculosRoutes);
 
 app.get('/', (req, res) => {
     res.send('API del Sistema Integrador de Reservaciones funcionando');
-});
-
-app.get('/api/test-db', async (req, res) => {
-    try {
-        const result = await pool.query('SELECT current_database(), NOW()');
-
-        res.json({
-            mensaje: 'Conexión con PostgreSQL correcta',
-            datos: result.rows[0]
-        });
-    } catch (error) {
-        console.error('Error de conexión:', error);
-
-        res.status(500).json({
-            mensaje: 'Error al conectar con PostgreSQL'
-        });
-    }
 });
 
 app.listen(PORT, HOST, () => {

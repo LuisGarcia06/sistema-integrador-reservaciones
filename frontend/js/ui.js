@@ -41,7 +41,7 @@
   function placeholder(title, text) {
     return [
       '<section class="placeholder-panel">',
-      '<span class="placeholder-label">Estructura temporal</span>',
+      '<span class="placeholder-label">Sección no disponible</span>',
       "<h2>" + escapeHtml(title) + "</h2>",
       '<p class="card-text">' + escapeHtml(text) + "</p>",
       "</section>"
