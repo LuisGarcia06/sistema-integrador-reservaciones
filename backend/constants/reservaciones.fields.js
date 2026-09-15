@@ -8,6 +8,7 @@ const camposObligatoriosReservacion = [
     'pax',
     'pickup_place',
     'pickup_time',
+    'turno',
     'precio_total',
     'estado'
 ];
@@ -25,6 +26,7 @@ const camposEditablesReservacion = [
     'ninos',
     'pickup_place',
     'pickup_time',
+    'turno',
     'precio_total',
     'deposito',
     'saldo',

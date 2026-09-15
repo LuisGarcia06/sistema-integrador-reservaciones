@@ -28,6 +28,7 @@ const columnasReservacion = `
     r.ninos,
     r.pickup_place,
     r.pickup_time,
+    r.turno,
     r.precio_total,
     r.deposito,
     r.saldo,
@@ -55,6 +56,7 @@ const columnasReservacionBase = `
     ninos,
     pickup_place,
     pickup_time,
+    turno,
     precio_total,
     deposito,
     saldo,
@@ -106,6 +108,7 @@ const insertarReservacionConDb = async (db, reservacion) => {
             ninos,
             pickup_place,
             pickup_time,
+            turno,
             precio_total,
             deposito,
             saldo,
@@ -122,6 +125,7 @@ const insertarReservacionConDb = async (db, reservacion) => {
             $6, $7, $8, $9, $10,
             $11, $12, $13, $14, $15,
             $16, $17, $18, $19, $20,
+            $21,
             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         )
         RETURNING
@@ -141,6 +145,7 @@ const insertarReservacionConDb = async (db, reservacion) => {
         reservacion.ninos,
         reservacion.pickup_place,
         reservacion.pickup_time,
+        reservacion.turno,
         reservacion.precio_total,
         reservacion.deposito,
         reservacion.saldo,
@@ -254,6 +259,14 @@ const validarCompatibilidadReservacionTransporte = (reservacion, transporteOpera
         return 'La reservación y el transporte deben corresponder al mismo tour';
     }
 
+    if (!reservacion.turno) {
+        return 'La reservación debe tener un turno asignado antes de organizarla.';
+    }
+
+    if (reservacion.turno !== transporteOperacion.turno) {
+        return 'El turno de la reservación debe coincidir con el turno de la operación asignada.';
+    }
+
     return null;
 };
 
@@ -291,12 +304,13 @@ const validarCapacidadPatchAsignado = async (db, reservacionActual, reservacionF
 
     const cambiaFecha = tieneCambio(cambios, 'fecha');
     const cambiaTour = tieneCambio(cambios, 'id_tour');
+    const cambiaTurno = tieneCambio(cambios, 'turno');
     const cambiaPaxOperativo = (
         capacidadService.obtenerPaxOperativoReservacion(reservacionActual)
         !== capacidadService.obtenerPaxOperativoReservacion(reservacionFinal)
     );
 
-    if (!cambiaFecha && !cambiaTour && !cambiaPaxOperativo) {
+    if (!cambiaFecha && !cambiaTour && !cambiaTurno && !cambiaPaxOperativo) {
         return;
     }
 
@@ -562,6 +576,11 @@ const obtenerReservaciones = async (filtros = {}) => {
     if (filtros.id_tour) {
         values.push(filtros.id_tour);
         condiciones.push(`r.id_tour = $${values.length}`);
+    }
+
+    if (filtros.turno) {
+        values.push(filtros.turno);
+        condiciones.push(`r.turno = $${values.length}`);
     }
 
     if (filtros.estado) {

@@ -807,7 +807,7 @@ body.is-login-page .page-root {
 
 .reservaciones-filter-bar {
   display: grid;
-  grid-template-columns: repeat(4, minmax(150px, 1fr)) repeat(2, minmax(180px, 1fr));
+  grid-template-columns: repeat(5, minmax(140px, 1fr)) repeat(2, minmax(180px, 1fr));
 }
 
 .reservaciones-filter-actions,
@@ -838,7 +838,7 @@ body.is-login-page .page-root {
 }
 
 .reservaciones-table {
-  min-width: 1180px;
+  min-width: 1260px;
 }
 
 .reservaciones-table th,

@@ -193,6 +193,7 @@ CREATE TABLE reservaciones (
 
     pickup_place VARCHAR(120) NOT NULL,
     pickup_time TIME NOT NULL,
+    turno VARCHAR(10),
 
     precio_total NUMERIC(10,2) NOT NULL,
     deposito NUMERIC(10,2),
@@ -222,7 +223,10 @@ CREATE TABLE reservaciones (
 
     CONSTRAINT fk_reservaciones_transportes_operacion
         FOREIGN KEY (id_transporte_operacion)
-        REFERENCES transportes_operacion(id_transporte_operacion)
+        REFERENCES transportes_operacion(id_transporte_operacion),
+
+    CONSTRAINT chk_reservaciones_turno
+        CHECK (turno IS NULL OR turno IN ('Mañana', 'Tarde'))
 );
 
 

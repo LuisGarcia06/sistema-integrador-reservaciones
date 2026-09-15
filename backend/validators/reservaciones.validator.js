@@ -13,6 +13,7 @@ const filtrosReservacionesPermitidos = [
     'fecha_desde',
     'fecha_hasta',
     'id_tour',
+    'turno',
     'estado',
     'id_plataforma'
 ];
@@ -30,6 +31,7 @@ const camposResultadoReservacion = [
     'ninos',
     'pickup_place',
     'pickup_time',
+    'turno',
     'precio_total',
     'deposito',
     'saldo',
@@ -47,11 +49,13 @@ const camposValidacionCreacion = [
     'pax',
     'fecha',
     'pickup_time',
+    'turno',
     'ninos',
     'precio_total',
     'deposito',
     'saldo',
-    'tipo_cambio'
+    'tipo_cambio',
+    'estado'
 ];
 
 const esValorVacio = (valor) => (
@@ -138,6 +142,10 @@ const esHoraValida = (valor) => (
     /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/.test(valor)
 );
 
+const esTurnoValido = (valor) => valor === 'Mañana' || valor === 'Tarde';
+
+const ESTADO_INICIAL_RESERVACION = 'Pendiente';
+
 const obtenerOpcional = (valor) => {
     if (esValorVacio(valor)) {
         return null;
@@ -198,6 +206,18 @@ const validarFecha = (valor) => (
 
 const validarHora = (valor) => (
     esHoraValida(valor)
+        ? resultadoValido(valor)
+        : resultadoInvalido(valor)
+);
+
+const validarTurno = (valor) => (
+    esTurnoValido(valor)
+        ? resultadoValido(valor)
+        : resultadoInvalido(valor)
+);
+
+const validarEstadoCreacion = (valor) => (
+    valor === ESTADO_INICIAL_RESERVACION
         ? resultadoValido(valor)
         : resultadoInvalido(valor)
 );
@@ -298,6 +318,12 @@ const reglasReservacion = {
         mensajeCreacion: 'El campo pickup_time debe ser una hora válida',
         mensajeActualizacion: 'El campo pickup_time debe ser una hora válida'
     },
+    turno: {
+        transformarCreacion: validarTurno,
+        transformarActualizacion: validarTurno,
+        mensajeCreacion: 'El campo turno debe ser Mañana o Tarde',
+        mensajeActualizacion: 'El campo turno debe ser Mañana o Tarde'
+    },
     precio_total: {
         transformarCreacion: convertirCon(convertirNumero),
         transformarActualizacion: convertirCon(convertirNumero),
@@ -339,8 +365,9 @@ const reglasReservacion = {
         mensajeActualizacion: 'El campo observaciones debe ser texto'
     },
     estado: {
-        transformarCreacion: conservarValor,
+        transformarCreacion: validarEstadoCreacion,
         transformarActualizacion: validarTextoNoVacio,
+        mensajeCreacion: 'El estado inicial de una reservación debe ser Pendiente',
         mensajeActualizacion: 'El campo estado no puede estar vacío'
     }
 };
@@ -452,6 +479,23 @@ const reglasFiltrosReservaciones = {
             return {
                 valido: true,
                 valor: idTour
+            };
+        }
+    },
+    turno: {
+        validar: (valor) => {
+            const turno = normalizarTextoFiltro(valor);
+
+            if (!esTurnoValido(turno)) {
+                return {
+                    valido: false,
+                    mensaje: 'El filtro turno debe ser Mañana o Tarde'
+                };
+            }
+
+            return {
+                valido: true,
+                valor: turno
             };
         }
     },

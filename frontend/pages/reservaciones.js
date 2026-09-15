@@ -3,12 +3,19 @@
   App.pages = App.pages || {};
 
   const EMPTY_VALUE = "—";
-  const ESTADO_PROGRAMADA = "Programada";
+  const ESTADO_PENDIENTE = "Pendiente";
+  const ESTADO_CONFIRMADA = "Confirmada";
+  const ESTADO_ACTIVA = "Activa";
   const ESTADO_CANCELADA = "Cancelada";
+  const ESTADO_COMPLETADA = "Completada";
+  const TURNO_MANANA = "Mañana";
+  const TURNO_TARDE = "Tarde";
+  const TURNOS = [TURNO_MANANA, TURNO_TARDE];
+  const TURNO_SIN_CLASIFICAR = "Sin clasificar";
   const FORM_CREATE = "create";
   const FORM_EDIT = "edit";
   const FORM_DETAIL = "detail";
-  const COLUMN_COUNT = 10;
+  const COLUMN_COUNT = 11;
   const MONEY_FORMATTER = new Intl.NumberFormat("es-MX", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
@@ -20,7 +27,7 @@
   let tours = [];
   let paises = [];
   let plataformas = [];
-  let estadosConocidos = new Set([ESTADO_PROGRAMADA, ESTADO_CANCELADA]);
+  let estadosConocidos = new Set([ESTADO_PENDIENTE, ESTADO_CONFIRMADA, ESTADO_ACTIVA, ESTADO_CANCELADA, ESTADO_COMPLETADA]);
   let selectedReservacion = null;
   let submitLoading = false;
   let actionLoadingId = null;
@@ -34,6 +41,7 @@
     return {
       form: document.getElementById("reservaciones-filtros"),
       fecha: document.getElementById("reservaciones-fecha"),
+      turno: document.getElementById("reservaciones-turno"),
       tour: document.getElementById("reservaciones-tour"),
       estado: document.getElementById("reservaciones-estado"),
       plataforma: document.getElementById("reservaciones-plataforma"),
@@ -217,6 +225,7 @@
     const elements = getElements();
     const controls = [
       elements.fecha,
+      elements.turno,
       elements.tour,
       elements.estado,
       elements.plataforma,
@@ -329,23 +338,47 @@
     return rows.join("");
   }
 
+  function renderTurnoOptions(selectedValue, includeAll, includeUnclassified) {
+    const selected = selectedValue === null || selectedValue === undefined ? "" : String(selectedValue);
+    const rows = [];
+
+    if (includeAll) {
+      rows.push('<option value="">Todos</option>');
+    } else if (includeUnclassified) {
+      rows.push('<option value="">' + App.ui.escapeHtml(TURNO_SIN_CLASIFICAR) + "</option>");
+    } else {
+      rows.push('<option value="">Selecciona turno</option>');
+    }
+
+    TURNOS.forEach(function (turno) {
+      rows.push(
+        '<option value="' + App.ui.escapeHtml(turno) + '"' + (turno === selected ? " selected" : "") + ">" +
+        App.ui.escapeHtml(turno) +
+        "</option>"
+      );
+    });
+
+    return rows.join("");
+  }
+
+  function getTurnoLabel(reservacion) {
+    const turno = reservacion && reservacion.turno ? String(reservacion.turno) : "";
+    return turno || TURNO_SIN_CLASIFICAR;
+  }
+
+  function getTurnoBadgeClass(reservacion) {
+    return reservacion && reservacion.turno ? "badge" : "badge badge-neutral";
+  }
+
   function renderEstadoOptions(selectedValue) {
     const selected = selectedValue || "";
     const ordered = Array.from(estadosConocidos).sort(function (a, b) {
-      if (a === ESTADO_PROGRAMADA) {
-        return -1;
-      }
+      const preferred = [ESTADO_PENDIENTE, ESTADO_CONFIRMADA, ESTADO_ACTIVA, ESTADO_CANCELADA, ESTADO_COMPLETADA];
+      const indexA = preferred.indexOf(a);
+      const indexB = preferred.indexOf(b);
 
-      if (b === ESTADO_PROGRAMADA) {
-        return 1;
-      }
-
-      if (a === ESTADO_CANCELADA) {
-        return b === ESTADO_PROGRAMADA ? 1 : -1;
-      }
-
-      if (b === ESTADO_CANCELADA) {
-        return a === ESTADO_PROGRAMADA ? -1 : 1;
+      if (indexA !== -1 || indexB !== -1) {
+        return (indexA === -1 ? preferred.length : indexA) - (indexB === -1 ? preferred.length : indexB);
       }
 
       return a.localeCompare(b, "es");
@@ -386,6 +419,7 @@
   function hasActiveFilters(elements) {
     return Boolean(
       (elements.fecha && elements.fecha.value) ||
+      (elements.turno && elements.turno.value) ||
       (elements.tour && elements.tour.value) ||
       (elements.estado && elements.estado.value) ||
       (elements.plataforma && elements.plataforma.value) ||
@@ -407,6 +441,10 @@
 
     if (elements.fecha && elements.fecha.value) {
       params.set("fecha", elements.fecha.value);
+    }
+
+    if (elements.turno && elements.turno.value) {
+      params.set("turno", elements.turno.value);
     }
 
     if (elements.tour && elements.tour.value) {
@@ -462,6 +500,7 @@
         '<tr class="' + (isCancelada(reservacion) ? "is-cancelada" : "") + '">',
         '<td><strong class="reservaciones-primary-text">' + escapeValue(reservacion && reservacion.codigo) + "</strong></td>",
         "<td>" + escapeValue(formatDate(reservacion && reservacion.fecha)) + "</td>",
+        '<td><span class="' + getTurnoBadgeClass(reservacion) + '">' + escapeValue(getTurnoLabel(reservacion)) + "</span></td>",
         "<td>" + escapeValue(reservacion && reservacion.nombre_cliente) + "</td>",
         "<td>" + escapeValue(getTourName(reservacion)) + "</td>",
         '<td class="reservaciones-number-cell">' + escapeValue(reservacion && reservacion.pax) + "</td>",
@@ -622,10 +661,11 @@
     const isDetail = mode === FORM_DETAIL;
     const readOnly = isDetail;
     const title = isCreate ? "Nueva reservación" : (mode === FORM_EDIT ? "Editar reservación" : "Detalle de reservación");
-    const estado = isCreate ? ESTADO_PROGRAMADA : (reservacion && reservacion.estado ? reservacion.estado : EMPTY_VALUE);
+    const estado = isCreate ? ESTADO_PENDIENTE : (reservacion && reservacion.estado ? reservacion.estado : EMPTY_VALUE);
     const selectedTourId = reservacion ? reservacion.id_tour : "";
     const selectedPaisId = reservacion ? reservacion.id_pais : "";
     const selectedPlataformaId = reservacion ? reservacion.id_plataforma : "";
+    const selectedTurno = reservacion ? reservacion.turno : "";
 
     return [
       '<div class="reservaciones-dialog-backdrop" id="reservaciones-dialog" role="dialog" aria-modal="true" aria-labelledby="reservaciones-dialog-title">',
@@ -642,6 +682,7 @@
       renderSection("Datos de reserva", [
         textField("reserva-codigo", "Código *", reservacion && reservacion.codigo, 'type="text" maxlength="30"', readOnly),
         textField("reserva-fecha", "Fecha *", normalizeDate(reservacion && reservacion.fecha), 'type="date"', readOnly),
+        selectField("reserva-turno", "Turno *", renderTurnoOptions(selectedTurno, false, !isCreate && !selectedTurno), readOnly),
         selectField("reserva-tour", "Tour *", renderTourOptions(selectedTourId, !isCreate, false), readOnly),
         selectField("reserva-pais", "País *", renderPaisOptions(selectedPaisId, false), readOnly),
         selectField("reserva-plataforma", "Plataforma *", renderPlataformaOptions(selectedPlataformaId, false), readOnly)
@@ -797,6 +838,7 @@
     const payload = {
       codigo: getInputValue("reserva-codigo").trim(),
       fecha: getInputValue("reserva-fecha"),
+      turno: getInputValue("reserva-turno"),
       id_tour: Number(getInputValue("reserva-tour")),
       id_pais: Number(getInputValue("reserva-pais")),
       id_plataforma: Number(getInputValue("reserva-plataforma")),
@@ -817,7 +859,7 @@
     };
 
     if (mode === FORM_CREATE) {
-      payload.estado = ESTADO_PROGRAMADA;
+      payload.estado = ESTADO_PENDIENTE;
     }
 
     if (!payload.codigo) {
@@ -830,6 +872,14 @@
 
     if (!Number.isInteger(payload.id_tour) || payload.id_tour <= 0) {
       errores.push("Selecciona un tour.");
+    }
+
+    if (mode === FORM_CREATE && !TURNOS.includes(payload.turno)) {
+      errores.push("Selecciona un turno.");
+    }
+
+    if (mode === FORM_EDIT && payload.turno && !TURNOS.includes(payload.turno)) {
+      errores.push("Selecciona un turno válido.");
     }
 
     if (!Number.isInteger(payload.id_pais) || payload.id_pais <= 0) {
@@ -1067,6 +1117,7 @@
     if (elements.limpiar) {
       elements.limpiar.addEventListener("click", function () {
         elements.fecha.value = "";
+        elements.turno.value = "";
         elements.tour.value = "";
         elements.estado.value = "";
         elements.plataforma.value = "";
@@ -1095,6 +1146,7 @@
         '<section class="page reservaciones-page">',
         '<form class="filter-bar reservaciones-filter-bar" id="reservaciones-filtros">',
         '<label class="field" for="reservaciones-fecha"><span class="field-label">Fecha</span><input class="input" id="reservaciones-fecha" name="fecha" type="date"></label>',
+        '<label class="field" for="reservaciones-turno"><span class="field-label">Turno</span><select class="input" id="reservaciones-turno" name="turno">' + renderTurnoOptions("", true, false) + "</select></label>",
         '<label class="field" for="reservaciones-tour"><span class="field-label">Tour</span><select class="input" id="reservaciones-tour" name="id_tour"><option value="">Todos</option></select></label>',
         '<label class="field" for="reservaciones-estado"><span class="field-label">Estado</span><select class="input" id="reservaciones-estado" name="estado">' + renderEstadoOptions("") + "</select></label>",
         '<label class="field" for="reservaciones-plataforma"><span class="field-label">Plataforma</span><select class="input" id="reservaciones-plataforma" name="id_plataforma"><option value="">Todas</option></select></label>',
@@ -1112,6 +1164,7 @@
         "<thead><tr>",
         '<th scope="col">Código</th>',
         '<th scope="col">Fecha</th>',
+        '<th scope="col">Turno</th>',
         '<th scope="col">Cliente</th>',
         '<th scope="col">Tour</th>',
         '<th scope="col">PAX</th>',
@@ -1137,7 +1190,7 @@
       tours = [];
       paises = [];
       plataformas = [];
-      estadosConocidos = new Set([ESTADO_PROGRAMADA, ESTADO_CANCELADA]);
+      estadosConocidos = new Set([ESTADO_PENDIENTE, ESTADO_CONFIRMADA, ESTADO_ACTIVA, ESTADO_CANCELADA, ESTADO_COMPLETADA]);
       selectedReservacion = null;
       submitLoading = false;
       actionLoadingId = null;
