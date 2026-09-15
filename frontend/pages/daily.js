@@ -3,6 +3,7 @@
   App.pages = App.pages || {};
 
   const EMPTY_VALUE = "—";
+  const MAX_PAX_GRUPO = 12;
   const MONEY_FORMATTER = new Intl.NumberFormat("es-MX", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
@@ -145,6 +146,50 @@
     return Number.isFinite(number) ? String(number) : "0";
   }
 
+  function getGrupoLabel(numeroGrupo) {
+    const grupo = Number(numeroGrupo);
+
+    return Number.isInteger(grupo) && grupo > 0 ? "Grupo " + grupo : EMPTY_VALUE;
+  }
+
+  function getOperacionGrupoTitle(operacion) {
+    return getJoinedText([
+      operacion && operacion.tour,
+      getGrupoLabel(operacion && operacion.numero_grupo)
+    ], EMPTY_VALUE);
+  }
+
+  function getOperacionContext(operacion) {
+    return getJoinedText([
+      operacion && operacion.turno,
+      getGrupoLabel(operacion && operacion.numero_grupo)
+    ], EMPTY_VALUE);
+  }
+
+  function getPaxGrupoText(value) {
+    return toMetric(value) + " / " + MAX_PAX_GRUPO;
+  }
+
+  function isGrupoCompleto(value) {
+    const total = Number(value);
+
+    return Number.isFinite(total) && total >= MAX_PAX_GRUPO;
+  }
+
+  function getReservacionId(reservacion) {
+    return Number(reservacion && reservacion.id_reservacion) || 0;
+  }
+
+  function compareReservacionesByPickup(a, b) {
+    return String(a && a.pickup_time || "").localeCompare(String(b && b.pickup_time || "")) ||
+      String(a && a.pickup_place || "").localeCompare(String(b && b.pickup_place || ""), "es", { sensitivity: "base" }) ||
+      (getReservacionId(a) - getReservacionId(b));
+  }
+
+  function sortReservacionesByPickup(reservaciones) {
+    return getArray(reservaciones).slice().sort(compareReservacionesByPickup);
+  }
+
   function setText(id, text) {
     const element = document.getElementById(id);
 
@@ -227,7 +272,7 @@
           ? "Cargando Daily operativo"
           : hasDailyError
             ? "No disponible por error de carga"
-            : "No hay transportes preparados para imprimir";
+            : "No hay grupos con transporte preparado para imprimir";
     }
 
     if (pdfButton) {
@@ -242,7 +287,7 @@
               ? "Cargando Daily operativo"
               : hasDailyError
                 ? "No disponible por error de carga"
-                : "No hay transportes preparados para exportar";
+                : "No hay grupos con transporte preparado para exportar";
     }
   }
 
@@ -292,7 +337,7 @@
       '<span class="daily-spinner" aria-hidden="true"></span>',
       "<div>",
       "<h2>Cargando Daily Operativo</h2>",
-      '<p class="card-text">Consultando operaciones, transportes y reservaciones de la fecha.</p>',
+      '<p class="card-text">Consultando grupos, transporte y reservaciones de la fecha.</p>',
       "</div>",
       "</section>"
     ].join("");
@@ -354,7 +399,7 @@
   }
 
   function renderReservacionesTable(reservaciones) {
-    const rows = getArray(reservaciones).map(renderReservacionRow).join("");
+    const rows = sortReservacionesByPickup(reservaciones).map(renderReservacionRow).join("");
 
     return renderTable(
       ["Nombre", "PAX", "Hotel / Pickup", "Hab", "# Cel", "Horario", "Total", "Depósito", "Saldo", "Vendido por", "Observaciones"],
@@ -408,7 +453,7 @@
   }
 
   function renderPrintReservacionesTable(reservaciones) {
-    const rows = getArray(reservaciones).map(renderPrintReservacionRow).join("");
+    const rows = sortReservacionesByPickup(reservaciones).map(renderPrintReservacionRow).join("");
 
     if (!rows) {
       return [
@@ -455,6 +500,7 @@
 
   function renderPrintSheet(daily, operacion, transporte) {
     const fecha = daily && daily.fecha ? daily.fecha : currentFecha;
+    const paxActivos = transporte && transporte.total_pax_activos;
     const observacionesOperador = transporte && typeof transporte.observaciones_operador === "string"
       ? transporte.observaciones_operador.trim()
       : "";
@@ -468,18 +514,18 @@
       "</div>",
       '<div class="daily-print-summary-block">',
       renderPrintMeta("Fecha", formatPrintDate(fecha)),
-      renderPrintMeta("PAX activos", toMetric(transporte && transporte.total_pax_activos)),
+      renderPrintMeta("PAX activos", getPaxGrupoText(paxActivos)),
       "</div>",
       "</header>",
       '<div class="daily-print-meta-grid">',
-      renderPrintMeta("Tour", operacion && operacion.tour),
-      renderPrintMeta("Hora", formatTime(operacion && operacion.hora_inicio)),
+      renderPrintMeta("Tour", getOperacionGrupoTitle(operacion)),
       renderPrintMeta("Turno", operacion && operacion.turno),
+      renderPrintMeta("Grupo", getGrupoLabel(operacion && operacion.numero_grupo)),
+      renderPrintMeta("Primera hora de pickup", formatTime(operacion && operacion.hora_inicio)),
       renderPrintMeta("Guía", operacion && operacion.guia),
       renderPrintMeta("Vehículo", transporte && transporte.vehiculo),
-      renderPrintMeta("Color", transporte && transporte.color),
-      renderPrintMeta("Placas", transporte && transporte.placas),
       renderPrintMeta("Operador", transporte && transporte.operador),
+      renderPrintMeta("PAX activos", getPaxGrupoText(paxActivos)),
       "</div>",
       renderPrintReservacionesTable(transporte && transporte.reservaciones),
       '<section class="daily-print-operator-notes">',
@@ -556,9 +602,7 @@
     const capacidad = transporte && transporte.capacidad !== null && transporte.capacidad !== undefined && transporte.capacidad !== ""
       ? transporte.capacidad
       : null;
-    const paxText = capacidad === null
-      ? toMetric(transporte && transporte.total_pax_activos) + " PAX"
-      : toMetric(transporte && transporte.total_pax_activos) + " / " + capacidad + " PAX";
+    const paxText = getPaxGrupoText(transporte && transporte.total_pax_activos);
     const vehiculoDetalle = getJoinedText(
       [transporte && transporte.color, transporte && transporte.placas],
       "Datos del vehículo pendientes"
@@ -576,6 +620,7 @@
       "</div>",
       '<div class="daily-badges">',
       '<span class="badge">' + escapeHtml(paxText) + "</span>",
+      isGrupoCompleto(transporte && transporte.total_pax_activos) ? '<span class="badge badge-warning">Completo</span>' : "",
       '<span class="badge badge-neutral">' + escapeHtml(transporte && transporte.estado) + "</span>",
       "</div>",
       "</div>",
@@ -596,6 +641,7 @@
 
   function renderOperacion(operacion) {
     const transportes = getArray(operacion && operacion.transportes);
+    const paxActivos = operacion && operacion.total_pax_activos;
 
     return [
       '<article class="card daily-operation-card">',
@@ -603,24 +649,23 @@
       "<div>",
       '<p class="field-label">Tour</p>',
       "<h2>" + escapeHtml(operacion && operacion.tour) + "</h2>",
-      '<p class="card-text">' +
-        escapeHtml(formatTime(operacion && operacion.hora_inicio)) +
-        " · " +
-        escapeHtml(operacion && operacion.turno) +
-      "</p>",
+      '<p class="card-text">' + escapeHtml(getOperacionContext(operacion)) + "</p>",
       "</div>",
       '<div class="daily-operation-summary">',
       '<span class="badge' + getEstadoBadgeClass(operacion && operacion.estado) + '">' + escapeHtml(operacion && operacion.estado) + "</span>",
-      '<strong>' + escapeHtml(toMetric(operacion && operacion.total_pax_activos)) + " PAX activos</strong>",
+      '<strong>' + escapeHtml(getPaxGrupoText(paxActivos)) + " PAX activos</strong>",
+      isGrupoCompleto(paxActivos) ? '<span class="badge badge-warning">Completo</span>' : "",
       "</div>",
       "</div>",
       '<div class="daily-operation-meta">',
+      renderTransporteMeta("Primera hora de pickup", formatTime(operacion && operacion.hora_inicio)),
       renderTransporteMeta("Guía", operacion && operacion.guia ? operacion.guia : "Sin guía asignada"),
-      renderTransporteMeta("Transportes", transportes.length),
+      renderTransporteMeta("Transporte", transportes.length ? "Asignado" : "Pendiente"),
+      renderTransporteMeta("Grupo", getGrupoLabel(operacion && operacion.numero_grupo)),
       "</div>",
       transportes.length
         ? '<div class="daily-transport-list">' + transportes.map(renderTransporte).join("") + "</div>"
-        : '<div class="daily-empty-inline">No hay transportes preparados para esta operación.</div>',
+        : '<div class="daily-empty-inline">Este grupo todavía no tiene transporte preparado.</div>',
       "</article>"
     ].join("");
   }
@@ -848,7 +893,7 @@
         "</label>",
         '<div class="daily-actions" aria-label="Acciones del Daily">',
         '<button class="btn" id="daily-pdf-button" type="button" disabled title="Disponible en la aplicación de escritorio">Exportar PDF</button>',
-        '<button class="btn btn-primary" id="daily-print-button" type="button" disabled title="No hay transportes preparados para imprimir">Imprimir</button>',
+        '<button class="btn btn-primary" id="daily-print-button" type="button" disabled title="No hay grupos con transporte preparado para imprimir">Imprimir</button>',
         "</div>",
         "</div>",
         '<p class="form-message daily-message" id="daily-message" role="status" aria-live="polite"></p>',

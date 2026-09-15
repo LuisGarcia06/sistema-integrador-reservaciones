@@ -1006,7 +1006,7 @@ body.is-login-page .page-root {
 }
 
 .operaciones-table {
-  min-width: 760px;
+  min-width: 1180px;
 }
 
 .operaciones-row-actions {
@@ -1112,7 +1112,7 @@ body.is-login-page .page-root {
 }
 
 .transportes-table {
-  min-width: 900px;
+  min-width: 920px;
 }
 
 .transportes-table td strong,

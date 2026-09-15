@@ -7,6 +7,9 @@
   const FORM_MODE_EDIT = "edit";
   const TRANSPORTE_FORM_CREATE = "create";
   const TRANSPORTE_FORM_EDIT = "edit";
+  const MAX_PAX_GRUPO = 12;
+  const TURNOS = ["Mañana", "Tarde"];
+  const GRUPOS = [1, 2];
 
   let operacionesRequestId = 0;
   let catalogosRequestId = 0;
@@ -19,6 +22,7 @@
   let guias = [];
   let transportes = [];
   let organizacionDaily = null;
+  let operacionesDailyById = new Map();
   let operadores = [];
   let vehiculos = [];
   let catalogosCargados = false;
@@ -72,18 +76,6 @@
     return formatted === EMPTY_VALUE ? "" : formatted;
   }
 
-  function deriveTurno(hora) {
-    const match = String(hora || "").match(/^(\d{2}):(\d{2})$/);
-
-    if (!match) {
-      return "";
-    }
-
-    const minutes = Number(match[1]) * 60 + Number(match[2]);
-
-    return minutes <= 720 ? "Mañana" : "Tarde";
-  }
-
   function isActiveFlag(value) {
     return value === true || value === "true" || value === 1 || value === "1";
   }
@@ -123,6 +115,90 @@
     const number = Number(value);
 
     return Number.isFinite(number) ? String(number) : "0";
+  }
+
+  function getTurnoOrder(turno) {
+    if (turno === "Mañana") {
+      return 1;
+    }
+
+    if (turno === "Tarde") {
+      return 2;
+    }
+
+    return 3;
+  }
+
+  function getGrupoLabel(numeroGrupo) {
+    const grupo = Number(numeroGrupo);
+
+    return Number.isInteger(grupo) && grupo > 0 ? "Grupo " + grupo : EMPTY_VALUE;
+  }
+
+  function getOperacionContext(operacion) {
+    if (!operacion) {
+      return EMPTY_VALUE;
+    }
+
+    return [
+      operacion.tour || EMPTY_VALUE,
+      operacion.turno || EMPTY_VALUE,
+      getGrupoLabel(operacion.numero_grupo)
+    ].join(" · ");
+  }
+
+  function compareText(a, b) {
+    return String(a || "").localeCompare(String(b || ""), "es", { sensitivity: "base" });
+  }
+
+  function compareOperaciones(a, b) {
+    return compareText(getOperacionFecha(a), getOperacionFecha(b)) ||
+      (getTurnoOrder(a && a.turno) - getTurnoOrder(b && b.turno)) ||
+      compareText(a && a.tour, b && b.tour) ||
+      (Number(a && a.numero_grupo) - Number(b && b.numero_grupo)) ||
+      compareText(a && a.hora_inicio, b && b.hora_inicio) ||
+      (getOperacionId(a) - getOperacionId(b));
+  }
+
+  function getDailyOperacion(operacion) {
+    return operacionesDailyById.get(getOperacionId(operacion)) || null;
+  }
+
+  function getPaxActivosGrupo(operacion) {
+    const total = Number(operacion && operacion.total_pax_activos);
+
+    return Number.isFinite(total) ? total : 0;
+  }
+
+  function getPaxGrupoText(operacion) {
+    return toMetric(getPaxActivosGrupo(operacion)) + " / " + MAX_PAX_GRUPO;
+  }
+
+  function isGrupoCompleto(operacion) {
+    return getPaxActivosGrupo(operacion) >= MAX_PAX_GRUPO;
+  }
+
+  function getOperacionTransportes(operacion) {
+    const dailyOperacion = getDailyOperacion(operacion) || operacion;
+
+    return getArray(dailyOperacion && dailyOperacion.transportes);
+  }
+
+  function findDailyTransporte(transporte) {
+    const idTransporte = getTransporteId(transporte);
+    const operacion = getOperacionOrganizacion();
+
+    return getArray(operacion && operacion.transportes).find(function (item) {
+      return getTransporteId(item) === idTransporte;
+    }) || transporte;
+  }
+
+  function sortReservacionesByPickup(reservaciones) {
+    return getArray(reservaciones).slice().sort(function (a, b) {
+      return compareText(a && a.pickup_time, b && b.pickup_time) ||
+        compareText(a && a.pickup_place, b && b.pickup_place) ||
+        (getReservacionId(a) - getReservacionId(b));
+    });
   }
 
   function normalizeEstado(value) {
@@ -271,11 +347,19 @@
   function setTransporteCatalogosLoading(isLoading) {
     transporteCatalogosLoading = isLoading;
 
+    updateTransportePrimaryButton();
+  }
+
+  function updateTransportePrimaryButton() {
     const newButton = document.getElementById("transporte-new");
 
     if (newButton) {
-      newButton.disabled = isLoading || !transporteCatalogosCargados;
-      newButton.textContent = isLoading ? "Cargando catálogos..." : "Nuevo transporte";
+      const hasTransporte = transportes.length > 0;
+
+      newButton.disabled = transporteCatalogosLoading || !transporteCatalogosCargados;
+      newButton.textContent = transporteCatalogosLoading
+        ? "Cargando catálogos..."
+        : (hasTransporte ? "Gestionar transporte" : "Agregar transporte");
     }
   }
 
@@ -377,8 +461,8 @@
       '<section class="operaciones-inline-loading" aria-live="polite">',
       '<span class="daily-spinner" aria-hidden="true"></span>',
       "<div>",
-      "<h3>Cargando transportes</h3>",
-      '<p class="card-text">Consultando los transportes de esta operación.</p>',
+      "<h3>Cargando transporte</h3>",
+      '<p class="card-text">Consultando el transporte de este grupo.</p>',
       "</div>",
       "</section>"
     ].join("");
@@ -387,7 +471,7 @@
   function renderTransportesError(message) {
     return [
       '<section class="operaciones-state-panel">',
-      "<h3>No se pudieron cargar los transportes</h3>",
+      "<h3>No se pudo cargar el transporte</h3>",
       '<p class="card-text">' + App.ui.escapeHtml(message) + "</p>",
       "</section>"
     ].join("");
@@ -432,8 +516,18 @@
 
   function renderOperacionRow(operacion) {
     const idOperacion = getOperacionId(operacion);
+    const dailyOperacion = getDailyOperacion(operacion);
+    const transportesOperacion = getOperacionTransportes(operacion);
+    const hasTransporte = transportesOperacion.length > 0;
+    const paxSource = dailyOperacion || operacion;
+    const paxBadges = [
+      '<span class="badge">' + escapeHtml(getPaxGrupoText(paxSource)) + "</span>",
+      isGrupoCompleto(paxSource) ? '<span class="badge badge-warning">Completo</span>' : ""
+    ].join("");
     const actionButtons = [
-      '<button class="btn btn-ghost" type="button" data-manage-transportes="' + App.ui.escapeHtml(idOperacion) + '">Gestionar transportes</button>',
+      '<button class="btn btn-ghost" type="button" data-manage-transportes="' + App.ui.escapeHtml(idOperacion) + '">' +
+        App.ui.escapeHtml(isAdmin() ? (hasTransporte ? "Gestionar transporte" : "Agregar transporte") : "Ver grupo") +
+      "</button>",
       isAdmin()
         ? '<button class="btn btn-ghost" type="button" data-edit-operacion="' + App.ui.escapeHtml(idOperacion) + '">Editar</button>'
         : ""
@@ -441,18 +535,22 @@
 
     return [
       "<tr>",
-      "<td><strong>" + escapeHtml(formatTime(operacion && operacion.hora_inicio)) + "</strong></td>",
-      '<td><span class="badge badge-neutral">' + escapeHtml(operacion && operacion.turno) + "</span></td>",
+      "<td>" + escapeHtml(getOperacionFecha(operacion)) + "</td>",
       "<td>" + escapeHtml(operacion && operacion.tour) + "</td>",
+      '<td><span class="badge badge-neutral">' + escapeHtml(operacion && operacion.turno) + "</span></td>",
+      "<td><strong>" + escapeHtml(getGrupoLabel(operacion && operacion.numero_grupo)) + "</strong></td>",
+      "<td><strong>" + escapeHtml(formatTime(operacion && operacion.hora_inicio)) + "</strong></td>",
       "<td>" + escapeHtml(operacion && operacion.guia ? operacion.guia : "Sin guía asignada") + "</td>",
       '<td><span class="badge">' + escapeHtml(operacion && operacion.estado) + "</span></td>",
+      "<td>" + (hasTransporte ? '<span class="badge">Asignado</span>' : '<span class="badge badge-neutral">Pendiente</span>') + "</td>",
+      '<td><div class="daily-badges">' + paxBadges + "</div></td>",
       '<td><div class="operaciones-row-actions">' + actionButtons + "</div></td>",
       "</tr>"
     ].join("");
   }
 
   function renderTable() {
-    const headers = ["Hora", "Turno", "Tour", "Guía", "Estado"];
+    const headers = ["Fecha", "Tour", "Turno", "Grupo", "Hora inicio", "Guía", "Estado", "Transporte", "PAX"];
     const rows = operaciones.map(renderOperacionRow).join("");
     const headerCells = headers
       .concat(["Acciones"])
@@ -477,9 +575,9 @@
     }
 
     return [
-      formatTime(operacion.hora_inicio),
+      operacion.tour || EMPTY_VALUE,
       operacion.turno || EMPTY_VALUE,
-      operacion.tour || EMPTY_VALUE
+      getGrupoLabel(operacion.numero_grupo)
     ].join(" · ");
   }
 
@@ -505,14 +603,19 @@
 
   function renderTransporteRow(transporte) {
     const idTransporte = getTransporteId(transporte);
+    const transporteDaily = findDailyTransporte(transporte);
+    const paxBadges = [
+      '<span class="badge">' + escapeHtml(getPaxGrupoText(transporteDaily)) + "</span>",
+      isGrupoCompleto(transporteDaily) ? '<span class="badge badge-warning">Completo</span>' : ""
+    ].join("");
 
     return [
       "<tr>",
-      "<td><strong>#" + escapeHtml(idTransporte) + "</strong></td>",
       "<td>" + renderVehiculoDetalle(transporte) + "</td>",
       "<td>" + escapeHtml(transporte && transporte.operador ? transporte.operador : "Operador pendiente") + "</td>",
       '<td class="transportes-observaciones-cell">' + escapeHtml(transporte && transporte.observaciones_operador) + "</td>",
       '<td><span class="badge">' + escapeHtml(transporte && transporte.estado) + "</span></td>",
+      '<td><div class="daily-badges">' + paxBadges + "</div></td>",
       isAdmin()
         ? '<td><button class="btn btn-ghost" type="button" data-edit-transporte="' + App.ui.escapeHtml(idTransporte) + '">Editar</button></td>'
         : "",
@@ -663,7 +766,7 @@
   }
 
   function renderReservacionesPendientes(operacion) {
-    const pendientes = getReservacionesPendientesOperacion();
+    const pendientes = sortReservacionesByPickup(getReservacionesPendientesOperacion());
     const transportesOperacion = getArray(operacion && operacion.transportes);
     const headers = ["Código", "Nombre", "PAX", "Niños", "Pickup", "Hora", "Vendido por", "Estado"]
       .concat(isAdmin() ? ["Acciones"] : []);
@@ -676,7 +779,7 @@
       '<div class="reservas-section-header">',
       "<div>",
       "<h3>Reservaciones sin asignar</h3>",
-      '<p class="card-text">Misma fecha y mismo tour de la operación seleccionada.</p>',
+      '<p class="card-text">Misma fecha y mismo tour del grupo seleccionado. El usuario decide si pertenecen a este grupo.</p>',
       "</div>",
       '<span class="badge badge-warning">' + escapeHtml(pendientes.length) + "</span>",
       "</div>",
@@ -693,7 +796,7 @@
   }
 
   function renderReservacionesTransporte(transporte, transportesOperacion) {
-    const reservaciones = getArray(transporte && transporte.reservaciones);
+    const reservaciones = sortReservacionesByPickup(transporte && transporte.reservaciones);
     const headers = ["Nombre", "PAX", "Niños", "Pickup", "Hora", "Vendido por", "Estado"]
       .concat(isAdmin() ? ["Acciones"] : []);
 
@@ -705,7 +808,8 @@
       '<p class="card-text">' + escapeHtml(transporte && transporte.estado) + "</p>",
       "</div>",
       '<div class="daily-badges">',
-      '<span class="badge">' + escapeHtml(toMetric(transporte && transporte.total_pax_activos)) + " PAX activos</span>",
+      '<span class="badge">' + escapeHtml(getPaxGrupoText(transporte)) + "</span>",
+      isGrupoCompleto(transporte) ? '<span class="badge badge-warning">Completo</span>' : "",
       '<span class="badge badge-neutral">' + escapeHtml(toMetric(transporte && transporte.total_reservaciones)) + " reservaciones</span>",
       "</div>",
       "</div>",
@@ -729,9 +833,9 @@
       '<div class="reservas-section-header">',
       "<div>",
       "<h3>Reservaciones asignadas</h3>",
-      '<p class="card-text">Movimientos acotados a los transportes de esta operación.</p>',
+      '<p class="card-text">Movimientos acotados al transporte de este grupo.</p>',
       "</div>",
-      '<span class="badge">' + escapeHtml(transportesOperacion.length) + " transportes</span>",
+      '<span class="badge">' + escapeHtml(transportesOperacion.length ? "1 transporte" : "Sin transporte") + "</span>",
       "</div>",
       transportesOperacion.length
         ? '<div class="reservas-transporte-list">' + transportesOperacion.map(function (transporte) {
@@ -759,9 +863,9 @@
 
     content.innerHTML = [
       '<div class="reservas-summary">',
-      '<span class="daily-transport-meta"><span>Operación</span><strong>' + App.ui.escapeHtml(getOperacionTitle(selectedTransportOperacion)) + "</strong></span>",
-      '<span class="daily-transport-meta"><span>Transportes</span><strong>' + escapeHtml(getArray(operacion.transportes).length) + "</strong></span>",
-      '<span class="daily-transport-meta"><span>PAX activos</span><strong>' + escapeHtml(toMetric(operacion.total_pax_activos)) + "</strong></span>",
+      '<span class="daily-transport-meta"><span>Grupo</span><strong>' + App.ui.escapeHtml(getOperacionTitle(selectedTransportOperacion)) + "</strong></span>",
+      '<span class="daily-transport-meta"><span>Primera hora de pickup</span><strong>' + escapeHtml(formatTime(selectedTransportOperacion && selectedTransportOperacion.hora_inicio)) + "</strong></span>",
+      '<span class="daily-transport-meta"><span>PAX activos</span><strong>' + escapeHtml(getPaxGrupoText(operacion)) + "</strong></span>",
       "</div>",
       renderReservacionesPendientes(operacion),
       renderReservacionesAsignadas(operacion)
@@ -774,8 +878,8 @@
       '<div class="reservas-organizacion-header">',
       "<div>",
       '<p class="field-label">Organización</p>',
-      '<h3 id="reservas-organizacion-title">Reservaciones por transporte</h3>',
-      '<p class="card-text">' + App.ui.escapeHtml(getOperacionTitle(selectedTransportOperacion)) + "</p>",
+      '<h3 id="reservas-organizacion-title">Reservaciones del grupo</h3>',
+      '<p class="card-text">' + App.ui.escapeHtml(getOperacionContext(selectedTransportOperacion)) + "</p>",
       "</div>",
       "</div>",
       '<p class="form-message reservas-organizacion-message" id="reservas-organizacion-message" role="status" aria-live="polite"></p>',
@@ -787,7 +891,7 @@
   }
 
   function renderTransportesTable() {
-    const headers = ["ID", "Vehículo", "Operador", "Observaciones", "Estado"];
+    const headers = ["Vehículo", "Operador", "Observaciones", "Estado", "PAX"];
     const headerCells = headers
       .concat(isAdmin() ? ["Acciones"] : [])
       .map(function (header) {
@@ -799,7 +903,7 @@
       '<div class="table-container transportes-table-container">',
       '<table class="data-table transportes-table">',
       "<thead><tr>" + headerCells + "</tr></thead>",
-      "<tbody>" + transportes.map(renderTransporteRow).join("") + "</tbody>",
+      "<tbody>" + transportes.slice(0, 1).map(renderTransporteRow).join("") + "</tbody>",
       "</table>",
       "</div>"
     ].join("");
@@ -809,13 +913,13 @@
     return [
       '<section class="operaciones-state-panel transportes-empty-state">',
       App.ui.emptyState(
-        "No hay transportes preparados para esta operación.",
+        "No hay transporte preparado para este grupo.",
         isAdmin()
-          ? "Usa Nuevo transporte para preparar una unidad sin asignar reservaciones todavía."
-          : "Esta operación todavía no tiene transportes preparados."
+          ? "Usa Agregar transporte para preparar una unidad sin asignar reservaciones todavía."
+          : "Este grupo todavía no tiene transporte preparado."
       ),
       isAdmin()
-        ? '<div class="operaciones-empty-actions"><button class="btn btn-primary" type="button" data-open-transporte-create>Nuevo transporte</button></div>'
+        ? '<div class="operaciones-empty-actions"><button class="btn btn-primary" type="button" data-open-transporte-create>Agregar transporte</button></div>'
         : "",
       "</section>"
     ].join("");
@@ -829,11 +933,15 @@
     }
 
     list.innerHTML = transportes.length ? renderTransportesTable() : renderTransportesEmpty();
+    updateTransportePrimaryButton();
   }
 
   function renderTransportesDialog(operacion) {
     const adminButton = isAdmin()
-      ? '<button class="btn btn-primary" id="transporte-new" type="button" disabled>Nuevo transporte</button>'
+      ? '<button class="btn btn-primary" id="transporte-new" type="button" disabled>Agregar transporte</button>'
+      : "";
+    const organizarButton = isAdmin()
+      ? '<button class="btn" id="reservaciones-organizar" type="button">Organizar reservaciones</button>'
       : "";
 
     return [
@@ -841,12 +949,12 @@
       '<section class="card transportes-panel">',
       '<div class="transportes-panel-header">',
       "<div>",
-      '<p class="field-label">Operación</p>',
-      '<h2 id="transportes-dialog-title">Transportes</h2>',
-      '<p class="card-text">' + App.ui.escapeHtml(getOperacionTitle(operacion)) + "</p>",
+      '<p class="field-label">Grupo operativo</p>',
+      '<h2 id="transportes-dialog-title">Transporte</h2>',
+      '<p class="card-text">' + App.ui.escapeHtml(getOperacionContext(operacion)) + "</p>",
       "</div>",
       '<div class="transportes-panel-actions">',
-      '<button class="btn" id="reservaciones-organizar" type="button">Organizar reservaciones</button>',
+      organizarButton,
       adminButton,
       '<button class="btn btn-ghost" id="transportes-close" type="button" aria-label="Cerrar transportes">Cerrar</button>',
       "</div>",
@@ -926,7 +1034,7 @@
     const selectedVehiculoId = isEdit && transporte ? transporte.id_vehiculo : null;
     const observaciones = isEdit && transporte && transporte.observaciones_operador ? transporte.observaciones_operador : "";
     const estado = isEdit && transporte && transporte.estado ? transporte.estado : "";
-    const title = isEdit ? "Editar transporte" : "Nuevo transporte";
+    const title = isEdit ? "Editar transporte" : "Agregar transporte";
     const vehiculoField = isEdit
       ? [
         '<label class="field" for="transporte-vehiculo">',
@@ -948,13 +1056,13 @@
       '<div class="transporte-form-header">',
       "<div>",
       "<h3>" + App.ui.escapeHtml(title) + "</h3>",
-      '<p class="card-text">Operación: ' + App.ui.escapeHtml(operacionText) + "</p>",
+      '<p class="card-text">Grupo: ' + App.ui.escapeHtml(operacionText) + "</p>",
       "</div>",
       "</div>",
       '<input type="hidden" id="transporte-mode" value="' + App.ui.escapeHtml(mode) + '">',
       '<input type="hidden" id="transporte-id" value="' + App.ui.escapeHtml(isEdit && transporte ? getTransporteId(transporte) : "") + '">',
       '<div class="transporte-form-grid">',
-      '<div class="transporte-form-note"><span class="field-label">Operación</span><p>' + App.ui.escapeHtml(operacionText) + "</p></div>",
+      '<div class="transporte-form-note"><span class="field-label">Grupo</span><p>' + App.ui.escapeHtml(operacionText) + "</p></div>",
       '<label class="field" for="transporte-operador"><span class="field-label">Operador</span><select class="input" id="transporte-operador" name="id_operador">' + renderOperadorOptions(selectedOperadorId, isEdit) + "</select></label>",
       vehiculoField,
       '<label class="field transporte-estado-field" for="transporte-estado"><span class="field-label">Estado</span><input class="input" id="transporte-estado" name="estado" type="text" maxlength="30" value="' + App.ui.escapeHtml(estado) + '"></label>',
@@ -1025,6 +1133,30 @@
     ].join("");
   }
 
+  function renderTurnoOptions(selectedTurno) {
+    return [
+      '<option value="">Selecciona turno</option>',
+      TURNOS.map(function (turno) {
+        return '<option value="' + App.ui.escapeHtml(turno) + '"' + (turno === selectedTurno ? " selected" : "") + ">" +
+          App.ui.escapeHtml(turno) +
+          "</option>";
+      }).join("")
+    ].join("");
+  }
+
+  function renderGrupoOptions(selectedGrupo) {
+    const selected = Number(selectedGrupo);
+
+    return [
+      '<option value="">Selecciona grupo</option>',
+      GRUPOS.map(function (grupo) {
+        return '<option value="' + App.ui.escapeHtml(grupo) + '"' + (grupo === selected ? " selected" : "") + ">" +
+          App.ui.escapeHtml(getGrupoLabel(grupo)) +
+          "</option>";
+      }).join("")
+    ].join("");
+  }
+
   function renderDialog(mode, operacion) {
     const isEdit = mode === FORM_MODE_EDIT;
     const fecha = isEdit && operacion ? operacion.fecha : currentFecha;
@@ -1032,8 +1164,12 @@
     const estado = isEdit && operacion ? String(operacion.estado || "") : "";
     const selectedTourId = isEdit && operacion ? operacion.id_tour : "";
     const selectedGuiaId = isEdit && operacion ? operacion.id_guia : null;
+    const selectedTurno = isEdit && operacion ? operacion.turno : "";
+    const selectedGrupo = isEdit && operacion ? operacion.numero_grupo : "";
     const title = isEdit ? "Editar operación" : "Nueva operación";
-    const turno = deriveTurno(horaInicio);
+    const estadoField = isEdit
+      ? '<label class="field operacion-estado-field" for="operacion-estado"><span class="field-label">Estado</span><input class="input" id="operacion-estado" name="estado" type="text" maxlength="30" value="' + App.ui.escapeHtml(estado) + '"></label>'
+      : '<div class="operacion-estado-field operacion-turno-preview"><span class="field-label">Estado inicial</span><strong>Activa</strong></div>';
 
     return [
       '<div class="operacion-dialog-backdrop" id="operacion-dialog" role="dialog" aria-modal="true" aria-labelledby="operacion-dialog-title">',
@@ -1041,7 +1177,7 @@
       '<div class="operacion-form-header">',
       '<div>',
       '<h2 id="operacion-dialog-title">' + App.ui.escapeHtml(title) + "</h2>",
-      '<p class="card-text">El turno se deriva de la hora y se valida en backend.</p>',
+      '<p class="card-text">Selecciona turno y grupo; la hora solo indica el primer pickup.</p>',
       "</div>",
       '<button class="btn btn-ghost" id="operacion-close" type="button" aria-label="Cerrar formulario">Cerrar</button>',
       "</div>",
@@ -1049,11 +1185,12 @@
       '<input type="hidden" id="operacion-id" value="' + App.ui.escapeHtml(isEdit && operacion ? getOperacionId(operacion) : "") + '">',
       '<div class="operacion-form-grid">',
       '<label class="field" for="operacion-fecha"><span class="field-label">Fecha</span><input class="input" id="operacion-fecha" name="fecha" type="date" value="' + App.ui.escapeHtml(fecha || "") + '"></label>',
-      '<label class="field" for="operacion-hora"><span class="field-label">Hora de inicio</span><input class="input" id="operacion-hora" name="hora_inicio" type="time" value="' + App.ui.escapeHtml(horaInicio) + '"></label>',
       '<label class="field" for="operacion-tour"><span class="field-label">Tour</span><select class="input" id="operacion-tour" name="id_tour">' + renderTourOptions(selectedTourId, isEdit) + "</select></label>",
+      '<label class="field" for="operacion-turno"><span class="field-label">Turno</span><select class="input" id="operacion-turno" name="turno">' + renderTurnoOptions(selectedTurno) + "</select></label>",
+      '<label class="field" for="operacion-grupo"><span class="field-label">Grupo</span><select class="input" id="operacion-grupo" name="numero_grupo">' + renderGrupoOptions(selectedGrupo) + "</select></label>",
+      '<label class="field" for="operacion-hora"><span class="field-label">Hora de inicio / primer pickup</span><input class="input" id="operacion-hora" name="hora_inicio" type="time" value="' + App.ui.escapeHtml(horaInicio) + '"></label>',
       '<label class="field" for="operacion-guia"><span class="field-label">Guía</span><select class="input" id="operacion-guia" name="id_guia">' + renderGuiaOptions(selectedGuiaId, isEdit) + "</select></label>",
-      '<label class="field operacion-estado-field" for="operacion-estado"><span class="field-label">Estado</span><input class="input" id="operacion-estado" name="estado" type="text" maxlength="30" value="' + App.ui.escapeHtml(estado) + '"></label>',
-      '<div class="operacion-turno-preview" aria-live="polite"><span class="field-label">Turno</span><strong id="operacion-turno-preview">' + App.ui.escapeHtml(turno || "Pendiente") + "</strong></div>",
+      estadoField,
       "</div>",
       '<p class="form-message" id="operacion-form-message" role="status" aria-live="polite"></p>',
       '<div class="operacion-form-actions">',
@@ -1119,33 +1256,26 @@
     element.classList.toggle("is-info", type === "info");
   }
 
-  function updateTurnoPreview() {
-    const timeInput = document.getElementById("operacion-hora");
-    const preview = document.getElementById("operacion-turno-preview");
-
-    if (!timeInput || !preview) {
-      return;
-    }
-
-    preview.textContent = deriveTurno(timeInput.value) || "Pendiente";
-  }
-
   function buildOperacionPayload() {
     const fechaInput = document.getElementById("operacion-fecha");
     const tourInput = document.getElementById("operacion-tour");
+    const turnoInput = document.getElementById("operacion-turno");
+    const grupoInput = document.getElementById("operacion-grupo");
     const horaInput = document.getElementById("operacion-hora");
     const guiaInput = document.getElementById("operacion-guia");
     const estadoInput = document.getElementById("operacion-estado");
 
-    if (!fechaInput || !tourInput || !horaInput || !guiaInput || !estadoInput) {
+    if (!fechaInput || !tourInput || !turnoInput || !grupoInput || !horaInput || !guiaInput) {
       return { errores: ["No se pudo leer el formulario."], payload: null };
     }
 
     const fecha = fechaInput.value;
     const idTour = Number(tourInput.value);
+    const turno = turnoInput.value;
+    const numeroGrupo = Number(grupoInput.value);
     const horaInicio = horaInput.value;
     const idGuia = guiaInput.value ? Number(guiaInput.value) : null;
-    const estado = estadoInput.value.trim();
+    const estado = estadoInput ? estadoInput.value.trim() : "";
     const errores = [];
 
     if (!isValidDateValue(fecha)) {
@@ -1156,27 +1286,42 @@
       errores.push("Selecciona un tour.");
     }
 
+    if (!TURNOS.includes(turno)) {
+      errores.push("Selecciona un turno.");
+    }
+
+    if (!GRUPOS.includes(numeroGrupo)) {
+      errores.push("Selecciona un grupo.");
+    }
+
     if (!/^\d{2}:\d{2}$/.test(horaInicio)) {
-      errores.push("Selecciona una hora de inicio válida.");
+      errores.push("Selecciona una hora de inicio / primer pickup válida.");
     }
 
     if (guiaInput.value && (!Number.isInteger(idGuia) || idGuia <= 0)) {
       errores.push("Selecciona una guía válida.");
     }
 
-    if (!estado) {
+    if (estadoInput && !estado) {
       errores.push("Ingresa el estado de la operación.");
+    }
+
+    const payload = {
+      fecha: fecha,
+      id_tour: idTour,
+      turno: turno,
+      numero_grupo: numeroGrupo,
+      hora_inicio: horaInicio,
+      id_guia: idGuia
+    };
+
+    if (estadoInput) {
+      payload.estado = estado;
     }
 
     return {
       errores: errores,
-      payload: {
-        fecha: fecha,
-        id_tour: idTour,
-        hora_inicio: horaInicio,
-        id_guia: idGuia,
-        estado: estado
-      }
+      payload: payload
     };
   }
 
@@ -1195,6 +1340,14 @@
       changed.id_tour = payload.id_tour;
     }
 
+    if (payload.turno !== selectedOperacion.turno) {
+      changed.turno = payload.turno;
+    }
+
+    if (Number(payload.numero_grupo) !== Number(selectedOperacion.numero_grupo)) {
+      changed.numero_grupo = payload.numero_grupo;
+    }
+
     if (payload.hora_inicio !== normalizeTimeForInput(selectedOperacion.hora_inicio)) {
       changed.hora_inicio = payload.hora_inicio;
     }
@@ -1203,7 +1356,7 @@
       changed.id_guia = payload.id_guia;
     }
 
-    if (payload.estado !== String(selectedOperacion.estado || "")) {
+    if (Object.prototype.hasOwnProperty.call(payload, "estado") && payload.estado !== String(selectedOperacion.estado || "")) {
       changed.estado = payload.estado;
     }
 
@@ -1266,7 +1419,6 @@
     const form = document.getElementById("operacion-form");
     const closeButton = document.getElementById("operacion-close");
     const cancelButton = document.getElementById("operacion-cancel");
-    const timeInput = document.getElementById("operacion-hora");
 
     if (form) {
       form.addEventListener("submit", handleSubmit);
@@ -1280,9 +1432,6 @@
       cancelButton.addEventListener("click", closeForm);
     }
 
-    if (timeInput) {
-      timeInput.addEventListener("input", updateTurnoPreview);
-    }
   }
 
   function setTransportesMessage(message, type) {
@@ -1311,6 +1460,11 @@
 
   function openTransporteForm(mode, transporte) {
     if (!isAdmin() || transporteCatalogosLoading || !selectedTransportOperacion) {
+      return;
+    }
+
+    if (mode === TRANSPORTE_FORM_CREATE && transportes.length > 0) {
+      openTransporteForm(TRANSPORTE_FORM_EDIT, transportes[0]);
       return;
     }
 
@@ -1549,6 +1703,11 @@
 
     if (newButton) {
       newButton.addEventListener("click", function () {
+        if (transportes.length > 0) {
+          openTransporteForm(TRANSPORTE_FORM_EDIT, transportes[0]);
+          return;
+        }
+
         openTransporteForm(TRANSPORTE_FORM_CREATE, null);
       });
     }
@@ -1775,20 +1934,25 @@
     setTransportesLoading(true);
 
     try {
-      const response = await App.api.apiFetch("/api/transportes?id_operacion_tour=" + encodeURIComponent(getOperacionId(operacion)));
+      const fecha = getOperacionFecha(operacion);
+      const responses = await Promise.all([
+        App.api.apiFetch("/api/transportes?id_operacion_tour=" + encodeURIComponent(getOperacionId(operacion))),
+        App.api.apiFetch("/api/daily/operativo?fecha=" + encodeURIComponent(fecha))
+      ]);
 
       if (activeRequestId !== transportesRequestId || getOperacionId(selectedTransportOperacion) !== getOperacionId(operacion)) {
         return;
       }
 
-      transportes = getArrayResponse(response);
+      transportes = getArrayResponse(responses[0]);
+      organizacionDaily = responses[1] || { fecha: fecha, operaciones: [], reservaciones_sin_asignar: [] };
       renderTransportesList();
     } catch (error) {
       if (activeRequestId !== transportesRequestId || getOperacionId(selectedTransportOperacion) !== getOperacionId(operacion)) {
         return;
       }
 
-      const message = getBackendMessage(error, "No fue posible cargar los transportes. Intenta nuevamente.");
+      const message = getBackendMessage(error, "No fue posible cargar el transporte. Intenta nuevamente.");
 
       transportes = [];
       setTransportesMessage(message, "error");
@@ -1881,13 +2045,24 @@
     setContentLoading(true);
 
     try {
-      const response = await App.api.apiFetch("/api/operaciones?fecha=" + encodeURIComponent(fecha));
+      const responses = await Promise.all([
+        App.api.apiFetch("/api/operaciones?fecha=" + encodeURIComponent(fecha)),
+        App.api.apiFetch("/api/daily/operativo?fecha=" + encodeURIComponent(fecha))
+      ]);
 
       if (activeRequestId !== operacionesRequestId) {
         return;
       }
 
-      operaciones = getArrayResponse(response);
+      const daily = responses[1] || { operaciones: [] };
+
+      operaciones = getArrayResponse(responses[0]).slice().sort(compareOperaciones);
+      operacionesDailyById = new Map();
+
+      getArray(daily.operaciones).forEach(function (operacionDaily) {
+        operacionesDailyById.set(getOperacionId(operacionDaily), operacionDaily);
+      });
+
       renderOperaciones();
     } catch (error) {
       if (activeRequestId !== operacionesRequestId) {
@@ -1897,6 +2072,7 @@
       const message = getBackendMessage(error, "No fue posible cargar operaciones. Intenta nuevamente.");
 
       operaciones = [];
+      operacionesDailyById = new Map();
       setMessage(message, "error");
 
       const content = document.getElementById("operaciones-content");
@@ -1992,6 +2168,7 @@
       organizacionRequestId += 1;
       currentFecha = "";
       operaciones = [];
+      operacionesDailyById = new Map();
       transportes = [];
       organizacionDaily = null;
       operadores = [];
