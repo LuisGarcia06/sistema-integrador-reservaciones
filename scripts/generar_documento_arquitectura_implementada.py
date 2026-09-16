@@ -10,7 +10,7 @@ from docx.shared import Inches, Pt, RGBColor
 
 
 ROOT = Path(__file__).resolve().parents[1]
-OUTPUT = ROOT / "docs" / "Arquitectura_Tecnica_Implementada_2026-09-12.docx"
+OUTPUT = ROOT / "docs" / "Arquitectura_Tecnica_Implementada_2026-09-15_v2.docx"
 
 
 def set_cell_shading(cell, fill):
@@ -30,7 +30,7 @@ def set_cell_border(cell, color="D9D9D9", size="6"):
         borders = OxmlElement("w:tcBorders")
         tc_pr.append(borders)
     for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
-        tag = "w:{}".format(edge)
+        tag = f"w:{edge}"
         element = borders.find(qn(tag))
         if element is None:
             element = OxmlElement(tag)
@@ -49,9 +49,9 @@ def set_cell_margins(cell, top=90, start=120, bottom=90, end=120):
         margins = OxmlElement("w:tcMar")
         tc_pr.append(margins)
     for margin, value in (("top", top), ("start", start), ("bottom", bottom), ("end", end)):
-        element = margins.find(qn("w:{}".format(margin)))
+        element = margins.find(qn(f"w:{margin}"))
         if element is None:
-            element = OxmlElement("w:{}".format(margin))
+            element = OxmlElement(f"w:{margin}")
             margins.append(element)
         element.set(qn("w:w"), str(value))
         element.set(qn("w:type"), "dxa")
@@ -75,19 +75,52 @@ def style_run(run, bold=False, italic=False, size=None, color="000000", font="Ap
     run._element.rPr.rFonts.set(qn("w:hAnsi"), font)
 
 
+def configure_document(doc, footer_text):
+    section = doc.sections[0]
+    section.top_margin = Inches(0.7)
+    section.bottom_margin = Inches(0.65)
+    section.left_margin = Inches(0.7)
+    section.right_margin = Inches(0.7)
+
+    styles = doc.styles
+    normal = styles["Normal"]
+    normal.font.name = "Aptos"
+    normal._element.rPr.rFonts.set(qn("w:ascii"), "Aptos")
+    normal._element.rPr.rFonts.set(qn("w:hAnsi"), "Aptos")
+    normal.font.size = Pt(10)
+    normal.font.color.rgb = RGBColor(0, 0, 0)
+
+    for style_name, size in (("Title", 22), ("Heading 1", 15), ("Heading 2", 12), ("Heading 3", 10.5)):
+        style = styles[style_name]
+        style.font.name = "Aptos Display" if style_name in ("Title", "Heading 1") else "Aptos"
+        style._element.rPr.rFonts.set(qn("w:ascii"), style.font.name)
+        style._element.rPr.rFonts.set(qn("w:hAnsi"), style.font.name)
+        style.font.color.rgb = RGBColor(0, 0, 0)
+        style.font.bold = True
+        style.font.size = Pt(size)
+        style.paragraph_format.space_before = Pt(8)
+        style.paragraph_format.space_after = Pt(4)
+
+    footer = section.footer.paragraphs[0]
+    footer.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = footer.add_run(footer_text)
+    style_run(run, size=8)
+
+
 def add_heading(doc, text, level=1):
     paragraph = doc.add_heading(text, level=level)
     for run in paragraph.runs:
-        style_run(run, bold=True, color="000000")
+        style_run(run, bold=True)
     return paragraph
 
 
-def add_para(doc, text="", bold_lead=None):
+def add_para(doc, text="", lead=None):
     paragraph = doc.add_paragraph()
-    paragraph.style = doc.styles["Body Text"]
-    if bold_lead:
-        run = paragraph.add_run(bold_lead)
-        style_run(run, bold=True)
+    paragraph.paragraph_format.space_after = Pt(5)
+    paragraph.paragraph_format.line_spacing = 1.05
+    if lead:
+        lead_run = paragraph.add_run(lead)
+        style_run(lead_run, bold=True)
         paragraph.add_run(" ")
     run = paragraph.add_run(text)
     style_run(run)
@@ -99,21 +132,6 @@ def add_bullets(doc, items):
         paragraph = doc.add_paragraph(style="List Bullet")
         run = paragraph.add_run(item)
         style_run(run)
-
-
-def add_numbered(doc, items):
-    for item in items:
-        paragraph = doc.add_paragraph(style="List Number")
-        run = paragraph.add_run(item)
-        style_run(run)
-
-
-def add_code_block(doc, text):
-    for line in text.strip("\n").splitlines():
-        paragraph = doc.add_paragraph()
-        paragraph.paragraph_format.space_after = Pt(0)
-        run = paragraph.add_run(line)
-        style_run(run, font="Courier New", size=9)
 
 
 def add_table(doc, headers, rows, widths=None):
@@ -147,62 +165,17 @@ def add_table(doc, headers, rows, widths=None):
             paragraph = cell.paragraphs[0]
             paragraph.alignment = WD_ALIGN_PARAGRAPH.LEFT
             run = paragraph.add_run(str(text))
-            style_run(run, size=8.8)
+            style_run(run, size=8.7)
             if widths:
                 cell.width = widths[col_index]
-
     doc.add_paragraph()
     return table
 
 
-def configure_document(doc):
-    section = doc.sections[0]
-    section.top_margin = Inches(0.7)
-    section.bottom_margin = Inches(0.65)
-    section.left_margin = Inches(0.7)
-    section.right_margin = Inches(0.7)
-
-    styles = doc.styles
-    normal = styles["Normal"]
-    normal.font.name = "Aptos"
-    normal._element.rPr.rFonts.set(qn("w:ascii"), "Aptos")
-    normal._element.rPr.rFonts.set(qn("w:hAnsi"), "Aptos")
-    normal.font.size = Pt(10.2)
-    normal.font.color.rgb = RGBColor(0, 0, 0)
-
-    body = styles["Body Text"]
-    body.font.name = "Aptos"
-    body._element.rPr.rFonts.set(qn("w:ascii"), "Aptos")
-    body._element.rPr.rFonts.set(qn("w:hAnsi"), "Aptos")
-    body.font.size = Pt(10.2)
-    body.paragraph_format.space_after = Pt(5)
-    body.paragraph_format.line_spacing = 1.05
-
-    for style_name, size in (("Title", 22), ("Heading 1", 15), ("Heading 2", 12), ("Heading 3", 10.5)):
-        style = styles[style_name]
-        style.font.name = "Aptos Display" if style_name in ("Title", "Heading 1") else "Aptos"
-        style._element.rPr.rFonts.set(qn("w:ascii"), style.font.name)
-        style._element.rPr.rFonts.set(qn("w:hAnsi"), style.font.name)
-        style.font.color.rgb = RGBColor(0, 0, 0)
-        style.font.bold = True
-        style.font.size = Pt(size)
-        style.paragraph_format.space_before = Pt(8)
-        style.paragraph_format.space_after = Pt(4)
-
-    footer = section.footer
-    footer_p = footer.paragraphs[0]
-    footer_p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = footer_p.add_run("Sistema Integrador de Reservaciones - Arquitectura tecnica implementada")
-    style_run(run, size=8)
-
-
-def build_document():
-    doc = Document()
-    configure_document(doc)
-
+def add_title(doc):
     title = doc.add_paragraph(style="Title")
     title.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = title.add_run("Documentacion de Arquitectura Tecnica Implementada")
+    run = title.add_run("Documentación de Arquitectura Técnica Implementada")
     style_run(run, bold=True, size=22)
 
     subtitle = doc.add_paragraph()
@@ -212,375 +185,302 @@ def build_document():
 
     meta = doc.add_paragraph()
     meta.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    run = meta.add_run("Revision tecnica: 12 de septiembre de 2026 | Commit revisado: 19cd788 | Rama: master")
+    run = meta.add_run("Revisión técnica: 15 de septiembre de 2026 | Versión documental: v2")
     style_run(run, size=9)
 
+
+def build_document():
+    doc = Document()
+    configure_document(doc, "Sistema Integrador de Reservaciones - Arquitectura implementada v2")
+    add_title(doc)
+
+    add_heading(doc, "1. Introducción", 1)
     add_para(
         doc,
-        "Este documento consolida la arquitectura implementada actualmente en el repositorio. "
-        "Su objetivo es servir como base para decidir los siguientes pasos tecnicos sin depender de memoria de conversaciones anteriores."
+        "Este documento describe la arquitectura técnica realmente implementada al 15 de septiembre de 2026. La fuente de verdad es el código del repositorio: backend, frontend, Electron, PostgreSQL, package.json y migraciones SQL."
     )
 
-    add_heading(doc, "Resumen Ejecutivo", 1)
+    add_heading(doc, "2. Objetivo", 1)
     add_para(
         doc,
-        "El sistema ya funciona como una aplicacion de escritorio local basada en Electron, con un backend Node.js Express que se ejecuta en "
-        "127.0.0.1:3000, sirve el frontend en /app y expone una API REST bajo /api. La persistencia esta centralizada en PostgreSQL mediante pg, "
-        "con consultas parametrizadas y acceso a datos dentro del backend."
+        "Servir como checkpoint técnico actualizado para continuar el cierre del sistema sin depender de documentos históricos que ya fueron superados por la implementación."
     )
+
+    add_heading(doc, "3. Arquitectura General", 1)
     add_para(
         doc,
-        "La implementacion supera la arquitectura propuesta original en el area operativa: ademas de reservaciones, usuarios, bitacora y Daily, "
-        "existen tablas, servicios, validadores, rutas y vistas para operaciones de tour, transportes, guias, operadores, vehiculos, asignacion de "
-        "reservaciones a transportes y control de capacidad."
+        "La aplicación conserva una arquitectura por capas: Electron contiene la experiencia de escritorio, el frontend vanilla consume la API REST, Express centraliza reglas y PostgreSQL persiste los datos. El frontend nunca accede directamente a PostgreSQL."
     )
     add_table(
         doc,
-        ["Area", "Estado actual", "Observacion para decision"],
+        ["Capa", "Implementación", "Responsabilidad"],
         [
-            ["Backend base", "Implementado", "Servidor Express local, rutas REST, middleware de autenticacion y autorizacion por rol."],
-            ["Base de datos", "Implementada y ampliada", "Incluye tablas base y tablas operativas agregadas por migraciones SQL."],
-            ["Autenticacion", "Implementada", "JWT con bcryptjs; token en memoria del frontend, sin persistencia entre recargas."],
-            ["Reservaciones", "API implementada", "Frontend de Reservaciones esta aun como pantalla visual base; Historial consume la API real."],
-            ["Operaciones y transportes", "Implementado", "Vista funcional para planificar operaciones, crear transportes y organizar reservaciones."],
-            ["Daily operativo", "Implementado", "Consulta agrupada por fecha, impresion y exportacion PDF desde Electron."],
-            ["Bitacora", "Implementada", "Registra creacion, modificacion, cancelacion y asignacion de transporte de reservaciones."],
-            ["Usuarios", "Implementado", "Administracion segura con proteccion contra degradar o desactivar el ultimo administrador."],
-            ["Notificaciones", "Pendiente", "Solo hay espacio visual futuro en Configuracion; no existe modulo backend."],
-            ["Integraciones externas", "Pendiente", "No hay endpoints ni servicios para FareHarbor, GetYourGuide o WhatsApp Business."],
-            ["Pruebas automatizadas", "Pendiente", "No se encontraron scripts de test en package.json."],
+            ["Electron", "electron/main.js y electron/preload.js", "Contenedor de escritorio, ciclo de vida de ventana y exportación PDF del Daily."],
+            ["Frontend", "frontend/index.html, CSS y JavaScript modular", "Pantallas, navegación hash, consumo de API y renderizado operativo."],
+            ["API", "Node.js + Express", "Rutas REST, autenticación, autorización, validación y respuestas HTTP."],
+            ["Servicios", "backend/services", "Reglas de negocio, transacciones, capacidad y auditoría."],
+            ["Datos", "PostgreSQL mediante backend/config/database.js", "Persistencia relacional con consultas parametrizadas."],
         ],
-        [Inches(1.45), Inches(1.55), Inches(4.1)],
+        [Inches(1.25), Inches(2.0), Inches(4.0)],
     )
 
-    add_heading(doc, "Fuentes Revisadas", 1)
-    add_para(
-        doc,
-        "La revision se baso en el repositorio actual, el historial de commits, el documento de arquitectura tecnica propuesto y los archivos principales "
-        "de backend, frontend, Electron, base de datos y empaquetado."
-    )
-    add_table(
-        doc,
-        ["Fuente", "Uso en esta documentacion"],
-        [
-            ["Repositorio local", "Estado real de archivos, rutas, servicios, validadores, frontend, Electron y package.json."],
-            ["Git log", "Reconstruccion incremental de modulos implementados y checkpoints tecnicos."],
-            ["Documento original de arquitectura tecnica", "Referencia de arquitectura propuesta; la version actualizada aqui describe lo ya implementado."],
-            ["AGENTS.md", "Restricciones de tecnologias, capas, seguridad y decisiones pendientes del proyecto."],
-        ],
-        [Inches(2.2), Inches(4.8)],
-    )
-
-    add_heading(doc, "Arquitectura General Implementada", 1)
-    add_para(
-        doc,
-        "La arquitectura efectiva conserva el patron por capas. Electron actua como contenedor de escritorio y arranca o reutiliza el backend local. "
-        "Express sirve los archivos del frontend y expone endpoints REST. Los controladores validan la entrada, delegan a servicios y los servicios "
-        "ejecutan reglas de negocio y consultas parametrizadas contra PostgreSQL."
-    )
-    add_code_block(
-        doc,
-        """
-Usuario
-  |
-  v
-Electron
-  |
-  v
-Frontend HTML CSS JavaScript servido en /app
-  |
-  | HTTP REST con JWT Bearer
-  v
-Node.js Express en 127.0.0.1:3000
-  |
-  +-- Routes
-  +-- Controllers
-  +-- Validators
-  +-- Services
-  +-- Middleware
-  +-- Utils y constantes
-  |
-  v
-PostgreSQL mediante pg
-"""
-    )
-    add_para(
-        doc,
-        "El frontend no se conecta a PostgreSQL. La base de datos queda detras del backend y las credenciales se leen desde variables de entorno o, "
-        "en version empaquetada, desde un archivo config.env ubicado en el directorio de datos de usuario de Electron."
-    )
-
-    add_heading(doc, "Estructura Actual del Proyecto", 1)
-    add_table(
-        doc,
-        ["Ruta", "Responsabilidad implementada"],
-        [
-            ["backend/config", "Conexion PostgreSQL centralizada en database.js con dotenv y APP_CONFIG_PATH."],
-            ["backend/routes", "Definicion de endpoints REST y proteccion por JWT y rol."],
-            ["backend/controllers", "Validacion de entrada, codigos HTTP y coordinacion hacia servicios."],
-            ["backend/services", "Logica de negocio, transacciones, calculos operativos y consultas SQL parametrizadas."],
-            ["backend/validators", "Validadores por modulo para filtros, cuerpos de peticion e identificadores."],
-            ["backend/middleware", "Autenticacion JWT y autorizacion por roles."],
-            ["backend/utils", "Normalizacion de cambios, turnos y respuestas de errores PostgreSQL."],
-            ["database", "Schema inicial, seeds y migraciones operativas."],
-            ["frontend/js", "API client, auth en memoria, router hash, layout y componentes UI."],
-            ["frontend/pages", "Vistas de login, dashboard, reservaciones, operaciones, daily, historial, bitacora, usuarios y configuracion."],
-            ["electron", "Proceso principal, preload seguro e integracion de exportacion PDF."],
-            ["dist", "Salida generada de empaquetado; excluida por .gitignore y build config."],
-        ],
-        [Inches(1.75), Inches(5.25)],
-    )
-
-    add_heading(doc, "Base de Datos Implementada", 1)
-    add_para(
-        doc,
-        "La base esperada se llama sian_kaan_reservaciones. El schema.sql ya contiene las tablas base y las extensiones operativas que fueron agregadas "
-        "en migraciones. Las tablas nuevas de operacion permiten planificar tours por fecha y hora, crear transportes por operacion, asignar vehiculos "
-        "y operadores, y relacionar reservaciones con transportes."
-    )
-    add_table(
-        doc,
-        ["Tabla", "Funcion principal", "Estado"],
-        [
-            ["roles", "Catalogo de roles Administrador y Consulta.", "Base"],
-            ["usuarios", "Cuentas de acceso con correo unico, password hash y estado activo.", "Base"],
-            ["tours", "Catalogo de tours consultables.", "Base"],
-            ["paises", "Catalogo de paises de origen de reservaciones.", "Base"],
-            ["plataformas", "FareHarbor, GetYourGuide, WhatsApp Business y Externa.", "Base"],
-            ["vehiculos", "Vehiculos operativos con identificador, placas, color, capacidad y estado.", "Agregada"],
-            ["operadores", "Catalogo de operadores activos o inactivos.", "Agregada"],
-            ["guias", "Catalogo de guias activos o inactivos.", "Agregada"],
-            ["operaciones_tour", "Tour programado por fecha y hora, con guia opcional y estado.", "Agregada"],
-            ["transportes_operacion", "Transporte asociado a una operacion, vehiculo, operador y observaciones.", "Agregada"],
-            ["reservaciones", "Reservacion con datos comerciales, pickup, cliente, estado e id_transporte_operacion.", "Base ampliada"],
-            ["daily_observaciones", "Observaciones generales por fecha para Daily.", "Agregada"],
-            ["bitacora", "Auditoria por usuario, reservacion, accion, descripcion y fecha.", "Base"],
-        ],
-        [Inches(1.45), Inches(4.6), Inches(1.0)],
-    )
-    add_table(
-        doc,
-        ["Relacion", "Descripcion"],
-        [
-            ["roles 1:N usuarios", "Cada usuario pertenece a un rol funcional."],
-            ["usuarios 1:N bitacora", "Las acciones auditadas conservan el usuario responsable."],
-            ["tours 1:N reservaciones", "Cada reservacion corresponde a un tour."],
-            ["paises 1:N reservaciones", "Cada reservacion conserva pais asociado."],
-            ["plataformas 1:N reservaciones", "Cada reservacion conserva plataforma de origen o venta."],
-            ["tours 1:N operaciones_tour", "Un tour puede tener varias operaciones por fecha y hora."],
-            ["guias 1:N operaciones_tour", "Una operacion puede tener guia asignado opcionalmente."],
-            ["operaciones_tour 1:N transportes_operacion", "Una operacion puede organizar uno o mas transportes."],
-            ["vehiculos 1:N transportes_operacion", "Un vehiculo puede asignarse a transportes, con unicidad por operacion."],
-            ["operadores 1:N transportes_operacion", "Un operador puede estar asignado a transportes."],
-            ["transportes_operacion 1:N reservaciones", "Una reservacion puede asignarse a un transporte operativo."],
-            ["reservaciones 1:N bitacora", "Cada reservacion puede tener multiples eventos auditados."],
-        ],
-        [Inches(2.35), Inches(4.65)],
-    )
-    add_para(
-        doc,
-        "Seeds iniciales: dos roles funcionales, Administrador y Consulta, y cuatro plataformas: FareHarbor, GetYourGuide, WhatsApp Business y Externa."
-    )
-
-    add_heading(doc, "Backend y API", 1)
-    add_para(
-        doc,
-        "El backend usa Express 5.2.1, pg 8.23.0, dotenv, jsonwebtoken y bcryptjs. server.js fija HOST 127.0.0.1 y PORT 3000, sirve el frontend "
-        "desde /app, deshabilita x-powered-by y aplica cabeceras de seguridad como X-Content-Type-Options, Referrer-Policy, X-Frame-Options, "
-        "Permissions-Policy y Content-Security-Policy para la ruta /app."
-    )
-    add_table(
-        doc,
-        ["Modulo API", "Endpoints implementados", "Acceso"],
-        [
-            ["/api/auth", "POST /login", "Publico"],
-            ["/api/reservaciones", "GET /, POST /, GET /:id, PATCH /:id, PATCH /:id/cancelar, PATCH /:id/transporte", "Consulta lee; Administrador modifica"],
-            ["/api/daily", "GET /, GET /operativo, GET /observaciones, PUT /observaciones", "Consulta lee; Administrador guarda observaciones"],
-            ["/api/operaciones", "GET /, POST /, GET /:id, PATCH /:id", "Consulta lee; Administrador modifica"],
-            ["/api/transportes", "GET /, POST /, GET /:id, PATCH /:id", "Consulta lee; Administrador modifica"],
-            ["/api/tours", "GET /, GET /:id", "Administrador y Consulta"],
-            ["/api/guias", "GET /, POST /, GET /:id, PATCH /:id", "Consulta lee; Administrador modifica"],
-            ["/api/operadores", "GET /, POST /, GET /:id, PATCH /:id", "Consulta lee; Administrador modifica"],
-            ["/api/vehiculos", "GET /, POST /, GET /:id, PATCH /:id", "Consulta lee; Administrador modifica"],
-            ["/api/bitacora", "GET / con filtros fecha_desde y fecha_hasta", "Solo Administrador"],
-            ["/api/usuarios", "GET /roles, GET /, POST /, GET /:id, PATCH /:id, PATCH /:id/password", "Solo Administrador"],
-        ],
-        [Inches(1.35), Inches(4.2), Inches(1.55)],
-    )
-    add_para(
-        doc,
-        "No se observaron rutas backend para /api/paises ni /api/plataformas, aunque ambas tablas existen y plataformas tiene seeds. Esta decision "
-        "importa si el frontend de alta o edicion de reservaciones necesitara cargar esos catalogos dinamicamente."
-    )
-
-    add_heading(doc, "Reglas de Negocio Implementadas", 1)
-    add_table(
-        doc,
-        ["Area", "Reglas implementadas"],
-        [
-            ["Reservaciones", "Validacion de campos obligatorios, fechas, horas, enteros positivos, numeros, filtros permitidos, ninos no mayor que pax, cambios parciales permitidos y cancelacion transaccional."],
-            ["Auditoria", "Crear, modificar, cancelar y asignar transporte generan entradas en bitacora dentro de la misma transaccion cuando aplica."],
-            ["Capacidad", "Maximo operativo de 12 pasajeros por transporte y 24 pasajeros por tour fecha turno. Canceladas cuentan como 0 PAX activo."],
-            ["Vehiculo asignado", "Un transporte con vehiculo debe mantener al menos 2 pasajeros activos. No se permite crear transporte con vehiculo desde cero."],
-            ["Compatibilidad operativa", "Reservacion y transporte deben corresponder a la misma fecha y tour. Cambios de operacion validan reservaciones asignadas."],
-            ["Concurrencia", "Servicios usan transacciones y bloqueos FOR UPDATE sobre reservaciones, transportes u operaciones cuando hay riesgo de integridad."],
-            ["Usuarios", "Password con bcrypt salt rounds 12, correo unico, password minimo 8 caracteres y proteccion contra desactivar o degradar al propio administrador o al ultimo administrador activo."],
-            ["Errores PostgreSQL", "dbErrors traduce claves foraneas, unicidad, checks y tipos invalidos a mensajes HTTP controlados."],
-        ],
-        [Inches(1.6), Inches(5.4)],
-    )
-
-    add_heading(doc, "Frontend Implementado", 1)
-    add_para(
-        doc,
-        "El frontend es una aplicacion HTML, CSS y JavaScript sin framework. Usa router por hash, layout lateral, header autenticado y un cliente API "
-        "centralizado que adjunta Authorization Bearer cuando existe token. Ante 401, limpia la sesion en memoria y redirige a login."
-    )
-    add_table(
-        doc,
-        ["Vista", "Estado", "Notas tecnicas"],
-        [
-            ["Login", "Funcional", "Consume /api/auth/login, maneja 400, 401, 403 y errores de red."],
-            ["Dashboard", "Visual base", "Muestra metricas placeholder y acciones deshabilitadas."],
-            ["Reservaciones", "Visual base", "Tabla y filtros preparados, sin consumo de API real en esta vista."],
-            ["Operaciones", "Funcional", "Carga operaciones por fecha, catálogos de tours/guias, gestiona transportes y asigna o mueve reservaciones."],
-            ["Daily", "Funcional", "Consulta /api/daily/operativo, muestra resumen, transportes, reservaciones sin asignar, impresion y exportacion PDF."],
-            ["Historial", "Funcional", "Consulta reservaciones y tours, filtra historicas hasta ayer, agrupa por tour."],
-            ["Bitacora", "Funcional admin", "Consulta /api/bitacora con rango de fechas y muestra usuario, accion, reservacion y descripcion."],
-            ["Usuarios", "Funcional admin", "Lista, filtra, crea, edita, cambia password y activa o desactiva usuarios con protecciones UI."],
-            ["Configuracion", "Visual base", "Espacios de perfil, notificaciones y seguridad aun deshabilitados."],
-        ],
-        [Inches(1.45), Inches(1.35), Inches(4.2)],
-    )
-    add_para(
-        doc,
-        "La navegacion por rol esta implementada en layout.js: Administrador ve todas las secciones; Consulta no ve Bitacora ni Usuarios. La restriccion "
-        "importante se aplica tambien en backend mediante middleware, por lo que ocultar opciones no es el unico control."
-    )
-
-    add_heading(doc, "Electron y Escritorio", 1)
-    add_table(
-        doc,
-        ["Componente", "Implementacion actual"],
-        [
-            ["electron/main.js", "Solicita single instance lock, espera o inicia backend local, abre BrowserWindow maximizada y carga http://127.0.0.1:3000/app/."],
-            ["Backend local", "Se ejecuta con process.execPath y ELECTRON_RUN_AS_NODE=1. En empaquetado usa app.asar.unpacked."],
-            ["Configuracion empaquetada", "Valida config.env en app.getPath('userData') con DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD y JWT_SECRET."],
-            ["Seguridad ventana", "nodeIntegration false, contextIsolation true, sandbox true, webSecurity true, webviewTag false y bloqueo de navegacion fuera de /app."],
-            ["preload.js", "Expone solo desktopAPI.exportDailyPdf con normalizacion del payload."],
-            ["PDF Daily", "Usa webContents.printToPDF, dialogo de guardar y canal IPC daily:export-pdf validando origen emisor."],
-        ],
-        [Inches(1.8), Inches(5.2)],
-    )
-
-    add_heading(doc, "Empaquetado y Configuracion", 1)
-    add_para(
-        doc,
-        "package.json define scripts start, desktop, pack:win y dist:win. Electron Builder esta configurado con appId com.communitytours.reservaciones, "
-        "productName Sistema Integrador de Reservaciones, target NSIS x64 y asar habilitado."
-    )
-    add_para(
-        doc,
-        "La configuracion de build incluye electron, backend, frontend y package.json. Excluye .env, .env.*, database, docs, referencias, scripts, .git y dist. "
-        "Tambien desempaqueta backend, frontend y node_modules para permitir la ejecucion local desde Electron."
-    )
-
-    add_heading(doc, "Seguridad Implementada", 1)
+    add_heading(doc, "4. Electron", 1)
     add_bullets(
         doc,
         [
-            "Contraseñas almacenadas con bcryptjs y salt rounds 12.",
-            "JWT firmado con JWT_SECRET y expiracion configurable por JWT_EXPIRES_IN, por defecto 8h.",
-            "Validacion de usuario activo en login y en middleware de autenticacion.",
-            "Autorizacion por rol aplicada en rutas backend.",
-            "Consultas SQL parametrizadas con pg.",
-            "Variables sensibles fuera del codigo fuente mediante .env o config.env empaquetado.",
-            ".env ignorado por Git.",
-            "Frontend sin acceso directo a PostgreSQL.",
-            "Electron con contextIsolation, sandbox, sin nodeIntegration y preload limitado.",
-            "Cabeceras HTTP de seguridad y CSP para el frontend servido por Express.",
-        ]
-    )
-    add_para(
-        doc,
-        "Riesgos o temas a decidir: no hay rate limiting, no hay refresh tokens, el token del frontend vive solo en memoria, no hay pruebas automatizadas de seguridad, "
-        "y la estrategia de distribucion de config.env debe formalizarse para equipos reales."
+            "El punto de entrada declarado en package.json es electron/main.js.",
+            "Electron abre la aplicación local y expone funciones controladas mediante preload.",
+            "La exportación PDF del Daily se realiza desde el proceso principal con el canal daily:export-pdf.",
+            "El build Windows está configurado con electron-builder; el release final debe reconstruirse después de pruebas reales.",
+        ],
     )
 
-    add_heading(doc, "Historial de Implementacion", 1)
+    add_heading(doc, "5. Frontend", 1)
+    add_bullets(
+        doc,
+        [
+            "El frontend usa HTML, CSS y JavaScript sin framework.",
+            "La navegación usa rutas hash como #/dashboard, #/reservaciones, #/operaciones, #/daily, #/historial y #/bitacora.",
+            "Todas las operaciones de datos usan fetch contra /api.",
+            "Las pantallas implementadas cubren Login, Dashboard, Reservaciones, Operaciones, Daily, Historial, Bitácora, Usuarios y Configuración.",
+        ],
+    )
+
+    add_heading(doc, "6. API REST", 1)
     add_table(
         doc,
-        ["Checkpoint", "Implementacion acumulada"],
+        ["Ruta", "Uso principal", "Acceso"],
         [
-            ["1e279af a 22f7da5", "Estructura inicial, conexion PostgreSQL, schema, seeds, entorno y consulta de reservaciones."],
-            ["4cd7da9 a 5a40bac", "Creacion, actualizacion parcial, cancelacion, busquedas, filtros y validadores de reservaciones."],
-            ["5adc094 a 61dc110", "JWT, permisos por rol, autenticacion y bitacora transaccional."],
-            ["ab3635e a 773b759", "Consulta de bitacora, Daily por fecha, observaciones y frontend base con login y layout."],
-            ["da3055e a 1745bfb", "Catalogos operativos, operaciones de tour, transportes operativos y ampliacion de reservaciones."],
-            ["61af455 a 0ab3feb", "API de operaciones/transportes, asignacion de reservaciones, capacidad e integridad operativa."],
-            ["1c7e4d8 a 5fa2c03", "Daily operativo, frontend de Daily, consulta de tours, operaciones, transportes y organizacion."],
-            ["2dfbc1c a 71cda88", "Impresion, base Electron segura, exportacion PDF, refuerzos web y empaquetado Windows."],
-            ["d9336e4 a 19cd788", "Consulta de bitacora, historial completo y administracion segura de usuarios."],
+            ["/api/auth", "Login", "Público para login"],
+            ["/api/dashboard", "Resumen operativo real", "Usuarios autenticados"],
+            ["/api/reservaciones", "Listado, creación, edición, cancelación y asignación a transporte", "Consulta lee; Administrador modifica"],
+            ["/api/operaciones", "Operaciones, detalle y sugerencias por fecha", "Consulta lee; Administrador modifica"],
+            ["/api/transportes", "Transportes por operación", "Consulta lee; Administrador modifica"],
+            ["/api/daily", "Daily operativo y observaciones por fecha", "Usuarios autenticados"],
+            ["/api/bitacora", "Auditoría consultable", "Administrador"],
+            ["/api/usuarios", "Usuarios y roles", "Administrador"],
+            ["/api/tours, /api/paises, /api/plataformas", "Catálogos base", "Según ruta y rol"],
+            ["/api/guias, /api/operadores, /api/vehiculos", "Catálogos operativos", "Según ruta y rol"],
         ],
-        [Inches(1.65), Inches(5.35)],
+        [Inches(2.0), Inches(3.2), Inches(2.0)],
     )
 
-    add_heading(doc, "Pendientes Tecnicos Relevantes", 1)
+    add_heading(doc, "7. PostgreSQL", 1)
     add_table(
         doc,
-        ["Pendiente", "Impacto", "Decision recomendada"],
+        ["Tabla", "Propósito"],
         [
-            ["Frontend completo de reservaciones", "La API existe, pero la vista Reservaciones no permite crear, editar ni cancelar desde UI.", "Priorizar si el usuario operativo capturara reservaciones manuales desde el sistema."],
-            ["Catalogos de paises y plataformas por API", "La tabla existe, pero no hay rutas registradas para cargarlos dinamicamente.", "Definir si se exponen como catalogos de solo lectura o administrables."],
-            ["Notificaciones", "El modulo no existe en base de datos, backend ni frontend funcional.", "Decidir eventos, persistencia y si realmente entra antes de integraciones externas."],
-            ["Integraciones externas", "No hay servicios para FareHarbor, GetYourGuide o WhatsApp Business.", "Esperar documentacion, credenciales y alcance tecnico antes de implementar."],
-            ["Dashboard real", "Metricas principales aun son placeholders.", "Definir indicadores utiles para operacion diaria."],
-            ["Pruebas automatizadas", "No hay script npm test ni suites visibles.", "Agregar pruebas de servicios criticos: auth, roles, reservaciones, capacidad y usuarios."],
-            ["Migraciones", "Existen SQL manuales, no runner de migraciones.", "Decidir si se mantiene manual o se crea un flujo controlado sin ORM."],
-            ["Empaquetado final", "Electron Builder esta preparado, pero requiere politica de config.env y despliegue PostgreSQL.", "Definir instalacion, ubicacion de BD y soporte por equipo."],
-            ["Persistencia de sesion", "Token en memoria mejora simplicidad pero se pierde al recargar.", "Decidir si basta para escritorio local o si se requiere sesion persistente segura."],
+            ["roles", "Catálogo de permisos funcionales."],
+            ["usuarios", "Cuentas de acceso con rol, correo, contraseña hasheada y estado."],
+            ["tours", "Catálogo de tours vendibles."],
+            ["paises", "Catálogo de nacionalidades o países del cliente."],
+            ["plataformas", "Origen comercial de la reservación."],
+            ["vehiculos", "Unidades disponibles, placas, color, capacidad y estado."],
+            ["operadores", "Conductores u operadores de transporte."],
+            ["guias", "Guías asignables a grupos operativos."],
+            ["operaciones_tour", "Grupo operativo por fecha, tour, turno y número de grupo."],
+            ["transportes_operacion", "Transporte asociado a un grupo operativo."],
+            ["reservaciones", "Datos comerciales, pickup, turno, estado y asignación operativa."],
+            ["daily_observaciones", "Observaciones generales por fecha del Daily."],
+            ["bitacora", "Registro de auditoría asociado a usuario y reservación."],
         ],
-        [Inches(1.75), Inches(3.0), Inches(2.25)],
+        [Inches(2.0), Inches(5.2)],
     )
 
-    add_heading(doc, "Decisiones Arquitectonicas Vigentes", 1)
-    add_numbered(
+    add_heading(doc, "8. Autenticación y Autorización", 1)
+    add_bullets(
         doc,
         [
-            "La aplicacion conserva Electron como contenedor de escritorio.",
-            "El frontend se mantiene en HTML, CSS y JavaScript sin framework.",
-            "El backend se mantiene en Node.js Express con API REST bajo /api.",
-            "PostgreSQL se mantiene como base de datos y pg como cliente de acceso.",
-            "No se usa ORM.",
-            "La comunicacion de datos pasa por backend; frontend y Electron no acceden directamente a PostgreSQL.",
-            "Los permisos se validan en backend segun rol.",
-            "Las operaciones relevantes de reservaciones se auditan en bitacora.",
-            "Las integraciones externas siguen pendientes hasta tener documentacion y acceso autorizado.",
-            "El empaquetado Windows esta preparado con Electron Builder, pero la estrategia operativa final aun debe cerrarse.",
-        ]
+            "El login se realiza mediante POST /api/auth/login.",
+            "Las contraseñas se validan con bcryptjs.",
+            "La sesión de API usa JWT.",
+            "La autorización por rol se valida en middleware backend.",
+            "El rol Administrador modifica información; el rol Consulta conserva acceso de lectura según módulo.",
+        ],
     )
 
-    add_heading(doc, "Recomendacion para las Siguientes Decisiones", 1)
-    add_para(
+    add_heading(doc, "9. Reservaciones", 1)
+    add_bullets(
         doc,
-        "Para avanzar con menor riesgo conviene decidir primero si el sistema se usara como escritorio local en una sola maquina o si varias terminales "
-        "compartiran una base PostgreSQL comun. Esa decision afecta autenticacion, instalacion, red local, respaldo de base de datos, soporte y seguridad."
-    )
-    add_para(
-        doc,
-        "Despues de eso, el siguiente bloque tecnico natural es completar la interfaz de Reservaciones usando la API existente, porque desbloquea la captura "
-        "manual, edicion y cancelacion operativa desde la aplicacion, y tambien alimenta Daily, historial y bitacora."
-    )
-    add_para(
-        doc,
-        "Las integraciones externas deberian mantenerse fuera del codigo hasta contar con credenciales, contratos de API y reglas claras de sincronizacion. "
-        "La arquitectura ya tiene una base adecuada para agregarlas como servicios separados cuando esa informacion exista."
+        [
+            "Las nuevas reservaciones se registran como Pendiente.",
+            "Los estados documentados son Pendiente, Confirmada, Activa, Cancelada y Completada.",
+            "El turno es explícito: Mañana o Tarde.",
+            "Puede existir turno NULL solo para datos heredados.",
+            "No se documentan transiciones automáticas de estado.",
+            "pickup_time pertenece a cada reservación.",
+            "La asignación a transporte es manual y valida fecha, tour, turno y capacidad.",
+        ],
     )
 
+    add_heading(doc, "10. Operaciones y Grupos", 1)
+    add_table(
+        doc,
+        ["Relación o restricción", "Regla vigente"],
+        [
+            ["roles 1:N usuarios", "Cada usuario pertenece a un rol."],
+            ["tours 1:N reservaciones", "Cada reservación corresponde a un tour."],
+            ["tours 1:N operaciones_tour", "Cada grupo operativo corresponde a un tour."],
+            ["guias 1:N operaciones_tour", "Un guía puede aparecer en varios grupos."],
+            ["operaciones_tour 0:1 transportes_operacion", "Cada grupo puede tener como máximo un transporte."],
+            ["vehiculos 1:N transportes_operacion", "Un vehículo puede usarse en distintos grupos."],
+            ["operadores 1:N transportes_operacion", "Un operador puede usarse en distintos grupos."],
+            ["transportes_operacion 1:N reservaciones", "Varias reservaciones pueden asignarse al transporte del grupo."],
+            ["reservaciones 1:N bitacora", "Cada cambio relevante de reservación queda trazado."],
+            ["fecha + tour + turno + grupo", "Identidad única de operación."],
+        ],
+        [Inches(2.5), Inches(4.7)],
+    )
+    add_bullets(
+        doc,
+        [
+            "Una operación representa un grupo.",
+            "La identidad lógica de una operación es fecha + tour + turno + numero_grupo.",
+            "Los grupos permitidos son 1 y 2.",
+            "Cada grupo admite hasta 12 PAX activos.",
+            "Un tour en una fecha y turno admite hasta 24 PAX activos.",
+            "hora_inicio representa la primera hora de pickup del grupo.",
+        ],
+    )
+
+    add_heading(doc, "11. Transporte, Guía y Operador", 1)
+    add_bullets(
+        doc,
+        [
+            "Cada grupo puede tener un guía asignado.",
+            "Cada grupo puede tener como máximo un transporte.",
+            "El transporte puede asociar vehículo, operador y observaciones del operador.",
+            "Un transporte con vehículo debe respetar reglas de capacidad y mínimo operativo cuando ya tiene reservas activas.",
+        ],
+    )
+
+    add_heading(doc, "12. Operaciones Sugeridas", 1)
+    add_table(
+        doc,
+        ["Caso", "Resultado"],
+        [
+            ["Agrupación", "Fecha + tour + turno."],
+            ["Estados incluidos", "Pendiente, Confirmada y Activa."],
+            ["Estados excluidos", "Cancelada y Completada."],
+            ["1 a 12 PAX", "Sugiere 1 grupo."],
+            ["13 a 24 PAX", "Sugiere 2 grupos."],
+            [">24 PAX", "Mantiene máximo 2 grupos y reporta excedente."],
+            ["Asignación", "No distribuye clientes automáticamente; el usuario asigna según hotel, ruta y pickup."],
+        ],
+        [Inches(2.0), Inches(5.2)],
+    )
+
+    add_heading(doc, "13. Daily", 1)
+    add_para(
+        doc,
+        "El Daily operativo muestra salidas por fecha con Tour, Turno, Grupo, Fecha, Primera hora de pickup, Guía, Vehículo, Operador y PAX. Las reservaciones se ordenan por pickup_time."
+    )
+    add_bullets(
+        doc,
+        [
+            "GET /api/daily/operativo entrega operaciones, transportes y reservaciones sin asignar.",
+            "GET/PUT /api/daily/observaciones administra observaciones por fecha.",
+            "La impresión y PDF generan hoja por grupo/transporte cuando corresponde.",
+        ],
+    )
+
+    add_heading(doc, "14. Dashboard", 1)
+    add_table(
+        doc,
+        ["Métrica", "Fuente"],
+        [
+            ["Reservaciones vigentes de hoy", "GET /api/dashboard/resumen"],
+            ["PAX vigentes", "GET /api/dashboard/resumen"],
+            ["Grupos preparados", "GET /api/dashboard/resumen"],
+            ["Grupos pendientes", "GET /api/dashboard/resumen"],
+            ["Reservaciones sin turno", "GET /api/dashboard/resumen"],
+            ["Alertas de capacidad", "GET /api/dashboard/resumen"],
+            ["Últimas 10 reservaciones", "GET /api/dashboard/resumen"],
+            ["Salidas de hoy", "GET /api/dashboard/resumen"],
+        ],
+        [Inches(3.0), Inches(4.2)],
+    )
+
+    add_heading(doc, "15. Historial y Bitácora", 1)
+    add_bullets(
+        doc,
+        [
+            "Historial consulta reservaciones con filtros desde /api/reservaciones.",
+            "Bitácora se consulta desde /api/bitacora y está protegida para Administrador.",
+            "Crear, modificar, cancelar y asignar transportes registra auditoría cuando aplica.",
+        ],
+    )
+
+    add_heading(doc, "16. Seguridad", 1)
+    add_bullets(
+        doc,
+        [
+            "No se exponen credenciales PostgreSQL al frontend.",
+            "Las consultas SQL usan parámetros.",
+            "Las contraseñas se almacenan hasheadas.",
+            "Los permisos se validan en backend.",
+            "Los secretos deben vivir en .env.",
+        ],
+    )
+
+    add_heading(doc, "17. Configuración Runtime", 1)
+    add_bullets(
+        doc,
+        [
+            "La configuración sensible se toma de variables de entorno.",
+            "La conexión PostgreSQL se centraliza en backend/config/database.js.",
+            "El backend Express sirve el frontend en /app.",
+            "package.json define start, desktop, pack:win y dist:win.",
+        ],
+    )
+
+    add_heading(doc, "18. Installer", 1)
+    add_para(
+        doc,
+        "Existe configuración técnica de empaquetado con electron-builder. El release final queda pendiente de reconstrucción después del cierre documental, datos reales y pruebas de aceptación."
+    )
+
+    add_heading(doc, "19. Integraciones Pendientes", 1)
+    add_para(
+        doc,
+        "FareHarbor, GetYourGuide y WhatsApp Business están contempladas como plataformas u origen de reservación, pero no existe sincronización automática implementada ni contratos técnicos autorizados en el código."
+    )
+
+    add_heading(doc, "20. Estado Técnico Actual", 1)
+    add_table(
+        doc,
+        ["Área", "Estado", "Observación"],
+        [
+            ["Backend", "Implementado", "API REST, servicios, validadores, seguridad y auditoría."],
+            ["Frontend", "Implementado", "Pantallas operativas en JavaScript vanilla."],
+            ["Base de datos", "Implementada", "Schema actual más migraciones 001 a 007."],
+            ["Daily y Dashboard", "Implementados", "Ambos consumen datos reales del backend."],
+            ["Integraciones", "Pendiente", "Requieren documentación y acceso externo."],
+            ["Pruebas reales", "Pendiente", "Faltan datos reales, aceptación de usuarios e installer final."],
+        ],
+        [Inches(1.7), Inches(1.4), Inches(4.1)],
+    )
+
+    doc.add_section(WD_SECTION.NEW_PAGE)
+    add_heading(doc, "Anexo A. Comandos de Desarrollo", 1)
+    add_table(
+        doc,
+        ["Comando", "Descripción"],
+        [
+            ["npm start", "Inicia el backend Express y sirve el frontend en /app."],
+            ["npm run desktop", "Inicia Electron sobre el backend local."],
+            ["npm run pack:win", "Genera paquete Windows sin instalador final."],
+            ["npm run dist:win", "Genera instalador Windows con electron-builder."],
+            ["python scripts/generar_documento_arquitectura_implementada.py", "Genera este documento en versión nueva."],
+        ],
+        [Inches(2.7), Inches(4.5)],
+    )
+
+    OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     doc.save(OUTPUT)
     return OUTPUT
 
 
 if __name__ == "__main__":
-    output_path = build_document()
-    print(output_path)
+    path = build_document()
+    print(f"Documento generado: {path}")
