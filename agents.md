@@ -121,7 +121,13 @@ Tablas:
 * tours
 * paises
 * plataformas
+* vehiculos
+* operadores
+* guias
+* operaciones_tour
+* transportes_operacion
 * reservaciones
+* daily_observaciones
 * bitacora
 
 ### Relaciones
@@ -133,14 +139,42 @@ usuarios 1:N bitacora
 
 tours 1:N reservaciones
 
+tours 1:N operaciones_tour
+
 paises 1:N reservaciones
 
 plataformas 1:N reservaciones
 
+guias 1:N operaciones_tour
+
+operaciones_tour 0:1 transportes_operacion
+
+vehiculos 1:N transportes_operacion
+
+operadores 1:N transportes_operacion
+
+transportes_operacion 1:N reservaciones
+
 reservaciones 1:N bitacora
+
+daily_observaciones registra observaciones por fecha de Daily
 ```
 
 No modificar las relaciones ni agregar nuevas tablas o campos sin autorización.
+
+### Reglas operativas implementadas
+
+* Una operación representa un grupo operativo.
+* La identidad de una operación es fecha + tour + turno + numero_grupo.
+* Los turnos son explícitos: Mañana o Tarde. No derivar turnos por hora.
+* Solo existen grupo 1 y grupo 2.
+* Cada grupo tiene capacidad máxima de 12 PAX activos.
+* Cada tour, fecha y turno tiene capacidad máxima de 24 PAX activos.
+* Cada grupo puede tener como máximo un transporte.
+* Cada grupo puede tener guía asignado.
+* El transporte concentra vehículo, operador y observaciones del operador.
+* La reservación conserva su pickup_time propio; la operación usa hora_inicio como primera hora de pickup del grupo.
+* Las sugerencias operativas no asignan clientes automáticamente.
 
 ---
 
@@ -155,19 +189,26 @@ La tabla contiene:
 * id_pais
 * id_plataforma
 * nombre_cliente
+* telefono_cliente
 * habitacion
 * pax
 * ninos
 * pickup_place
 * pickup_time
+* turno
 * precio_total
 * deposito
 * saldo
 * tipo_cambio
 * metodo_pago
+* vendedor
+* observaciones
+* id_transporte_operacion
 * estado
 * fecha_registro
 * ultima_actualizacion
+
+El campo `turno` puede existir temporalmente en NULL para compatibilidad con datos históricos, pero las nuevas reservaciones deben capturarlo explícitamente como `Mañana` o `Tarde`.
 
 No agregar columnas nuevas sin aprobación.
 
@@ -296,14 +337,20 @@ Las rutas REST utilizarán el prefijo:
 Ejemplos:
 
 ```text
+/api/auth
+/api/dashboard
 /api/reservaciones
+/api/operaciones
+/api/transportes
+/api/daily
+/api/bitacora
 /api/usuarios
 /api/tours
 /api/paises
 /api/plataformas
-/api/bitacora
-/api/auth
-/api/daily
+/api/guias
+/api/operadores
+/api/vehiculos
 ```
 
 Mantener nombres consistentes.
@@ -362,12 +409,10 @@ Las integraciones solo deben implementarse cuando exista documentación y acceso
 
 No tomar automáticamente decisiones sobre:
 
-* JWT o sesiones.
-* Librería para PDF.
 * Estrategia de sincronización de FareHarbor.
 * Estrategia de sincronización de GetYourGuide.
 * Integración técnica de WhatsApp Business.
-* Estrategia final de empaquetado de Electron.
+* Estrategia final de datos reales, pruebas de aceptación y distribución productiva.
 
 Si una tarea depende de estas decisiones, indicarlo antes de introducir cambios importantes.
 
