@@ -544,7 +544,7 @@ const validarCapacidadAsignacion = async (
     return null;
 };
 
-const obtenerReservaciones = async (filtros = {}) => {
+const construirFiltrosReservaciones = (filtros = {}) => {
     const condiciones = [];
     const values = [];
 
@@ -597,6 +597,15 @@ const obtenerReservaciones = async (filtros = {}) => {
         ? `WHERE ${condiciones.join('\n            AND ')}`
         : '';
 
+    return {
+        where,
+        values
+    };
+};
+
+const obtenerReservaciones = async (filtros = {}) => {
+    const { where, values } = construirFiltrosReservaciones(filtros);
+
     const query = `
         SELECT
             ${columnasReservacion}
@@ -614,6 +623,72 @@ const obtenerReservaciones = async (filtros = {}) => {
     const result = await pool.query(query, values);
 
     return result.rows;
+};
+
+const contarReservaciones = async (filtros = {}) => {
+    const { where, values } = construirFiltrosReservaciones(filtros);
+    const query = `
+        SELECT COUNT(*)::int AS total
+        FROM reservaciones r
+        ${where}
+    `;
+
+    const result = await pool.query(query, values);
+
+    return Number(result.rows[0]?.total) || 0;
+};
+
+const obtenerReservacionesPaginadas = async (filtros = {}, paginacion = {}) => {
+    const page = paginacion.page;
+    const limit = paginacion.limit;
+    const total = await contarReservaciones(filtros);
+    const totalPages = total === 0
+        ? 0
+        : Math.ceil(total / limit);
+
+    if (totalPages === 0 || page > totalPages) {
+        return {
+            data: [],
+            pagination: {
+                page,
+                limit,
+                total,
+                totalPages
+            }
+        };
+    }
+
+    const { where, values } = construirFiltrosReservaciones(filtros);
+    const queryValues = [...values, limit, (page - 1) * limit];
+    const limitParam = queryValues.length - 1;
+    const offsetParam = queryValues.length;
+    const query = `
+        SELECT
+            ${columnasReservacion}
+        FROM reservaciones r
+        INNER JOIN tours t
+            ON t.id_tour = r.id_tour
+        INNER JOIN paises p
+            ON p.id_pais = r.id_pais
+        INNER JOIN plataformas pl
+            ON pl.id_plataforma = r.id_plataforma
+        ${where}
+        ORDER BY r.fecha_registro DESC, r.id_reservacion DESC
+        LIMIT $${limitParam}
+        OFFSET $${offsetParam}
+    `;
+
+    const result = await pool.query(query, queryValues);
+
+    return {
+        data: result.rows,
+        pagination: {
+            page,
+            limit,
+            total,
+            totalPages
+        }
+    };
 };
 
 const obtenerReservacionPorId = async (idReservacion) => {
@@ -864,6 +939,7 @@ const asignarTransporteReservacion = async (idReservacion, idTransporteOperacion
 
 module.exports = {
     obtenerReservaciones,
+    obtenerReservacionesPaginadas,
     obtenerReservacionPorId,
     crearReservacion,
     actualizarReservacionParcial,

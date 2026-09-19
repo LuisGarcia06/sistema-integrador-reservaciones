@@ -9,7 +9,12 @@ const {
 const { obtenerRespuestaErrorPostgres } = require('../utils/dbErrors');
 
 const listarReservaciones = async (req, res) => {
-    const { errores, filtros } = validarFiltrosReservaciones(req.query || {});
+    const {
+        errores,
+        filtros,
+        paginacion,
+        paginacionSolicitada
+    } = validarFiltrosReservaciones(req.query || {});
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -19,6 +24,12 @@ const listarReservaciones = async (req, res) => {
     }
 
     try {
+        if (paginacionSolicitada) {
+            const resultado = await reservacionesService.obtenerReservacionesPaginadas(filtros, paginacion);
+
+            return res.status(200).json(resultado);
+        }
+
         const reservaciones = await reservacionesService.obtenerReservaciones(filtros);
 
         return res.status(200).json({

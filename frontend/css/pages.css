@@ -1020,6 +1020,53 @@ body.is-login-page .page-root {
   white-space: nowrap;
 }
 
+.reservaciones-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-md);
+  padding: var(--space-md) 0 0;
+}
+
+.pagination-summary {
+  margin: 0;
+  color: var(--color-on-surface-variant);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+
+.pagination-controls,
+.pagination-pages {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-xs);
+}
+
+.pagination-page {
+  min-width: 40px;
+  padding-right: var(--space-sm);
+  padding-left: var(--space-sm);
+}
+
+.pagination-page.is-active {
+  border-color: var(--color-primary);
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.pagination-ellipsis,
+.pagination-empty {
+  color: var(--color-on-surface-variant);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+
+.pagination-limit-field {
+  width: 120px;
+  min-width: 120px;
+}
+
 .reservaciones-row-actions {
   min-width: 220px;
 }
@@ -1753,6 +1800,28 @@ body.is-login-page .page-root {
 
   .reservaciones-filter-bar {
     grid-template-columns: 1fr;
+  }
+
+  .reservaciones-pagination {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .pagination-controls {
+    justify-content: space-between;
+  }
+
+  .pagination-pages {
+    justify-content: center;
+  }
+
+  .pagination-nav {
+    flex: 1 1 120px;
+  }
+
+  .pagination-limit-field {
+    width: 100%;
+    min-width: 0;
   }
 
   .historial-filter-actions {

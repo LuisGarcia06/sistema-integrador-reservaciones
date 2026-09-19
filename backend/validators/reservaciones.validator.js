@@ -18,6 +18,18 @@ const filtrosReservacionesPermitidos = [
     'id_plataforma'
 ];
 
+const parametrosPaginacionReservacionesPermitidos = [
+    'page',
+    'limit'
+];
+
+const parametrosConsultaReservacionesPermitidos = [
+    ...filtrosReservacionesPermitidos,
+    ...parametrosPaginacionReservacionesPermitidos
+];
+
+const LIMITES_PAGINACION_RESERVACIONES = [25, 50, 100];
+
 const camposResultadoReservacion = [
     'codigo',
     'fecha',
@@ -651,10 +663,17 @@ const validarAsignacionTransporteReservacion = (datos) => {
 const validarFiltrosReservaciones = (query) => {
     const errores = [];
     const filtros = {};
+    const paginacionSolicitada = tieneCampo(query, 'page') || tieneCampo(query, 'limit');
+    const paginacion = paginacionSolicitada
+        ? {
+            page: 1,
+            limit: 25
+        }
+        : null;
     const filtrosEnviados = Object.keys(query);
 
     filtrosEnviados.forEach((filtro) => {
-        if (!filtrosReservacionesPermitidos.includes(filtro)) {
+        if (!parametrosConsultaReservacionesPermitidos.includes(filtro)) {
             errores.push(`El filtro ${filtro} no está permitido`);
         }
     });
@@ -674,6 +693,26 @@ const validarFiltrosReservaciones = (query) => {
         filtros[filtro] = resultado.valor;
     });
 
+    if (paginacionSolicitada && tieneCampo(query, 'page')) {
+        const page = convertirEnteroPositivo(query.page);
+
+        if (page === null) {
+            errores.push('El parámetro page debe ser un entero positivo');
+        } else {
+            paginacion.page = page;
+        }
+    }
+
+    if (paginacionSolicitada && tieneCampo(query, 'limit')) {
+        const limit = convertirEnteroPositivo(query.limit);
+
+        if (limit === null || !LIMITES_PAGINACION_RESERVACIONES.includes(limit)) {
+            errores.push('El parámetro limit debe ser 25, 50 o 100');
+        } else {
+            paginacion.limit = limit;
+        }
+    }
+
     if (
         filtros.fecha_desde &&
         filtros.fecha_hasta &&
@@ -684,7 +723,9 @@ const validarFiltrosReservaciones = (query) => {
 
     return {
         errores,
-        filtros
+        filtros,
+        paginacion,
+        paginacionSolicitada
     };
 };
 

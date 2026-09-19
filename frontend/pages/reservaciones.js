@@ -16,6 +16,7 @@
   const FORM_EDIT = "edit";
   const FORM_DETAIL = "detail";
   const COLUMN_COUNT = 11;
+  const PAGE_LIMITS = [25, 50, 100];
   const MONEY_FORMATTER = new Intl.NumberFormat("es-MX", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
@@ -32,6 +33,12 @@
   let submitLoading = false;
   let actionLoadingId = null;
   let catalogsLoaded = false;
+  let pagination = {
+    page: 1,
+    limit: 25,
+    total: 0,
+    totalPages: 0
+  };
 
   function isAdmin() {
     return Boolean(App.auth && App.auth.esAdministrador && App.auth.esAdministrador());
@@ -51,6 +58,12 @@
       nueva: document.getElementById("reservaciones-nueva"),
       message: document.getElementById("reservaciones-message"),
       tbody: document.getElementById("reservaciones-tbody"),
+      pagination: document.getElementById("reservaciones-pagination"),
+      paginationSummary: document.getElementById("reservaciones-pagination-summary"),
+      paginationPages: document.getElementById("reservaciones-pagination-pages"),
+      paginationPrev: document.getElementById("reservaciones-pagination-prev"),
+      paginationNext: document.getElementById("reservaciones-pagination-next"),
+      paginationLimit: document.getElementById("reservaciones-pagination-limit"),
       dialogHost: document.getElementById("reservaciones-dialog-host")
     };
   }
@@ -232,7 +245,10 @@
       elements.nombre,
       elements.codigo,
       elements.limpiar,
-      elements.nueva
+      elements.nueva,
+      elements.paginationPrev,
+      elements.paginationNext,
+      elements.paginationLimit
     ];
     const submit = elements.form ? elements.form.querySelector('[type="submit"]') : null;
 
@@ -244,6 +260,12 @@
 
     if (submit) {
       submit.disabled = isLoading;
+    }
+
+    if (elements.paginationPages) {
+      elements.paginationPages.querySelectorAll("button").forEach(function (button) {
+        button.disabled = isLoading;
+      });
     }
   }
 
@@ -257,6 +279,20 @@
 
   function getArrayResponse(response) {
     return Array.isArray(response && response.datos) ? response.datos : [];
+  }
+
+  function getPaginatedResponse(response) {
+    const responsePagination = response && response.pagination ? response.pagination : {};
+
+    return {
+      data: Array.isArray(response && response.data) ? response.data : [],
+      pagination: {
+        page: Number(responsePagination.page) || 1,
+        limit: PAGE_LIMITS.includes(Number(responsePagination.limit)) ? Number(responsePagination.limit) : pagination.limit,
+        total: Number(responsePagination.total) || 0,
+        totalPages: Number(responsePagination.totalPages) || 0
+      }
+    };
   }
 
   function updateKnownEstados(data) {
@@ -436,8 +472,11 @@
     return "";
   }
 
-  function buildQuery(elements) {
+  function buildQuery(elements, page, limit) {
     const params = new URLSearchParams();
+
+    params.set("page", String(page || 1));
+    params.set("limit", String(limit || pagination.limit));
 
     if (elements.fecha && elements.fecha.value) {
       params.set("fecha", elements.fecha.value);
@@ -470,6 +509,104 @@
     const query = params.toString();
 
     return query ? "?" + query : "";
+  }
+
+  function renderPaginationShell() {
+    return [
+      '<nav class="pagination reservaciones-pagination" id="reservaciones-pagination" aria-label="Paginación de reservaciones">',
+      '<p class="pagination-summary" id="reservaciones-pagination-summary">Mostrando 0 de 0</p>',
+      '<div class="pagination-controls">',
+      '<button class="btn btn-ghost pagination-nav" id="reservaciones-pagination-prev" type="button">Anterior</button>',
+      '<div class="pagination-pages" id="reservaciones-pagination-pages"></div>',
+      '<button class="btn btn-ghost pagination-nav" id="reservaciones-pagination-next" type="button">Siguiente</button>',
+      "</div>",
+      '<label class="field pagination-limit-field" for="reservaciones-pagination-limit">',
+      '<span class="field-label">Por página</span>',
+      '<select class="input" id="reservaciones-pagination-limit">',
+      PAGE_LIMITS.map(function (limit) {
+        return '<option value="' + App.ui.escapeHtml(limit) + '">' + App.ui.escapeHtml(limit) + "</option>";
+      }).join(""),
+      "</select>",
+      "</label>",
+      "</nav>"
+    ].join("");
+  }
+
+  function getVisiblePages(currentPage, totalPages) {
+    if (totalPages <= 0) {
+      return [];
+    }
+
+    if (totalPages <= 7) {
+      return Array.from({ length: totalPages }, function (_, index) {
+        return index + 1;
+      });
+    }
+
+    const pages = new Set([1, totalPages]);
+    const start = Math.max(2, currentPage - 2);
+    const end = Math.min(totalPages - 1, currentPage + 2);
+
+    for (let page = start; page <= end; page += 1) {
+      pages.add(page);
+    }
+
+    return Array.from(pages).sort(function (a, b) {
+      return a - b;
+    });
+  }
+
+  function renderPageButtons(currentPage, totalPages) {
+    const pages = getVisiblePages(currentPage, totalPages);
+
+    if (pages.length === 0) {
+      return '<span class="pagination-empty">Sin páginas</span>';
+    }
+
+    return pages.reduce(function (html, page, index) {
+      const previousPage = pages[index - 1];
+      const separator = previousPage && page - previousPage > 1
+        ? '<span class="pagination-ellipsis" aria-hidden="true">...</span>'
+        : "";
+      const current = page === currentPage;
+
+      return html + separator + [
+        '<button class="btn btn-ghost pagination-page' + (current ? " is-active" : "") + '" type="button" data-page="' + App.ui.escapeHtml(page) + '"' + (current ? ' aria-current="page"' : "") + ">",
+        App.ui.escapeHtml(page),
+        "</button>"
+      ].join("");
+    }, "");
+  }
+
+  function renderPaginationControls(elements) {
+    const total = Number(pagination.total) || 0;
+    const page = Number(pagination.page) || 1;
+    const limit = Number(pagination.limit) || 25;
+    const totalPages = Number(pagination.totalPages) || 0;
+    const start = total === 0 ? 0 : ((page - 1) * limit) + 1;
+    const end = total === 0 ? 0 : Math.min(page * limit, total);
+
+    if (elements.paginationSummary) {
+      elements.paginationSummary.textContent = total === 0
+        ? "Mostrando 0 de 0"
+        : "Mostrando " + start + "-" + end + " de " + total;
+    }
+
+    if (elements.paginationPages) {
+      elements.paginationPages.innerHTML = renderPageButtons(page, totalPages);
+    }
+
+    if (elements.paginationPrev) {
+      elements.paginationPrev.disabled = total === 0 || page <= 1;
+    }
+
+    if (elements.paginationNext) {
+      elements.paginationNext.disabled = total === 0 || page >= totalPages;
+    }
+
+    if (elements.paginationLimit) {
+      elements.paginationLimit.value = String(limit);
+    }
   }
 
   function renderActions(reservacion) {
@@ -529,6 +666,12 @@
     elements.tbody.innerHTML = renderRows(data);
   }
 
+  function resetPagination() {
+    pagination.page = 1;
+    pagination.total = 0;
+    pagination.totalPages = 0;
+  }
+
   async function loadCatalogs() {
     const activeRequestId = catalogRequestId + 1;
     catalogRequestId = activeRequestId;
@@ -557,6 +700,8 @@
     const config = options || {};
     const elements = getElements();
     const validationMessage = validateFilters(elements);
+    const requestedPage = Number(config.page) || pagination.page || 1;
+    const requestedLimit = Number(config.limit) || pagination.limit || 25;
 
     if (!elements.tbody) {
       return;
@@ -579,31 +724,52 @@
         await loadCatalogs();
       }
 
-      const response = await App.api.apiFetch("/api/reservaciones" + buildQuery(elements));
+      const response = await App.api.apiFetch("/api/reservaciones" + buildQuery(elements, requestedPage, requestedLimit));
 
       if (activeRequestId !== requestId || window.location.hash !== "#/reservaciones") {
         return;
       }
 
-      reservaciones = getArrayResponse(response);
+      const paginatedResponse = getPaginatedResponse(response);
+
+      if (
+        paginatedResponse.pagination.totalPages > 0 &&
+        paginatedResponse.pagination.page > paginatedResponse.pagination.totalPages
+      ) {
+        pagination.page = paginatedResponse.pagination.totalPages;
+        pagination.limit = paginatedResponse.pagination.limit;
+        await loadReservaciones({
+          page: pagination.page,
+          limit: pagination.limit
+        });
+        return;
+      }
+
+      reservaciones = paginatedResponse.data;
+      pagination = paginatedResponse.pagination;
       updateKnownEstados(reservaciones);
       populateFilterCatalogs();
       renderTable(reservaciones, getElements());
-      setMessage(reservaciones.length + " reservaciones encontradas.", "is-info");
+      renderPaginationControls(getElements());
+      setMessage(pagination.total + " reservaciones encontradas.", "is-info");
     } catch (error) {
       if (activeRequestId !== requestId || window.location.hash !== "#/reservaciones") {
         return;
       }
 
       reservaciones = [];
+      pagination.total = 0;
+      pagination.totalPages = 0;
       elements.tbody.innerHTML = renderStatusRow(
         "No se pudieron cargar las reservaciones",
         getBackendMessage(error, "No fue posible consultar las reservaciones.")
       );
+      renderPaginationControls(getElements());
       setMessage(getBackendMessage(error, "No fue posible consultar las reservaciones."), "is-error");
     } finally {
       if (activeRequestId === requestId && window.location.hash === "#/reservaciones") {
         setLoading(false);
+        renderPaginationControls(getElements());
       }
     }
   }
@@ -812,6 +978,7 @@
     } finally {
       actionLoadingId = null;
       setLoading(false);
+      renderPaginationControls(getElements());
     }
   }
 
@@ -1049,6 +1216,7 @@
     } finally {
       actionLoadingId = null;
       setLoading(false);
+      renderPaginationControls(getElements());
     }
   }
 
@@ -1110,6 +1278,7 @@
     if (elements.form) {
       elements.form.addEventListener("submit", function (event) {
         event.preventDefault();
+        resetPagination();
         loadReservaciones();
       });
     }
@@ -1123,6 +1292,7 @@
         elements.plataforma.value = "";
         elements.nombre.value = "";
         elements.codigo.value = "";
+        resetPagination();
         loadReservaciones();
       });
     }
@@ -1135,6 +1305,63 @@
 
     if (elements.tbody) {
       elements.tbody.addEventListener("click", handleTableClick);
+    }
+
+    if (elements.paginationPrev) {
+      elements.paginationPrev.addEventListener("click", function () {
+        if (pagination.total === 0 || pagination.page <= 1) {
+          return;
+        }
+
+        pagination.page -= 1;
+        loadReservaciones();
+      });
+    }
+
+    if (elements.paginationNext) {
+      elements.paginationNext.addEventListener("click", function () {
+        if (pagination.total === 0 || pagination.page >= pagination.totalPages) {
+          return;
+        }
+
+        pagination.page += 1;
+        loadReservaciones();
+      });
+    }
+
+    if (elements.paginationPages) {
+      elements.paginationPages.addEventListener("click", function (event) {
+        const button = event.target.closest ? event.target.closest("[data-page]") : null;
+
+        if (!button || button.disabled) {
+          return;
+        }
+
+        const page = Number(button.dataset.page);
+
+        if (!Number.isInteger(page) || page <= 0 || page === pagination.page) {
+          return;
+        }
+
+        pagination.page = page;
+        loadReservaciones();
+      });
+    }
+
+    if (elements.paginationLimit) {
+      elements.paginationLimit.addEventListener("change", function () {
+        const limit = Number(elements.paginationLimit.value);
+
+        if (!PAGE_LIMITS.includes(limit)) {
+          elements.paginationLimit.value = String(pagination.limit);
+          return;
+        }
+
+        pagination.limit = limit;
+        resetPagination();
+        pagination.limit = limit;
+        loadReservaciones();
+      });
     }
   }
 
@@ -1179,6 +1406,7 @@
         "</tbody>",
         "</table>",
         "</div>",
+        renderPaginationShell(),
         '<div id="reservaciones-dialog-host"></div>',
         "</section>"
       ].join("");
@@ -1195,8 +1423,15 @@
       submitLoading = false;
       actionLoadingId = null;
       catalogsLoaded = false;
+      pagination = {
+        page: 1,
+        limit: 25,
+        total: 0,
+        totalPages: 0
+      };
 
       bindPageEvents();
+      renderPaginationControls(getElements());
       loadReservaciones({ reloadCatalogs: true });
     }
   };
