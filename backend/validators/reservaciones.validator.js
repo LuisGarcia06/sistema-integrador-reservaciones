@@ -23,9 +23,14 @@ const parametrosPaginacionReservacionesPermitidos = [
     'limit'
 ];
 
+const parametrosMetadataReservacionesPermitidos = [
+    'include_resumen_tours'
+];
+
 const parametrosConsultaReservacionesPermitidos = [
     ...filtrosReservacionesPermitidos,
-    ...parametrosPaginacionReservacionesPermitidos
+    ...parametrosPaginacionReservacionesPermitidos,
+    ...parametrosMetadataReservacionesPermitidos
 ];
 
 const LIMITES_PAGINACION_RESERVACIONES = [25, 50, 100];
@@ -663,6 +668,9 @@ const validarAsignacionTransporteReservacion = (datos) => {
 const validarFiltrosReservaciones = (query) => {
     const errores = [];
     const filtros = {};
+    const opciones = {
+        incluirResumenTours: false
+    };
     const paginacionSolicitada = tieneCampo(query, 'page') || tieneCampo(query, 'limit');
     const paginacion = paginacionSolicitada
         ? {
@@ -692,6 +700,16 @@ const validarFiltrosReservaciones = (query) => {
 
         filtros[filtro] = resultado.valor;
     });
+
+    if (tieneCampo(query, 'include_resumen_tours')) {
+        const valor = normalizarTextoFiltro(query.include_resumen_tours);
+
+        if (valor !== '1' && valor !== 'true') {
+            errores.push('El parámetro include_resumen_tours debe ser 1 o true');
+        } else {
+            opciones.incluirResumenTours = true;
+        }
+    }
 
     if (paginacionSolicitada && tieneCampo(query, 'page')) {
         const page = convertirEnteroPositivo(query.page);
@@ -724,6 +742,7 @@ const validarFiltrosReservaciones = (query) => {
     return {
         errores,
         filtros,
+        opciones,
         paginacion,
         paginacionSolicitada
     };

@@ -638,24 +638,77 @@ const contarReservaciones = async (filtros = {}) => {
     return Number(result.rows[0]?.total) || 0;
 };
 
-const obtenerReservacionesPaginadas = async (filtros = {}, paginacion = {}) => {
+const obtenerResumenToursReservaciones = async (filtros = {}) => {
+    const { where, values } = construirFiltrosReservaciones(filtros);
+    const query = `
+        SELECT
+            r.id_tour,
+            t.nombre AS tour,
+            COUNT(*)::int AS total
+        FROM reservaciones r
+        INNER JOIN tours t
+            ON t.id_tour = r.id_tour
+        ${where}
+        GROUP BY r.id_tour, t.nombre
+        ORDER BY t.nombre ASC, r.id_tour ASC
+    `;
+
+    const result = await pool.query(query, values);
+
+    return result.rows.map((row) => ({
+        id_tour: row.id_tour,
+        tour: row.tour,
+        total: Number(row.total) || 0
+    }));
+};
+
+const construirRespuestaReservacionesPaginadas = ({
+    data,
+    page,
+    limit,
+    total,
+    totalPages,
+    resumenTours
+}) => {
+    const respuesta = {
+        data,
+        pagination: {
+            page,
+            limit,
+            total,
+            totalPages
+        }
+    };
+
+    if (Array.isArray(resumenTours)) {
+        respuesta.meta = {
+            resumen_tours: resumenTours
+        };
+    }
+
+    return respuesta;
+};
+
+const obtenerReservacionesPaginadas = async (filtros = {}, paginacion = {}, opciones = {}) => {
     const page = paginacion.page;
     const limit = paginacion.limit;
-    const total = await contarReservaciones(filtros);
+    const [total, resumenTours] = await Promise.all([
+        contarReservaciones(filtros),
+        opciones.incluirResumenTours ? obtenerResumenToursReservaciones(filtros) : Promise.resolve(null)
+    ]);
     const totalPages = total === 0
         ? 0
         : Math.ceil(total / limit);
 
     if (totalPages === 0 || page > totalPages) {
-        return {
+        return construirRespuestaReservacionesPaginadas({
             data: [],
-            pagination: {
-                page,
-                limit,
-                total,
-                totalPages
-            }
-        };
+            page,
+            limit,
+            total,
+            totalPages,
+            resumenTours
+        });
     }
 
     const { where, values } = construirFiltrosReservaciones(filtros);
@@ -680,15 +733,14 @@ const obtenerReservacionesPaginadas = async (filtros = {}, paginacion = {}) => {
 
     const result = await pool.query(query, queryValues);
 
-    return {
+    return construirRespuestaReservacionesPaginadas({
         data: result.rows,
-        pagination: {
-            page,
-            limit,
-            total,
-            totalPages
-        }
-    };
+        page,
+        limit,
+        total,
+        totalPages,
+        resumenTours
+    });
 };
 
 const obtenerReservacionPorId = async (idReservacion) => {

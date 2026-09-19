@@ -12,6 +12,7 @@ const listarReservaciones = async (req, res) => {
     const {
         errores,
         filtros,
+        opciones,
         paginacion,
         paginacionSolicitada
     } = validarFiltrosReservaciones(req.query || {});
@@ -25,7 +26,11 @@ const listarReservaciones = async (req, res) => {
 
     try {
         if (paginacionSolicitada) {
-            const resultado = await reservacionesService.obtenerReservacionesPaginadas(filtros, paginacion);
+            const resultado = await reservacionesService.obtenerReservacionesPaginadas(
+                filtros,
+                paginacion,
+                opciones
+            );
 
             return res.status(200).json(resultado);
         }

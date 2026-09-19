@@ -870,7 +870,7 @@ body.is-login-page .page-root {
 
 .historial-filter-bar {
   display: grid;
-  grid-template-columns: repeat(3, minmax(160px, 1fr)) repeat(2, minmax(180px, 1fr));
+  grid-template-columns: repeat(6, minmax(140px, 1fr)) repeat(2, minmax(180px, 1fr));
 }
 
 .historial-filter-actions {
@@ -953,6 +953,70 @@ body.is-login-page .page-root {
   white-space: nowrap;
 }
 
+.historial-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  padding: var(--space-lg);
+  overflow-y: auto;
+  background: rgba(24, 28, 28, 0.42);
+  place-items: start center;
+}
+
+.historial-detail-dialog {
+  display: grid;
+  width: min(100%, 980px);
+  max-height: calc(100vh - 48px);
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  overflow: auto;
+}
+
+.historial-detail-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.historial-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.historial-detail-item {
+  display: grid;
+  min-width: 0;
+  gap: var(--space-xs);
+  padding: var(--space-sm);
+  background: var(--color-surface-low);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-md);
+}
+
+.historial-detail-full {
+  grid-column: 1 / -1;
+}
+
+.historial-detail-label {
+  color: var(--color-on-surface-variant);
+  font-size: var(--font-size-caption);
+  font-weight: 600;
+  line-height: var(--line-height-caption);
+  text-transform: uppercase;
+}
+
+.historial-detail-value {
+  min-width: 0;
+  font-size: var(--font-size-body);
+  font-weight: 600;
+  line-height: var(--line-height-body);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
 .reservaciones-page {
   min-width: 0;
 }
@@ -1020,6 +1084,7 @@ body.is-login-page .page-root {
   white-space: nowrap;
 }
 
+.historial-pagination,
 .reservaciones-pagination {
   display: flex;
   align-items: center;
@@ -1798,10 +1863,33 @@ body.is-login-page .page-root {
     grid-template-columns: 1fr;
   }
 
+  .historial-detail-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .historial-dialog-backdrop {
+    padding: var(--space-md);
+  }
+
+  .historial-detail-dialog {
+    max-height: calc(100vh - 32px);
+    padding: var(--space-md);
+  }
+
+  .historial-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .historial-detail-full {
+    grid-column: auto;
+  }
+
   .reservaciones-filter-bar {
     grid-template-columns: 1fr;
   }
 
+  .historial-pagination,
   .reservaciones-pagination {
     align-items: stretch;
     flex-direction: column;
