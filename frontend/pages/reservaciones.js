@@ -734,6 +734,15 @@
     return [viewButton, editButton, cancelButton].join("");
   }
 
+  function renderPickupCell(reservacion) {
+    return [
+      '<div class="pickup-cell">',
+      '<span class="pickup-place">' + escapeValue(reservacion && reservacion.pickup_place) + "</span>",
+      '<span class="pickup-time">' + escapeValue(formatTime(reservacion && reservacion.pickup_time)) + "</span>",
+      "</div>"
+    ].join("");
+  }
+
   function renderRows(data) {
     if (!Array.isArray(data) || data.length === 0) {
       return "";
@@ -750,7 +759,7 @@
         "<td>" + escapeValue(reservacion && reservacion.nombre_cliente) + "</td>",
         "<td>" + escapeValue(getTourName(reservacion)) + "</td>",
         '<td class="reservaciones-number-cell">' + escapeValue(reservacion && reservacion.pax) + "</td>",
-        "<td>" + escapeValue(reservacion && reservacion.pickup_place) + '<span class="reservaciones-secondary-text">' + escapeValue(formatTime(reservacion && reservacion.pickup_time)) + "</span></td>",
+        "<td>" + renderPickupCell(reservacion) + "</td>",
         "<td>" + escapeValue(getVendidoPor(reservacion)) + "</td>",
         '<td><span class="' + getEstadoBadgeClass(estado) + '">' + escapeValue(estado) + "</span></td>",
         '<td class="reservaciones-money-cell">' + escapeValue(formatMoney(reservacion && reservacion.precio_total)) + "</td>",

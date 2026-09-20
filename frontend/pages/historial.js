@@ -242,11 +242,12 @@
   }
 
   function formatTime(value) {
-    if (!value) {
+    if (value === null || value === undefined || value === "" || typeof value === "object") {
       return EMPTY_VALUE;
     }
 
-    return String(value).slice(0, 5);
+    const match = String(value).match(/^(\d{2}):(\d{2})/);
+    return match ? match[1] + ":" + match[2] : String(value);
   }
 
   function formatMoney(value) {
@@ -628,6 +629,15 @@
     }
   }
 
+  function renderPickupCell(reservacion) {
+    return [
+      '<div class="pickup-cell">',
+      '<span class="pickup-place">' + escapeValue(reservacion && reservacion.pickup_place) + "</span>",
+      '<span class="pickup-time">' + escapeValue(formatTime(reservacion && reservacion.pickup_time)) + "</span>",
+      "</div>"
+    ].join("");
+  }
+
   function renderRows(data) {
     if (!Array.isArray(data) || data.length === 0) {
       return "";
@@ -647,7 +657,7 @@
         "<td>" + escapeValue(reservacion.nombre_cliente) + "</td>",
         "<td>" + escapeValue(getTourName(reservacion)) + "</td>",
         '<td class="historial-number-cell">' + escapeValue(reservacion.pax) + "</td>",
-        "<td>" + escapeValue(reservacion.pickup_place) + '<span class="historial-secondary-text">' + escapeValue(formatTime(reservacion.pickup_time)) + "</span></td>",
+        "<td>" + renderPickupCell(reservacion) + "</td>",
         "<td>" + escapeValue(getVendidoPor(reservacion)) + "</td>",
         '<td><span class="' + getEstadoBadgeClass(estado) + '">' + escapeValue(estado) + "</span></td>",
         '<td class="historial-money-cell">' + escapeValue(formatMoney(reservacion.precio_total)) + "</td>",
