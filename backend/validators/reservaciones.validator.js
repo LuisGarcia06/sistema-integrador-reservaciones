@@ -36,7 +36,6 @@ const parametrosConsultaReservacionesPermitidos = [
 const LIMITES_PAGINACION_RESERVACIONES = [25, 50, 100];
 
 const camposResultadoReservacion = [
-    'codigo',
     'fecha',
     'id_tour',
     'id_pais',
@@ -757,8 +756,12 @@ const validarDatosReservacion = (datos) => {
         errores.push('No se permite enviar id_reservacion');
     }
 
+    if (tieneCampo(datos, 'codigo')) {
+        errores.push('No se permite enviar codigo; se genera automáticamente');
+    }
+
     camposEnviados.forEach((campo) => {
-        if (campo === 'id_reservacion') {
+        if (campo === 'id_reservacion' || campo === 'codigo') {
             return;
         }
 

@@ -1,3 +1,4 @@
+const crypto = require('node:crypto');
 const pool = require('../config/database');
 const bitacoraService = require('./bitacora.service');
 const capacidadService = require('./capacidad.service');
@@ -71,10 +72,46 @@ const columnasReservacionBase = `
 `;
 
 const camposActualizables = camposEditablesReservacion;
+const PREFIJO_CODIGO_RESERVACION = 'RSV';
+const LONGITUD_ALEATORIA_CODIGO = 10;
+const MAX_INTENTOS_GENERAR_CODIGO = 5;
+const CONSTRAINT_UNIQUE_CODIGO_RESERVACION = 'reservaciones_codigo_key';
 
 const crearErrorSolicitudInvalida = (mensaje) => {
     const error = new Error(mensaje);
     error.statusCode = 400;
+
+    return error;
+};
+
+const obtenerFechaCodigoReservacion = (fecha = new Date()) => {
+    const year = fecha.getFullYear();
+    const month = String(fecha.getMonth() + 1).padStart(2, '0');
+    const day = String(fecha.getDate()).padStart(2, '0');
+
+    return `${year}${month}${day}`;
+};
+
+const generarCodigoReservacion = () => {
+    const fecha = obtenerFechaCodigoReservacion();
+    const aleatorio = crypto
+        .randomBytes(Math.ceil(LONGITUD_ALEATORIA_CODIGO / 2))
+        .toString('hex')
+        .slice(0, LONGITUD_ALEATORIA_CODIGO)
+        .toUpperCase();
+
+    return `${PREFIJO_CODIGO_RESERVACION}-${fecha}-${aleatorio}`;
+};
+
+const esColisionCodigoReservacion = (error) => (
+    error &&
+    error.code === '23505' &&
+    error.constraint === CONSTRAINT_UNIQUE_CODIGO_RESERVACION
+);
+
+const crearErrorGeneracionCodigo = () => {
+    const error = new Error('No fue posible generar un código único de reservación. Intenta nuevamente.');
+    error.statusCode = 500;
 
     return error;
 };
@@ -747,7 +784,7 @@ const obtenerReservacionPorId = async (idReservacion) => {
     return obtenerReservacionPorIdConDb(pool, idReservacion);
 };
 
-const crearReservacion = async (reservacion, idUsuario) => {
+const crearReservacionEnTransaccion = async (reservacion, idUsuario) => {
     const client = await pool.connect();
 
     try {
@@ -771,6 +808,25 @@ const crearReservacion = async (reservacion, idUsuario) => {
     } finally {
         client.release();
     }
+};
+
+const crearReservacion = async (reservacion, idUsuario) => {
+    for (let intento = 1; intento <= MAX_INTENTOS_GENERAR_CODIGO; intento += 1) {
+        const reservacionConCodigo = {
+            ...reservacion,
+            codigo: generarCodigoReservacion()
+        };
+
+        try {
+            return await crearReservacionEnTransaccion(reservacionConCodigo, idUsuario);
+        } catch (error) {
+            if (!esColisionCodigoReservacion(error)) {
+                throw error;
+            }
+        }
+    }
+
+    throw crearErrorGeneracionCodigo();
 };
 
 const actualizarReservacionParcial = async (idReservacion, campos, idUsuario) => {

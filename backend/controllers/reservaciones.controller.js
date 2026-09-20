@@ -76,6 +76,12 @@ const crearReservacion = async (req, res) => {
             return res.status(respuestaErrorPostgres.status).json(respuestaErrorPostgres.body);
         }
 
+        if (error.statusCode) {
+            return res.status(error.statusCode).json({
+                mensaje: error.message
+            });
+        }
+
         console.error('Error al crear la reservación:', error);
 
         return res.status(500).json({

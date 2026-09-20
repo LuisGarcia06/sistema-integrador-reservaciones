@@ -1,5 +1,4 @@
 const camposObligatoriosReservacion = [
-    'codigo',
     'fecha',
     'id_tour',
     'id_pais',
@@ -14,7 +13,6 @@ const camposObligatoriosReservacion = [
 ];
 
 const camposEditablesReservacion = [
-    'codigo',
     'fecha',
     'id_tour',
     'id_pais',

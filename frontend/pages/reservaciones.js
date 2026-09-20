@@ -832,6 +832,9 @@
     const selectedPaisId = reservacion ? reservacion.id_pais : "";
     const selectedPlataformaId = reservacion ? reservacion.id_plataforma : "";
     const selectedTurno = reservacion ? reservacion.turno : "";
+    const codigoField = isCreate
+      ? ""
+      : textField("reserva-codigo", "Código", reservacion && reservacion.codigo, 'type="text" maxlength="30"', true);
 
     return [
       '<div class="reservaciones-dialog-backdrop" id="reservaciones-dialog" role="dialog" aria-modal="true" aria-labelledby="reservaciones-dialog-title">',
@@ -846,7 +849,7 @@
       '<input type="hidden" id="reservaciones-form-mode" value="' + App.ui.escapeHtml(mode) + '">',
       '<input type="hidden" id="reservaciones-form-id" value="' + App.ui.escapeHtml(reservacion ? getReservacionId(reservacion) : "") + '">',
       renderSection("Datos de reserva", [
-        textField("reserva-codigo", "Código *", reservacion && reservacion.codigo, 'type="text" maxlength="30"', readOnly),
+        codigoField,
         textField("reserva-fecha", "Fecha *", normalizeDate(reservacion && reservacion.fecha), 'type="date"', readOnly),
         selectField("reserva-turno", "Turno *", renderTurnoOptions(selectedTurno, false, !isCreate && !selectedTurno), readOnly),
         selectField("reserva-tour", "Tour *", renderTourOptions(selectedTourId, !isCreate, false), readOnly),
@@ -1003,7 +1006,6 @@
   function buildPayload(mode) {
     const errores = [];
     const payload = {
-      codigo: getInputValue("reserva-codigo").trim(),
       fecha: getInputValue("reserva-fecha"),
       turno: getInputValue("reserva-turno"),
       id_tour: Number(getInputValue("reserva-tour")),
@@ -1027,10 +1029,6 @@
 
     if (mode === FORM_CREATE) {
       payload.estado = ESTADO_PENDIENTE;
-    }
-
-    if (!payload.codigo) {
-      errores.push("Ingresa el código.");
     }
 
     if (!isValidDateValue(payload.fecha)) {
@@ -1165,23 +1163,33 @@
     setFormLoading(true);
 
     try {
+      let successMessage = "Reservación creada correctamente.";
+
       if (mode === FORM_EDIT) {
         await App.api.apiFetch("/api/reservaciones/" + encodeURIComponent(idReservacion), {
           method: "PATCH",
           body: payload
         });
-        setMessage("Reservación actualizada correctamente.", "is-info");
+        successMessage = "Reservación actualizada correctamente.";
       } else {
-        await App.api.apiFetch("/api/reservaciones", {
+        const response = await App.api.apiFetch("/api/reservaciones", {
           method: "POST",
           body: payload
         });
-        setMessage("Reservación creada correctamente.", "is-info");
+
+        const codigo = response && response.datos && response.datos.codigo
+          ? response.datos.codigo
+          : "";
+
+        successMessage = codigo
+          ? "Reservación creada correctamente. Código: " + codigo
+          : "Reservación creada correctamente.";
       }
 
       setFormLoading(false);
       closeDialog();
       await loadReservaciones();
+      setMessage(successMessage, "is-info");
     } catch (error) {
       setFormMessage(getBackendMessage(error, "No fue posible guardar la reservación."), "is-error");
       setFormLoading(false);
