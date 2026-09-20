@@ -39,9 +39,118 @@
     total: 0,
     totalPages: 0
   };
+  let savedState = null;
+  let savedStateUserId = null;
 
   function isAdmin() {
     return Boolean(App.auth && App.auth.esAdministrador && App.auth.esAdministrador());
+  }
+
+  function getCurrentUserId() {
+    const usuario = App.auth && App.auth.obtenerUsuario ? App.auth.obtenerUsuario() : null;
+    return usuario && usuario.id_usuario !== null && usuario.id_usuario !== undefined
+      ? String(usuario.id_usuario)
+      : "";
+  }
+
+  function getDefaultSavedState() {
+    return {
+      page: 1,
+      limit: 25,
+      fecha: "",
+      turno: "",
+      id_tour: "",
+      estado: "",
+      id_plataforma: "",
+      nombre: "",
+      codigo: ""
+    };
+  }
+
+  function ensureSavedStateForCurrentUser() {
+    const currentUserId = getCurrentUserId();
+
+    if (savedStateUserId !== currentUserId) {
+      savedStateUserId = currentUserId;
+      savedState = null;
+    }
+  }
+
+  function getSavedState() {
+    ensureSavedStateForCurrentUser();
+    return savedState ? Object.assign(getDefaultSavedState(), savedState) : getDefaultSavedState();
+  }
+
+  function normalizeSavedPage(value) {
+    const page = Number(value);
+    return Number.isInteger(page) && page > 0 ? page : 1;
+  }
+
+  function normalizeSavedLimit(value) {
+    const limit = Number(value);
+    return PAGE_LIMITS.includes(limit) ? limit : 25;
+  }
+
+  function captureState(overrides) {
+    ensureSavedStateForCurrentUser();
+
+    const elements = getElements();
+    const nextState = {
+      page: normalizeSavedPage(pagination.page),
+      limit: normalizeSavedLimit(pagination.limit),
+      fecha: elements.fecha ? elements.fecha.value : "",
+      turno: elements.turno ? elements.turno.value : "",
+      id_tour: elements.tour ? elements.tour.value : "",
+      estado: elements.estado ? elements.estado.value : "",
+      id_plataforma: elements.plataforma ? elements.plataforma.value : "",
+      nombre: elements.nombre && elements.nombre.value.trim() ? elements.nombre.value.trim() : "",
+      codigo: elements.codigo && elements.codigo.value.trim() ? elements.codigo.value.trim() : ""
+    };
+
+    savedState = Object.assign(nextState, overrides || {});
+    savedState.page = normalizeSavedPage(savedState.page);
+    savedState.limit = normalizeSavedLimit(savedState.limit);
+  }
+
+  function restoreState() {
+    const state = getSavedState();
+    const elements = getElements();
+
+    pagination.page = normalizeSavedPage(state.page);
+    pagination.limit = normalizeSavedLimit(state.limit);
+
+    if (elements.fecha) {
+      elements.fecha.value = state.fecha || "";
+    }
+
+    if (elements.turno) {
+      elements.turno.value = state.turno || "";
+    }
+
+    if (elements.tour) {
+      elements.tour.value = state.id_tour || "";
+    }
+
+    if (elements.estado) {
+      elements.estado.value = state.estado || "";
+    }
+
+    if (elements.plataforma) {
+      elements.plataforma.value = state.id_plataforma || "";
+    }
+
+    if (elements.nombre) {
+      elements.nombre.value = state.nombre || "";
+    }
+
+    if (elements.codigo) {
+      elements.codigo.value = state.codigo || "";
+    }
+  }
+
+  function resetSavedState() {
+    ensureSavedStateForCurrentUser();
+    savedState = getDefaultSavedState();
   }
 
   function getElements() {
@@ -724,6 +833,10 @@
         await loadCatalogs();
       }
 
+      if (config.restoreState) {
+        restoreState();
+      }
+
       const response = await App.api.apiFetch("/api/reservaciones" + buildQuery(elements, requestedPage, requestedLimit));
 
       if (activeRequestId !== requestId || window.location.hash !== "#/reservaciones") {
@@ -732,12 +845,17 @@
 
       const paginatedResponse = getPaginatedResponse(response);
 
+      if (paginatedResponse.pagination.totalPages === 0) {
+        paginatedResponse.pagination.page = 1;
+      }
+
       if (
         paginatedResponse.pagination.totalPages > 0 &&
         paginatedResponse.pagination.page > paginatedResponse.pagination.totalPages
       ) {
         pagination.page = paginatedResponse.pagination.totalPages;
         pagination.limit = paginatedResponse.pagination.limit;
+        captureState();
         await loadReservaciones({
           page: pagination.page,
           limit: pagination.limit
@@ -752,6 +870,7 @@
       renderTable(reservaciones, getElements());
       renderPaginationControls(getElements());
       setMessage(pagination.total + " reservaciones encontradas.", "is-info");
+      captureState();
     } catch (error) {
       if (activeRequestId !== requestId || window.location.hash !== "#/reservaciones") {
         return;
@@ -1287,12 +1406,14 @@
       elements.form.addEventListener("submit", function (event) {
         event.preventDefault();
         resetPagination();
+        captureState();
         loadReservaciones();
       });
     }
 
     if (elements.limpiar) {
       elements.limpiar.addEventListener("click", function () {
+        resetSavedState();
         elements.fecha.value = "";
         elements.turno.value = "";
         elements.tour.value = "";
@@ -1301,6 +1422,7 @@
         elements.nombre.value = "";
         elements.codigo.value = "";
         resetPagination();
+        captureState();
         loadReservaciones();
       });
     }
@@ -1322,6 +1444,7 @@
         }
 
         pagination.page -= 1;
+        captureState();
         loadReservaciones();
       });
     }
@@ -1333,6 +1456,7 @@
         }
 
         pagination.page += 1;
+        captureState();
         loadReservaciones();
       });
     }
@@ -1352,6 +1476,7 @@
         }
 
         pagination.page = page;
+        captureState();
         loadReservaciones();
       });
     }
@@ -1368,6 +1493,7 @@
         pagination.limit = limit;
         resetPagination();
         pagination.limit = limit;
+        captureState();
         loadReservaciones();
       });
     }
@@ -1437,10 +1563,11 @@
         total: 0,
         totalPages: 0
       };
+      restoreState();
 
       bindPageEvents();
       renderPaginationControls(getElements());
-      loadReservaciones({ reloadCatalogs: true });
+      loadReservaciones({ reloadCatalogs: true, restoreState: true });
     }
   };
 })();
