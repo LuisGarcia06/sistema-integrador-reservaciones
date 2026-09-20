@@ -12,4 +12,11 @@ router.get(
     paisesController.listarPaises
 );
 
+router.post(
+    '/',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR),
+    paisesController.crearPais
+);
+
 module.exports = router;

@@ -20,6 +20,22 @@ const obtenerPaises = async () => {
     return result.rows;
 };
 
+const crearPais = async (pais) => {
+    const query = `
+        INSERT INTO paises (
+            nombre
+        )
+        VALUES ($1)
+        RETURNING
+            ${columnasPais}
+    `;
+
+    const result = await pool.query(query, [pais.nombre]);
+
+    return result.rows[0];
+};
+
 module.exports = {
-    obtenerPaises
+    obtenerPaises,
+    crearPais
 };

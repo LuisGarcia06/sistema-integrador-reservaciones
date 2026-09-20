@@ -71,9 +71,11 @@
       single: "país",
       endpoint: "/api/paises",
       idField: "id_pais",
-      writable: false,
+      writable: true,
+      createOnly: true,
       emptyTitle: "No hay países registrados.",
-      emptyText: "Catálogo administrado de forma controlada.",
+      emptyText: "Agrega países para usarlos en nuevas reservaciones.",
+      newLabel: "Agregar país",
       columns: ["ID", "Nombre"]
     },
     plataformas: {
@@ -82,9 +84,11 @@
       single: "plataforma",
       endpoint: "/api/plataformas",
       idField: "id_plataforma",
-      writable: false,
+      writable: true,
+      createOnly: true,
       emptyTitle: "No hay plataformas registradas.",
-      emptyText: "Catálogo interno administrado de forma controlada.",
+      emptyText: "Agrega plataformas para usarlas en nuevas reservaciones.",
+      newLabel: "Agregar plataforma",
       columns: ["ID", "Nombre"]
     }
   };
@@ -277,7 +281,7 @@
   }
 
   function renderActions(record, config) {
-    if (!config.writable || !isAdmin()) {
+    if (!config.writable || config.createOnly || !isAdmin()) {
       return "";
     }
 
@@ -520,12 +524,21 @@
 
     if (config.key === CATALOG_VEHICULOS) {
       return [
-        textField("catalogo-identificador", "Identificador *", record && record.identificador, 'type="text" maxlength="50"'),
+        textField("catalogo-identificador", "Identificador operativo *", record && record.identificador, 'type="text" maxlength="50"'),
+        '<p class="card-text catalogos-full-field">Nombre o código con el que la empresa identifica la unidad, por ejemplo Unidad 1, Van Blanca o VAN-03.</p>',
         textField("catalogo-placas", "Placas", record && record.placas, 'type="text" maxlength="20"'),
         textField("catalogo-color", "Color", record && record.color, 'type="text" maxlength="50"'),
         textField("catalogo-capacidad", "Capacidad *", record && record.capacidad, 'type="number" min="1" max="12" step="1"'),
         checkboxField("catalogo-activo", "Estado", isCreate ? true : getStatusValue(record, config))
       ].join("");
+    }
+
+    if (config.key === CATALOG_PAISES) {
+      return textField("catalogo-nombre", "Nombre *", record && record.nombre, 'type="text" maxlength="150"');
+    }
+
+    if (config.key === CATALOG_PLATAFORMAS) {
+      return textField("catalogo-nombre", "Nombre *", record && record.nombre, 'type="text" maxlength="50"');
     }
 
     return "";
@@ -534,7 +547,7 @@
   function renderDialog(config, mode, record) {
     const title = mode === FORM_EDIT
       ? "Editar " + config.single
-      : "Nuevo " + config.single;
+      : (config.newLabel || ("Nuevo " + config.single));
 
     return [
       '<div class="catalogos-dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="catalogo-form-title">',
@@ -565,6 +578,10 @@
     const host = document.getElementById("catalogos-dialog-host");
 
     if (!host || !config.writable || !isAdmin() || loading || saving) {
+      return;
+    }
+
+    if (config.createOnly && mode !== FORM_CREATE) {
       return;
     }
 
@@ -639,6 +656,16 @@
 
       if (!Number.isInteger(capacidad) || capacidad < 1 || capacidad > 12) {
         errores.push("La capacidad debe ser un entero entre 1 y 12.");
+      }
+    }
+
+    if (config.key === CATALOG_PAISES || config.key === CATALOG_PLATAFORMAS) {
+      payload = {
+        nombre: valueOf("catalogo-nombre").trim()
+      };
+
+      if (!payload.nombre) {
+        errores.push("Ingresa el nombre.");
       }
     }
 

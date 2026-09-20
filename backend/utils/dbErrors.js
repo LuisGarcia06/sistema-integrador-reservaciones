@@ -61,6 +61,30 @@ const obtenerRespuestaErrorPostgres = (error) => {
 
     if (
         error.code === '23505' &&
+        error.constraint === 'uq_paises_nombre_normalizado'
+    ) {
+        return {
+            status: 409,
+            body: {
+                mensaje: 'El país ya existe.'
+            }
+        };
+    }
+
+    if (
+        error.code === '23505' &&
+        error.constraint === 'uq_plataformas_nombre_normalizado'
+    ) {
+        return {
+            status: 409,
+            body: {
+                mensaje: 'La plataforma ya existe.'
+            }
+        };
+    }
+
+    if (
+        error.code === '23505' &&
         error.constraint === 'vehiculos_identificador_key'
     ) {
         return {

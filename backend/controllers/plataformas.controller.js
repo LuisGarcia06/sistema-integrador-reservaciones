@@ -1,4 +1,6 @@
 const plataformasService = require('../services/plataformas.service');
+const { validarDatosPlataforma } = require('../validators/plataformas.validator');
+const { obtenerRespuestaErrorPostgres } = require('../utils/dbErrors');
 
 const listarPlataformas = async (req, res) => {
     try {
@@ -18,6 +20,39 @@ const listarPlataformas = async (req, res) => {
     }
 };
 
+const crearPlataforma = async (req, res) => {
+    const { errores, plataforma } = validarDatosPlataforma(req.body || {});
+
+    if (errores.length > 0) {
+        return res.status(400).json({
+            mensaje: 'Datos inválidos',
+            errores
+        });
+    }
+
+    try {
+        const plataformaCreada = await plataformasService.crearPlataforma(plataforma);
+
+        return res.status(201).json({
+            mensaje: 'Plataforma creada correctamente',
+            datos: plataformaCreada
+        });
+    } catch (error) {
+        const respuestaErrorPostgres = obtenerRespuestaErrorPostgres(error);
+
+        if (respuestaErrorPostgres) {
+            return res.status(respuestaErrorPostgres.status).json(respuestaErrorPostgres.body);
+        }
+
+        console.error('Error al crear la plataforma:', error);
+
+        return res.status(500).json({
+            mensaje: 'Error al crear la plataforma'
+        });
+    }
+};
+
 module.exports = {
-    listarPlataformas
+    listarPlataformas,
+    crearPlataforma
 };

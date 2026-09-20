@@ -12,4 +12,11 @@ router.get(
     plataformasController.listarPlataformas
 );
 
+router.post(
+    '/',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR),
+    plataformasController.crearPlataforma
+);
+
 module.exports = router;

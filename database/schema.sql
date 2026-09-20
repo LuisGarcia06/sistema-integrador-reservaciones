@@ -55,6 +55,9 @@ CREATE TABLE paises (
     nombre VARCHAR(150) NOT NULL
 );
 
+CREATE UNIQUE INDEX uq_paises_nombre_normalizado
+ON paises (LOWER(TRIM(nombre)));
+
 
 -- =========================================================
 -- TABLA: plataformas
@@ -64,6 +67,9 @@ CREATE TABLE plataformas (
     id_plataforma INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
     nombre VARCHAR(50) NOT NULL
 );
+
+CREATE UNIQUE INDEX uq_plataformas_nombre_normalizado
+ON plataformas (LOWER(TRIM(nombre)));
 
 
 -- =========================================================

@@ -20,6 +20,22 @@ const obtenerPlataformas = async () => {
     return result.rows;
 };
 
+const crearPlataforma = async (plataforma) => {
+    const query = `
+        INSERT INTO plataformas (
+            nombre
+        )
+        VALUES ($1)
+        RETURNING
+            ${columnasPlataforma}
+    `;
+
+    const result = await pool.query(query, [plataforma.nombre]);
+
+    return result.rows[0];
+};
+
 module.exports = {
-    obtenerPlataformas
+    obtenerPlataformas,
+    crearPlataforma
 };
