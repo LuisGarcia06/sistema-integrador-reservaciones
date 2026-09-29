@@ -25,6 +25,8 @@ const camposEditablesReservacion = [
     'pickup_place',
     'pickup_time',
     'turno',
+    'idioma',
+    'notificado',
     'precio_total',
     'deposito',
     'saldo',
@@ -32,6 +34,7 @@ const camposEditablesReservacion = [
     'metodo_pago',
     'vendedor',
     'observaciones',
+    'motivo_cancelacion',
     'estado'
 ];
 

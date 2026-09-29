@@ -25,6 +25,9 @@ const CAMPOS_PERMITIDOS = [
     'metodo_pago',
     'vendedor',
     'observaciones',
+    'idioma',
+    'notificado',
+    'motivo_cancelacion',
     'estado'
 ];
 
@@ -43,6 +46,7 @@ const LIMITES_TEXTO = {
     pickup_place: 120,
     metodo_pago: 50,
     vendedor: 120,
+    idioma: 50,
     estado: 30
 };
 
@@ -193,6 +197,49 @@ const obtenerTextoOpcional = (fila, campo, errores) => {
     }
 
     return texto;
+};
+
+const obtenerTextoOpcionalEstricto = (fila, campo, errores) => {
+    const valor = fila[campo];
+
+    if (valor === undefined || valor === null) {
+        return null;
+    }
+
+    if (typeof valor !== 'string') {
+        errores.push('El campo ' + campo + ' debe ser texto o null.');
+        return null;
+    }
+
+    const texto = valor.trim();
+
+    if (texto === '') {
+        errores.push('El campo ' + campo + ' debe ser texto no vacío cuando viene informado.');
+        return null;
+    }
+
+    const maximo = LIMITES_TEXTO[campo];
+
+    if (maximo && texto.length > maximo) {
+        errores.push('El campo ' + campo + ' no debe exceder ' + maximo + ' caracteres.');
+    }
+
+    return texto;
+};
+
+const obtenerBooleanoOpcional = (fila, campo, errores) => {
+    const valor = fila[campo];
+
+    if (valor === undefined || valor === null) {
+        return null;
+    }
+
+    if (typeof valor !== 'boolean') {
+        errores.push('El campo ' + campo + ' debe ser booleano o null.');
+        return null;
+    }
+
+    return valor;
 };
 
 const esFechaValida = (valor) => {
@@ -347,11 +394,18 @@ const validarFila = (fila, index) => {
         metodo_pago: obtenerTextoOpcional(fila, 'metodo_pago', errores),
         vendedor: obtenerTextoOpcional(fila, 'vendedor', errores),
         observaciones: obtenerTextoOpcional(fila, 'observaciones', errores),
+        idioma: obtenerTextoOpcionalEstricto(fila, 'idioma', errores),
+        notificado: obtenerBooleanoOpcional(fila, 'notificado', errores),
+        motivo_cancelacion: obtenerTextoOpcionalEstricto(fila, 'motivo_cancelacion', errores),
         estado: obtenerEstado(fila, errores)
     };
 
     if (reservacion.ninos !== null && reservacion.pax !== null && reservacion.ninos > reservacion.pax) {
         errores.push('El campo ninos no puede ser mayor que pax.');
+    }
+
+    if (reservacion.estado !== 'Cancelada' && reservacion.motivo_cancelacion !== null) {
+        errores.push('El campo motivo_cancelacion solo puede informarse para reservaciones Canceladas.');
     }
 
     return {
@@ -638,6 +692,8 @@ const insertarReservacion = async (db, reservacion) => {
                 pickup_place,
                 pickup_time,
                 turno,
+                idioma,
+                notificado,
                 precio_total,
                 deposito,
                 saldo,
@@ -645,6 +701,7 @@ const insertarReservacion = async (db, reservacion) => {
                 metodo_pago,
                 vendedor,
                 observaciones,
+                motivo_cancelacion,
                 id_transporte_operacion,
                 estado,
                 fecha_registro,
@@ -655,8 +712,9 @@ const insertarReservacion = async (db, reservacion) => {
                 $6, $7, $8, $9, $10,
                 $11, $12, $13, $14, $15,
                 $16, $17, $18, $19, $20,
+                $21, $22, $23,
                 NULL,
-                $21,
+                $24,
                 CURRENT_TIMESTAMP,
                 CURRENT_TIMESTAMP
             )
@@ -675,6 +733,8 @@ const insertarReservacion = async (db, reservacion) => {
             reservacion.pickup_place,
             reservacion.pickup_time,
             reservacion.turno,
+            reservacion.idioma,
+            reservacion.notificado,
             reservacion.precio_total,
             reservacion.deposito,
             reservacion.saldo,
@@ -682,6 +742,7 @@ const insertarReservacion = async (db, reservacion) => {
             reservacion.metodo_pago,
             reservacion.vendedor,
             reservacion.observaciones,
+            reservacion.motivo_cancelacion,
             reservacion.estado
         ]
     );

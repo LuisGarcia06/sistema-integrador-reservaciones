@@ -48,6 +48,8 @@ const camposResultadoReservacion = [
     'pickup_place',
     'pickup_time',
     'turno',
+    'idioma',
+    'notificado',
     'precio_total',
     'deposito',
     'saldo',
@@ -55,6 +57,7 @@ const camposResultadoReservacion = [
     'metodo_pago',
     'vendedor',
     'observaciones',
+    'motivo_cancelacion',
     'estado'
 ];
 
@@ -262,9 +265,66 @@ const crearTransformadorTextoOpcional = ({ maximo } = {}) => (valor) => {
     return resultadoValido(texto);
 };
 
+const crearTransformadorTextoOpcionalEstricto = ({ maximo } = {}) => (valor) => {
+    if (valor === undefined || valor === null) {
+        return resultadoValido(null);
+    }
+
+    if (typeof valor !== 'string') {
+        return resultadoInvalido();
+    }
+
+    const texto = valor.trim();
+
+    if (texto === '') {
+        return resultadoInvalido();
+    }
+
+    if (maximo && texto.length > maximo) {
+        return resultadoInvalido();
+    }
+
+    return resultadoValido(texto);
+};
+
+const validarBooleanoCreacion = (valor) => {
+    if (valor === undefined) {
+        return resultadoValido(false);
+    }
+
+    return typeof valor === 'boolean'
+        ? resultadoValido(valor)
+        : resultadoInvalido();
+};
+
+const validarBooleanoActualizacion = (valor) => (
+    typeof valor === 'boolean'
+        ? resultadoValido(valor)
+        : resultadoInvalido()
+);
+
+const validarMotivoCancelacionCreacion = (valor) => (
+    valor === undefined || valor === null
+        ? resultadoValido(null)
+        : resultadoInvalido()
+);
+
+const obtenerMotivoCancelacionActualizacion = (valor) => {
+    if (typeof valor !== 'string') {
+        return resultadoInvalido();
+    }
+
+    const texto = valor.trim();
+
+    return texto === ''
+        ? resultadoInvalido()
+        : resultadoValido(texto);
+};
+
 const obtenerTelefonoClienteOpcional = crearTransformadorTextoOpcional({ maximo: 30 });
 const obtenerVendedorOpcional = crearTransformadorTextoOpcional({ maximo: 120 });
 const obtenerObservacionesOpcional = crearTransformadorTextoOpcional();
+const obtenerIdiomaOpcional = crearTransformadorTextoOpcionalEstricto({ maximo: 50 });
 
 const reglasReservacion = {
     codigo: {
@@ -340,6 +400,18 @@ const reglasReservacion = {
         mensajeCreacion: 'El campo turno debe ser Mañana o Tarde',
         mensajeActualizacion: 'El campo turno debe ser Mañana o Tarde'
     },
+    idioma: {
+        transformarCreacion: obtenerIdiomaOpcional,
+        transformarActualizacion: obtenerIdiomaOpcional,
+        mensajeCreacion: 'El campo idioma debe ser texto no vacío y no exceder 50 caracteres',
+        mensajeActualizacion: 'El campo idioma debe ser texto no vacío, NULL o no exceder 50 caracteres'
+    },
+    notificado: {
+        transformarCreacion: validarBooleanoCreacion,
+        transformarActualizacion: validarBooleanoActualizacion,
+        mensajeCreacion: 'El campo notificado debe ser booleano',
+        mensajeActualizacion: 'El campo notificado debe ser booleano'
+    },
     precio_total: {
         transformarCreacion: convertirCon(convertirNumero),
         transformarActualizacion: convertirCon(convertirNumero),
@@ -379,6 +451,12 @@ const reglasReservacion = {
         transformarActualizacion: obtenerObservacionesOpcional,
         mensajeCreacion: 'El campo observaciones debe ser texto',
         mensajeActualizacion: 'El campo observaciones debe ser texto'
+    },
+    motivo_cancelacion: {
+        transformarCreacion: validarMotivoCancelacionCreacion,
+        transformarActualizacion: obtenerMotivoCancelacionActualizacion,
+        mensajeCreacion: 'El campo motivo_cancelacion no puede asignarse al crear una reservación activa',
+        mensajeActualizacion: 'El campo motivo_cancelacion debe ser texto no vacío'
     },
     estado: {
         transformarCreacion: validarEstadoCreacion,
@@ -592,6 +670,18 @@ const aplicarReglaCreacion = (datos, transformaciones, campo, errores) => {
     }
 };
 
+const aplicarReglaCreacionSiPresente = (datos, transformaciones, campo, errores) => {
+    if (!tieneCampo(datos, campo)) {
+        return;
+    }
+
+    const regla = reglasReservacion[campo];
+
+    if (!transformaciones[campo].valido) {
+        errores.push(regla.mensajeCreacion);
+    }
+};
+
 const aplicarReglaActualizacion = (datos, campo, errores, camposActualizacion) => {
     if (!tieneCampo(datos, campo)) {
         return;
@@ -609,6 +699,43 @@ const aplicarReglaActualizacion = (datos, campo, errores, camposActualizacion) =
 };
 
 const validarIdReservacion = (id) => convertirEnteroPositivo(id);
+
+const validarCancelacionReservacion = (datos) => {
+    const errores = [];
+    const camposEnviados = Object.keys(datos);
+    const cancelacion = {};
+
+    camposEnviados.forEach((campo) => {
+        if (campo !== 'motivo_cancelacion') {
+            errores.push('El campo ' + campo + ' no está permitido');
+        }
+    });
+
+    if (!tieneCampo(datos, 'motivo_cancelacion')) {
+        errores.push('El campo motivo_cancelacion es obligatorio');
+        return {
+            errores,
+            cancelacion
+        };
+    }
+
+    const resultado = obtenerMotivoCancelacionActualizacion(datos.motivo_cancelacion);
+
+    if (!resultado.valido) {
+        errores.push('El campo motivo_cancelacion debe ser texto no vacío');
+        return {
+            errores,
+            cancelacion
+        };
+    }
+
+    cancelacion.motivo_cancelacion = resultado.valor;
+
+    return {
+        errores,
+        cancelacion
+    };
+};
 
 const validarAsignacionTransporteReservacion = (datos) => {
     const errores = [];
@@ -782,6 +909,10 @@ const validarDatosReservacion = (datos) => {
         aplicarReglaCreacion(datos, transformaciones, campo, errores);
     });
 
+    ['idioma', 'notificado', 'motivo_cancelacion'].forEach((campo) => {
+        aplicarReglaCreacionSiPresente(datos, transformaciones, campo, errores);
+    });
+
     const errorNinosPax = validarNinosNoExcedePax(
         transformaciones.pax.valor,
         transformaciones.ninos.valor
@@ -839,6 +970,7 @@ module.exports = {
     validarFiltrosReservaciones,
     validarDatosReservacion,
     validarDatosActualizacionReservacion,
+    validarCancelacionReservacion,
     validarAsignacionTransporteReservacion,
     validarNinosNoExcedePax,
     esValorVacio,

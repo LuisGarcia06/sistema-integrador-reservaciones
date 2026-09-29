@@ -4,6 +4,7 @@ const {
     validarDatosReservacion,
     validarDatosActualizacionReservacion,
     validarFiltrosReservaciones,
+    validarCancelacionReservacion,
     validarAsignacionTransporteReservacion
 } = require('../validators/reservaciones.validator');
 const { obtenerRespuestaErrorPostgres } = require('../utils/dbErrors');
@@ -156,9 +157,22 @@ const cancelarReservacion = async (req, res) => {
         });
     }
 
+    const { errores, cancelacion } = validarCancelacionReservacion(req.body || {});
+
+    if (errores.length > 0) {
+        return res.status(400).json({
+            mensaje: 'Datos inválidos',
+            errores
+        });
+    }
+
     try {
         const idUsuario = req.usuario.id_usuario;
-        const resultadoCancelacion = await reservacionesService.cancelarReservacion(idReservacion, idUsuario);
+        const resultadoCancelacion = await reservacionesService.cancelarReservacion(
+            idReservacion,
+            idUsuario,
+            cancelacion.motivo_cancelacion
+        );
 
         if (!resultadoCancelacion) {
             return res.status(404).json({

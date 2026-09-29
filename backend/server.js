@@ -76,6 +76,10 @@ app.get('/', (req, res) => {
     res.send('API del Sistema Integrador de Reservaciones funcionando');
 });
 
-app.listen(PORT, HOST, () => {
-    console.log(`Servidor ejecutándose en http://${HOST}:${PORT}`);
-});
+if (require.main === module) {
+    app.listen(PORT, HOST, () => {
+        console.log(`Servidor ejecutándose en http://${HOST}:${PORT}`);
+    });
+}
+
+module.exports = app;

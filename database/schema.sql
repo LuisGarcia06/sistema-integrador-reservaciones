@@ -200,6 +200,8 @@ CREATE TABLE reservaciones (
     pickup_place VARCHAR(120) NOT NULL,
     pickup_time TIME NOT NULL,
     turno VARCHAR(10),
+    idioma VARCHAR(50),
+    notificado BOOLEAN DEFAULT FALSE,
 
     precio_total NUMERIC(10,2) NOT NULL,
     deposito NUMERIC(10,2),
@@ -209,6 +211,7 @@ CREATE TABLE reservaciones (
     metodo_pago VARCHAR(50),
     vendedor VARCHAR(120),
     observaciones TEXT,
+    motivo_cancelacion TEXT,
     id_transporte_operacion INTEGER,
     estado VARCHAR(30) NOT NULL,
 
@@ -232,7 +235,13 @@ CREATE TABLE reservaciones (
         REFERENCES transportes_operacion(id_transporte_operacion),
 
     CONSTRAINT chk_reservaciones_turno
-        CHECK (turno IS NULL OR turno IN ('Mañana', 'Tarde'))
+        CHECK (turno IS NULL OR turno IN ('Mañana', 'Tarde')),
+
+    CONSTRAINT chk_reservaciones_idioma_no_vacio
+        CHECK (idioma IS NULL OR BTRIM(idioma) <> ''),
+
+    CONSTRAINT chk_reservaciones_motivo_cancelacion_no_vacio
+        CHECK (motivo_cancelacion IS NULL OR BTRIM(motivo_cancelacion) <> '')
 );
 
 

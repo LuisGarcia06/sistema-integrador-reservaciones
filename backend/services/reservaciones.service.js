@@ -30,6 +30,8 @@ const columnasReservacion = `
     r.pickup_place,
     r.pickup_time,
     r.turno,
+    r.idioma,
+    r.notificado,
     r.precio_total,
     r.deposito,
     r.saldo,
@@ -37,6 +39,7 @@ const columnasReservacion = `
     r.metodo_pago,
     r.vendedor,
     r.observaciones,
+    r.motivo_cancelacion,
     r.id_transporte_operacion,
     r.estado,
     r.fecha_registro,
@@ -58,6 +61,8 @@ const columnasReservacionBase = `
     pickup_place,
     pickup_time,
     turno,
+    idioma,
+    notificado,
     precio_total,
     deposito,
     saldo,
@@ -65,6 +70,7 @@ const columnasReservacionBase = `
     metodo_pago,
     vendedor,
     observaciones,
+    motivo_cancelacion,
     id_transporte_operacion,
     estado,
     fecha_registro,
@@ -76,6 +82,7 @@ const PREFIJO_CODIGO_RESERVACION = 'RSV';
 const LONGITUD_ALEATORIA_CODIGO = 10;
 const MAX_INTENTOS_GENERAR_CODIGO = 5;
 const CONSTRAINT_UNIQUE_CODIGO_RESERVACION = 'reservaciones_codigo_key';
+const ESTADO_CANCELADA = 'Cancelada';
 
 const crearErrorSolicitudInvalida = (mensaje) => {
     const error = new Error(mensaje);
@@ -146,6 +153,8 @@ const insertarReservacionConDb = async (db, reservacion) => {
             pickup_place,
             pickup_time,
             turno,
+            idioma,
+            notificado,
             precio_total,
             deposito,
             saldo,
@@ -153,6 +162,7 @@ const insertarReservacionConDb = async (db, reservacion) => {
             metodo_pago,
             vendedor,
             observaciones,
+            motivo_cancelacion,
             estado,
             fecha_registro,
             ultima_actualizacion
@@ -162,7 +172,7 @@ const insertarReservacionConDb = async (db, reservacion) => {
             $6, $7, $8, $9, $10,
             $11, $12, $13, $14, $15,
             $16, $17, $18, $19, $20,
-            $21,
+            $21, $22, $23, $24,
             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         )
         RETURNING
@@ -183,6 +193,8 @@ const insertarReservacionConDb = async (db, reservacion) => {
         reservacion.pickup_place,
         reservacion.pickup_time,
         reservacion.turno,
+        reservacion.idioma,
+        reservacion.notificado,
         reservacion.precio_total,
         reservacion.deposito,
         reservacion.saldo,
@@ -190,6 +202,7 @@ const insertarReservacionConDb = async (db, reservacion) => {
         reservacion.metodo_pago,
         reservacion.vendedor,
         reservacion.observaciones,
+        reservacion.motivo_cancelacion,
         reservacion.estado
     ];
 
@@ -226,18 +239,19 @@ const actualizarReservacionParcialConDb = async (db, idReservacion, campos) => {
     return result.rows[0];
 };
 
-const cancelarReservacionConDb = async (db, idReservacion) => {
+const cancelarReservacionConDb = async (db, idReservacion, motivoCancelacion) => {
     const query = `
         UPDATE reservaciones
         SET
             estado = $1,
+            motivo_cancelacion = $2,
             ultima_actualizacion = CURRENT_TIMESTAMP
-        WHERE id_reservacion = $2
+        WHERE id_reservacion = $3
         RETURNING
             ${columnasReservacionBase}
     `;
 
-    const result = await db.query(query, ['Cancelada', idReservacion]);
+    const result = await db.query(query, [ESTADO_CANCELADA, motivoCancelacion, idReservacion]);
 
     return result.rows[0];
 };
@@ -320,6 +334,8 @@ const crearResultadoCapacidadInvalida = (mensaje) => ({
 });
 
 const tieneCambio = (cambios, campo) => cambios.some((cambio) => cambio.campo === campo);
+
+const tieneCampo = (objeto, campo) => Object.prototype.hasOwnProperty.call(objeto, campo);
 
 const proyectarReservacion = (reservacionActual, camposActualizados) => ({
     ...reservacionActual,
@@ -842,6 +858,18 @@ const actualizarReservacionParcial = async (idReservacion, campos, idUsuario) =>
             return null;
         }
 
+        if (
+            tieneCampo(campos, 'estado') &&
+            campos.estado === ESTADO_CANCELADA &&
+            reservacionActual.estado !== ESTADO_CANCELADA
+        ) {
+            throw crearErrorSolicitudInvalida('Utiliza la acción de cancelación e informa motivo_cancelacion');
+        }
+
+        if (tieneCampo(campos, 'motivo_cancelacion') && reservacionActual.estado !== ESTADO_CANCELADA) {
+            throw crearErrorSolicitudInvalida('Solo se puede registrar motivo_cancelacion cuando la reservación ya está cancelada');
+        }
+
         const cambios = obtenerCambiosReservacion(reservacionActual, campos);
 
         if (cambios.length === 0) {
@@ -885,7 +913,7 @@ const actualizarReservacionParcial = async (idReservacion, campos, idUsuario) =>
     }
 };
 
-const cancelarReservacion = async (idReservacion, idUsuario) => {
+const cancelarReservacion = async (idReservacion, idUsuario, motivoCancelacion) => {
     const client = await pool.connect();
 
     try {
@@ -898,7 +926,7 @@ const cancelarReservacion = async (idReservacion, idUsuario) => {
             return null;
         }
 
-        if (reservacionActual.estado === 'Cancelada') {
+        if (reservacionActual.estado === ESTADO_CANCELADA) {
             await client.query('COMMIT');
             return {
                 reservacion: reservacionActual,
@@ -908,13 +936,13 @@ const cancelarReservacion = async (idReservacion, idUsuario) => {
 
         await validarCancelacionReservacion(client, reservacionActual);
 
-        const reservacionCancelada = await cancelarReservacionConDb(client, idReservacion);
+        const reservacionCancelada = await cancelarReservacionConDb(client, idReservacion, motivoCancelacion);
 
         await bitacoraService.crearEntradaBitacora({
             idUsuario,
             idReservacion,
             accion: ACCIONES_BITACORA.CANCELAR,
-            descripcion: 'Reservación cancelada'
+            descripcion: `Reservación cancelada. motivo_cancelacion: ${motivoCancelacion}`
         }, client);
 
         await client.query('COMMIT');
