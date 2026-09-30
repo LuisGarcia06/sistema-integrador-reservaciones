@@ -1070,7 +1070,8 @@ body.is-login-page .page-root {
 }
 
 .reservaciones-message:empty,
-#reservaciones-form-message:empty {
+#reservaciones-form-message:empty,
+#reservaciones-cancel-message:empty {
   display: none;
 }
 
@@ -1213,6 +1214,26 @@ body.is-login-page .page-root {
 
 .reservaciones-full-field {
   grid-column: 1 / -1;
+}
+
+.reservaciones-checkbox-field {
+  justify-content: end;
+}
+
+.reservaciones-checkbox-control {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  gap: var(--space-sm);
+  color: var(--color-on-surface);
+  font-size: var(--font-size-body);
+  line-height: var(--line-height-body);
+}
+
+.reservaciones-checkbox-control input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--color-primary);
 }
 
 .reservaciones-textarea {

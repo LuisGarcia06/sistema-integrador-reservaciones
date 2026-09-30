@@ -316,6 +316,18 @@
     return getPlataformaName(reservacion) || EMPTY_VALUE;
   }
 
+  function formatNotificado(value) {
+    if (value === true) {
+      return "Sí";
+    }
+
+    if (value === false) {
+      return "No";
+    }
+
+    return "Sin dato";
+  }
+
   function getEstadoBadgeClass(estado) {
     if (estado === "Cancelada") {
       return "badge badge-danger";
@@ -757,6 +769,8 @@
       renderDetailItem("Estado", detailValue(estado)),
       renderDetailItem("Nombre cliente", detailValue(reservacion && reservacion.nombre_cliente)),
       renderDetailItem("Teléfono", detailValue(reservacion && reservacion.telefono_cliente)),
+      renderDetailItem("Idioma", detailValue(reservacion && reservacion.idioma)),
+      renderDetailItem("Notificado", formatNotificado(reservacion && reservacion.notificado)),
       renderDetailItem("País", detailValue(reservacion && reservacion.pais)),
       renderDetailItem("Habitación", detailValue(reservacion && reservacion.habitacion)),
       renderDetailItem("PAX", detailValue(reservacion && reservacion.pax)),
@@ -775,6 +789,10 @@
       '<div class="historial-detail-item historial-detail-full">',
       '<span class="historial-detail-label">Observaciones</span>',
       '<strong class="historial-detail-value">' + escapeValue(reservacion && reservacion.observaciones) + "</strong>",
+      "</div>",
+      '<div class="historial-detail-item historial-detail-full">',
+      '<span class="historial-detail-label">Motivo de cancelación</span>',
+      '<strong class="historial-detail-value">' + escapeValue(reservacion && reservacion.motivo_cancelacion) + "</strong>",
       "</div>",
       "</section>",
       "</article>",

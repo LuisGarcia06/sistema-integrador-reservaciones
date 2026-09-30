@@ -30,7 +30,9 @@
   let plataformas = [];
   let estadosConocidos = new Set([ESTADO_PENDIENTE, ESTADO_CONFIRMADA, ESTADO_ACTIVA, ESTADO_CANCELADA, ESTADO_COMPLETADA]);
   let selectedReservacion = null;
+  let selectedCancelReservacion = null;
   let submitLoading = false;
+  let cancelLoading = false;
   let actionLoadingId = null;
   let catalogsLoaded = false;
   let pagination = {
@@ -310,6 +312,42 @@
     const plataforma = getPlataformaName(reservacion);
 
     return vendedor || plataforma || EMPTY_VALUE;
+  }
+
+  function formatNotificado(value) {
+    if (value === true) {
+      return "Sí";
+    }
+
+    if (value === false) {
+      return "No";
+    }
+
+    return "Sin dato";
+  }
+
+  function getNotificadoSelectValue(value) {
+    if (value === true) {
+      return "true";
+    }
+
+    if (value === false) {
+      return "false";
+    }
+
+    return "";
+  }
+
+  function parseNotificadoSelectValue(value) {
+    if (value === "true") {
+      return true;
+    }
+
+    if (value === "false") {
+      return false;
+    }
+
+    return null;
   }
 
   function getBackendMessage(error, fallback) {
@@ -939,6 +977,49 @@
     ].join("");
   }
 
+  function checkboxField(id, label, checked, readOnly) {
+    return [
+      '<label class="field reservaciones-checkbox-field" for="' + App.ui.escapeHtml(id) + '">',
+      '<span class="field-label">' + App.ui.escapeHtml(label) + "</span>",
+      '<span class="reservaciones-checkbox-control">',
+      '<input id="' + App.ui.escapeHtml(id) + '" type="checkbox"' + (checked ? " checked" : "") + (readOnly ? " disabled" : "") + ">",
+      '<span>Notificado</span>',
+      "</span>",
+      "</label>"
+    ].join("");
+  }
+
+  function staticField(id, label, value) {
+    return textField(id, label, value, 'type="text"', true);
+  }
+
+  function renderNotificadoOptions(value) {
+    const selected = getNotificadoSelectValue(value);
+    const options = [
+      { value: "", label: "Sin dato" },
+      { value: "false", label: "No" },
+      { value: "true", label: "Sí" }
+    ];
+
+    return options.map(function (option) {
+      return '<option value="' + App.ui.escapeHtml(option.value) + '"' + (option.value === selected ? " selected" : "") + ">" +
+        App.ui.escapeHtml(option.label) +
+        "</option>";
+    }).join("");
+  }
+
+  function renderNotificadoField(mode, reservacion, readOnly) {
+    if (mode === FORM_DETAIL) {
+      return staticField("reserva-notificado-label", "Cliente notificado", formatNotificado(reservacion && reservacion.notificado));
+    }
+
+    if (mode === FORM_CREATE) {
+      return checkboxField("reserva-notificado", "Cliente notificado", false, readOnly);
+    }
+
+    return selectField("reserva-notificado", "Cliente notificado", renderNotificadoOptions(reservacion && reservacion.notificado), readOnly);
+  }
+
   function renderSection(title, content) {
     return [
       '<section class="reservaciones-form-section">',
@@ -960,6 +1041,7 @@
     const selectedPaisId = reservacion ? reservacion.id_pais : "";
     const selectedPlataformaId = reservacion ? reservacion.id_plataforma : "";
     const selectedTurno = reservacion ? reservacion.turno : "";
+    const cancelada = isCancelada(reservacion);
     const codigoField = isCreate
       ? ""
       : textField("reserva-codigo", "Código", reservacion && reservacion.codigo, 'type="text" maxlength="30"', true);
@@ -987,7 +1069,9 @@
       renderSection("Cliente", [
         textField("reserva-nombre", "Nombre del cliente *", reservacion && reservacion.nombre_cliente, 'type="text" maxlength="120"', readOnly),
         textField("reserva-telefono", "Teléfono", reservacion && reservacion.telefono_cliente, 'type="text" maxlength="30"', readOnly),
-        textField("reserva-habitacion", "Habitación", reservacion && reservacion.habitacion, 'type="text" maxlength="50"', readOnly)
+        textField("reserva-habitacion", "Habitación", reservacion && reservacion.habitacion, 'type="text" maxlength="50"', readOnly),
+        textField("reserva-idioma", "Idioma", reservacion && reservacion.idioma, 'type="text" maxlength="50" placeholder="Español, Inglés, etc."', readOnly),
+        renderNotificadoField(mode, reservacion, readOnly)
       ].join("")),
       renderSection("Pasajeros", [
         textField("reserva-pax", "PAX *", reservacion && reservacion.pax, 'type="number" min="1" step="1"', readOnly),
@@ -1008,6 +1092,9 @@
         textField("reserva-tipo-cambio", "Tipo de cambio", reservacion && reservacion.tipo_cambio, 'type="number" step="0.01"', readOnly)
       ].join("")),
       renderSection("Observaciones", textareaField("reserva-observaciones", "Observaciones", reservacion && reservacion.observaciones, readOnly)),
+      (cancelada || (reservacion && reservacion.motivo_cancelacion)
+        ? renderSection("Cancelación", textareaField("reserva-motivo-cancelacion", "Motivo de cancelación", reservacion && reservacion.motivo_cancelacion, readOnly || !cancelada))
+        : ""),
       '<p class="form-message" id="reservaciones-form-message" role="status" aria-live="polite"></p>',
       '<div class="reservaciones-form-actions">',
       '<button class="btn" id="reservaciones-cancel-form" type="button">' + (isDetail ? "Cerrar" : "Cancelar") + "</button>",
@@ -1019,11 +1106,12 @@
   }
 
   function closeDialog() {
-    if (submitLoading) {
+    if (submitLoading || cancelLoading) {
       return;
     }
 
     selectedReservacion = null;
+    selectedCancelReservacion = null;
 
     const host = document.getElementById("reservaciones-dialog-host");
 
@@ -1055,6 +1143,11 @@
     if (submit) {
       submit.textContent = isLoading ? "Guardando..." : "Guardar";
     }
+  }
+
+  function getCheckboxValue(id) {
+    const element = document.getElementById(id);
+    return Boolean(element && element.checked);
   }
 
   async function openDialog(mode, reservacion) {
@@ -1142,6 +1235,7 @@
       nombre_cliente: getInputValue("reserva-nombre").trim(),
       telefono_cliente: textOrNull(getInputValue("reserva-telefono")),
       habitacion: textOrNull(getInputValue("reserva-habitacion")),
+      idioma: textOrNull(getInputValue("reserva-idioma")),
       pax: Number(getInputValue("reserva-pax")),
       ninos: numberOrNull(getInputValue("reserva-ninos")),
       pickup_place: getInputValue("reserva-pickup-place").trim(),
@@ -1157,6 +1251,17 @@
 
     if (mode === FORM_CREATE) {
       payload.estado = ESTADO_PENDIENTE;
+      payload.notificado = getCheckboxValue("reserva-notificado");
+    } else {
+      payload.notificado = parseNotificadoSelectValue(getInputValue("reserva-notificado"));
+    }
+
+    if (mode === FORM_EDIT && isCancelada(selectedReservacion)) {
+      const motivoCancelacion = textOrNull(getInputValue("reserva-motivo-cancelacion"));
+
+      if (motivoCancelacion !== null || selectedReservacion.motivo_cancelacion !== null) {
+        payload.motivo_cancelacion = motivoCancelacion;
+      }
     }
 
     if (!isValidDateValue(payload.fecha)) {
@@ -1185,6 +1290,10 @@
 
     if (!payload.nombre_cliente) {
       errores.push("Ingresa el nombre del cliente.");
+    }
+
+    if (payload.idioma && payload.idioma.length > 50) {
+      errores.push("Idioma no debe exceder 50 caracteres.");
     }
 
     if (!Number.isInteger(payload.pax) || payload.pax <= 0) {
@@ -1217,6 +1326,10 @@
       }
     });
 
+    if (Object.prototype.hasOwnProperty.call(payload, "motivo_cancelacion") && payload.motivo_cancelacion === null) {
+      errores.push("Ingresa el motivo de cancelación.");
+    }
+
     return {
       errores: errores,
       payload: payload
@@ -1234,6 +1347,10 @@
 
     if (campo === "pickup_time") {
       return normalizeTime(value);
+    }
+
+    if (campo === "notificado") {
+      return value === true || value === false ? value : null;
     }
 
     if (["id_tour", "id_pais", "id_plataforma", "pax", "ninos", "precio_total", "deposito", "saldo", "tipo_cambio"].includes(campo)) {
@@ -1324,36 +1441,146 @@
     }
   }
 
-  async function cancelarReservacion(reservacion) {
-    if (!isAdmin() || !reservacion || actionLoadingId) {
-      return;
-    }
-
+  function renderCancelDialog(reservacion) {
     const idReservacion = getReservacionId(reservacion);
-    const codigo = reservacion.codigo || ("ID " + idReservacion);
-    const cliente = reservacion.nombre_cliente || EMPTY_VALUE;
+    const codigo = reservacion && reservacion.codigo ? reservacion.codigo : ("ID " + idReservacion);
+    const cliente = reservacion && reservacion.nombre_cliente ? reservacion.nombre_cliente : EMPTY_VALUE;
 
-    if (!window.confirm("¿Cancelar la reservación " + codigo + " de " + cliente + "? Esta acción no elimina el registro.")) {
+    return [
+      '<div class="reservaciones-dialog-backdrop" id="reservaciones-cancel-dialog" role="dialog" aria-modal="true" aria-labelledby="reservaciones-cancel-title">',
+      '<form class="card reservaciones-form reservaciones-cancel-form" id="reservaciones-cancel-form" novalidate autocomplete="off">',
+      '<div class="reservaciones-form-header">',
+      '<div>',
+      '<h2 id="reservaciones-cancel-title">Cancelar reservación</h2>',
+      '<p class="card-text">Código: <strong>' + App.ui.escapeHtml(codigo) + '</strong></p>',
+      '<p class="card-text">Cliente: <strong>' + App.ui.escapeHtml(cliente) + '</strong></p>',
+      '</div>',
+      '<button class="btn btn-ghost" id="reservaciones-cancel-close" type="button" aria-label="Cerrar cancelación">Cerrar</button>',
+      '</div>',
+      textareaField("reservaciones-cancel-motivo", "Motivo de cancelación *", "", false),
+      '<p class="form-message" id="reservaciones-cancel-message" role="status" aria-live="polite"></p>',
+      '<div class="reservaciones-form-actions">',
+      '<button class="btn" id="reservaciones-cancel-back" type="button">Volver</button>',
+      '<button class="btn btn-primary" id="reservaciones-cancel-submit" type="submit">Confirmar cancelación</button>',
+      '</div>',
+      '</form>',
+      '</div>'
+    ].join("");
+  }
+
+  function closeCancelDialog() {
+    if (cancelLoading) {
       return;
     }
+
+    selectedCancelReservacion = null;
+
+    const host = document.getElementById("reservaciones-dialog-host");
+
+    if (host) {
+      host.innerHTML = "";
+    }
+  }
+
+  function setCancelMessage(text, type) {
+    const element = document.getElementById("reservaciones-cancel-message");
+
+    if (!element) {
+      return;
+    }
+
+    element.textContent = text || "";
+    element.className = "form-message" + (type ? " " + type : "");
+  }
+
+  function setCancelLoading(isLoading) {
+    cancelLoading = isLoading;
+
+    document.querySelectorAll("#reservaciones-cancel-form input, #reservaciones-cancel-form select, #reservaciones-cancel-form textarea, #reservaciones-cancel-form button").forEach(function (control) {
+      control.disabled = isLoading;
+    });
+
+    const submit = document.getElementById("reservaciones-cancel-submit");
+
+    if (submit) {
+      submit.textContent = isLoading ? "Cancelando..." : "Confirmar cancelación";
+    }
+  }
+
+  function openCancelDialog(reservacion) {
+    const host = document.getElementById("reservaciones-dialog-host");
+
+    if (!host || !reservacion || cancelLoading) {
+      return;
+    }
+
+    selectedCancelReservacion = reservacion;
+    host.innerHTML = renderCancelDialog(reservacion);
+    bindCancelDialogEvents();
+
+    const motivo = document.getElementById("reservaciones-cancel-motivo");
+
+    if (motivo) {
+      motivo.focus();
+    }
+  }
+
+  async function submitCancelacion(event) {
+    event.preventDefault();
+
+    if (!isAdmin() || !selectedCancelReservacion || cancelLoading) {
+      return;
+    }
+
+    const motivo = textOrNull(getInputValue("reservaciones-cancel-motivo"));
+
+    if (!motivo) {
+      setCancelMessage("Ingresa el motivo de cancelación.", "is-error");
+      return;
+    }
+
+    const idReservacion = getReservacionId(selectedCancelReservacion);
 
     actionLoadingId = idReservacion;
+    setCancelMessage("", "");
+    setCancelLoading(true);
     setLoading(true);
-    setMessage("", "");
 
     try {
       await App.api.apiFetch("/api/reservaciones/" + encodeURIComponent(idReservacion) + "/cancelar", {
-        method: "PATCH"
+        method: "PATCH",
+        body: {
+          motivo_cancelacion: motivo
+        }
       });
+      setCancelLoading(false);
+      closeCancelDialog();
       await loadReservaciones();
       setMessage("Reservación cancelada correctamente.", "is-info");
     } catch (error) {
-      setMessage(getBackendMessage(error, "No fue posible cancelar la reservación."), "is-error");
+      setCancelMessage(getBackendMessage(error, "No fue posible cancelar la reservación."), "is-error");
+      setCancelLoading(false);
     } finally {
       actionLoadingId = null;
       setLoading(false);
       renderPaginationControls(getElements());
     }
+  }
+
+  function bindCancelDialogEvents() {
+    const form = document.getElementById("reservaciones-cancel-form");
+    const close = document.getElementById("reservaciones-cancel-close");
+    const back = document.getElementById("reservaciones-cancel-back");
+
+    if (form) {
+      form.addEventListener("submit", submitCancelacion);
+    }
+
+    [close, back].forEach(function (button) {
+      if (button) {
+        button.addEventListener("click", closeCancelDialog);
+      }
+    });
   }
 
   function bindDialogEvents() {
@@ -1404,7 +1631,7 @@
         return;
       }
 
-      cancelarReservacion(reservacion);
+      openCancelDialog(reservacion);
     }
   }
 
@@ -1563,7 +1790,9 @@
       plataformas = [];
       estadosConocidos = new Set([ESTADO_PENDIENTE, ESTADO_CONFIRMADA, ESTADO_ACTIVA, ESTADO_CANCELADA, ESTADO_COMPLETADA]);
       selectedReservacion = null;
+      selectedCancelReservacion = null;
       submitLoading = false;
+      cancelLoading = false;
       actionLoadingId = null;
       catalogsLoaded = false;
       pagination = {
