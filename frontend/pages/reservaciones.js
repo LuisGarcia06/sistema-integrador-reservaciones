@@ -17,6 +17,7 @@
   const FORM_DETAIL = "detail";
   const COLUMN_COUNT = 11;
   const PAGE_LIMITS = [25, 50, 100];
+  const PRINT_CLEANUP_DELAY_MS = 2000;
   const MONEY_FORMATTER = new Intl.NumberFormat("es-MX", {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
@@ -34,6 +35,8 @@
   let submitLoading = false;
   let cancelLoading = false;
   let actionLoadingId = null;
+  let printCleanupTimer = null;
+  let printAfterPrintHandler = null;
   let catalogsLoaded = false;
   let pagination = {
     page: 1,
@@ -175,7 +178,8 @@
       paginationPrev: document.getElementById("reservaciones-pagination-prev"),
       paginationNext: document.getElementById("reservaciones-pagination-next"),
       paginationLimit: document.getElementById("reservaciones-pagination-limit"),
-      dialogHost: document.getElementById("reservaciones-dialog-host")
+      dialogHost: document.getElementById("reservaciones-dialog-host"),
+      printRoot: document.getElementById("reservacion-print-root")
     };
   }
 
@@ -324,6 +328,53 @@
     }
 
     return "Sin dato";
+  }
+
+  function getPrintableText(value, fallback) {
+    const fallbackValue = fallback !== undefined ? fallback : EMPTY_VALUE;
+
+    if (value === null || value === undefined || value === "" || typeof value === "object") {
+      return fallbackValue;
+    }
+
+    if (typeof value === "number" && !Number.isFinite(value)) {
+      return fallbackValue;
+    }
+
+    if (typeof value === "boolean") {
+      return value ? "Sí" : "No";
+    }
+
+    const text = String(value).trim();
+    const normalized = text.toLowerCase();
+
+    if (!text || normalized === "null" || normalized === "undefined" || normalized === "nan") {
+      return fallbackValue;
+    }
+
+    return text;
+  }
+
+  function hasPrintableText(value) {
+    return getPrintableText(value, "") !== "";
+  }
+
+  function formatPrintMoney(value) {
+    if (value === null || value === undefined || value === "" || typeof value === "object") {
+      return EMPTY_VALUE;
+    }
+
+    const number = Number(value);
+
+    return Number.isFinite(number) ? MONEY_FORMATTER.format(number) : EMPTY_VALUE;
+  }
+
+  function formatPrintDate(value) {
+    return getPrintableText(formatDate(value));
+  }
+
+  function formatPrintTime(value) {
+    return getPrintableText(formatTime(value));
   }
 
   function getNotificadoSelectValue(value) {
@@ -759,9 +810,10 @@
   function renderActions(reservacion) {
     const id = getReservacionId(reservacion);
     const viewButton = '<button class="btn btn-ghost" type="button" data-reservacion-action="view" data-id="' + App.ui.escapeHtml(id) + '">Ver</button>';
+    const printButton = '<button class="btn btn-ghost" type="button" data-reservacion-action="print" data-id="' + App.ui.escapeHtml(id) + '">Imprimir reservación</button>';
 
     if (!isAdmin()) {
-      return viewButton;
+      return [viewButton, printButton].join("");
     }
 
     const editButton = '<button class="btn" type="button" data-reservacion-action="edit" data-id="' + App.ui.escapeHtml(id) + '">Editar</button>';
@@ -769,7 +821,7 @@
       ? ""
       : '<button class="btn btn-ghost" type="button" data-reservacion-action="cancel" data-id="' + App.ui.escapeHtml(id) + '">Cancelar</button>';
 
-    return [viewButton, editButton, cancelButton].join("");
+    return [viewButton, printButton, editButton, cancelButton].join("");
   }
 
   function renderPickupCell(reservacion) {
@@ -944,6 +996,206 @@
     return reservaciones.find(function (reservacion) {
       return getReservacionId(reservacion) === String(id);
     });
+  }
+
+  function renderPrintField(label, value) {
+    return [
+      '<div class="reservacion-print-field">',
+      '<span>' + App.ui.escapeHtml(label) + "</span>",
+      "<strong>" + App.ui.escapeHtml(getPrintableText(value)) + "</strong>",
+      "</div>"
+    ].join("");
+  }
+
+  function renderPrintSection(title, fieldsHtml, className) {
+    return [
+      '<section class="reservacion-print-section ' + App.ui.escapeHtml(className || "") + '">',
+      "<h2>" + App.ui.escapeHtml(title) + "</h2>",
+      '<div class="reservacion-print-grid">',
+      fieldsHtml,
+      "</div>",
+      "</section>"
+    ].join("");
+  }
+
+  function renderPrintTextSection(title, text, className) {
+    return [
+      '<section class="reservacion-print-section reservacion-print-text-section ' + App.ui.escapeHtml(className || "") + '">',
+      "<h2>" + App.ui.escapeHtml(title) + "</h2>",
+      "<p>" + App.ui.escapeHtml(getPrintableText(text)) + "</p>",
+      "</section>"
+    ].join("");
+  }
+
+  function getPrintMotivoCancelacion(reservacion) {
+    if (hasPrintableText(reservacion && reservacion.motivo_cancelacion)) {
+      return getPrintableText(reservacion.motivo_cancelacion);
+    }
+
+    return isCancelada(reservacion) ? "Sin dato" : "";
+  }
+
+  function mergeReservacionForPrint(localReservacion, remoteReservacion) {
+    const merged = Object.assign({}, localReservacion || {}, remoteReservacion || {});
+
+    ["tour", "pais", "plataforma"].forEach(function (field) {
+      if (!hasPrintableText(merged[field]) && localReservacion && hasPrintableText(localReservacion[field])) {
+        merged[field] = localReservacion[field];
+      }
+    });
+
+    return merged;
+  }
+
+  function renderReservacionPrintDocument(reservacion) {
+    const codigo = getPrintableText(reservacion && reservacion.codigo);
+    const estado = getPrintableText(reservacion && reservacion.estado);
+    const motivoCancelacion = getPrintMotivoCancelacion(reservacion);
+    const cancelacionHtml = motivoCancelacion
+      ? renderPrintTextSection("Cancelación", motivoCancelacion, "reservacion-print-cancelacion")
+      : "";
+
+    return [
+      '<article class="reservacion-print-sheet">',
+      '<header class="reservacion-print-header">',
+      "<div>",
+      '<p class="reservacion-print-company">Community Tours Sian Ka\'an</p>',
+      '<h1>Reservación</h1>',
+      '<p class="reservacion-print-subtitle">Sistema Integrador de Reservaciones</p>',
+      "</div>",
+      '<div class="reservacion-print-code-block">',
+      "<span>Código</span>",
+      "<strong>" + App.ui.escapeHtml(codigo) + "</strong>",
+      '<em class="' + getEstadoBadgeClass(estado) + '">' + App.ui.escapeHtml(estado) + "</em>",
+      "</div>",
+      "</header>",
+      renderPrintSection("Servicio", [
+        renderPrintField("Fecha", formatPrintDate(reservacion && reservacion.fecha)),
+        renderPrintField("Estado", estado),
+        renderPrintField("Tour", getTourName(reservacion)),
+        renderPrintField("Turno", getTurnoLabel(reservacion))
+      ].join("")),
+      renderPrintSection("Datos del cliente", [
+        renderPrintField("Nombre del cliente", reservacion && reservacion.nombre_cliente),
+        renderPrintField("Teléfono", reservacion && reservacion.telefono_cliente),
+        renderPrintField("País", getPaisName(reservacion)),
+        renderPrintField("Habitación", reservacion && reservacion.habitacion),
+        renderPrintField("Idioma", reservacion && reservacion.idioma),
+        renderPrintField("Notificado", formatNotificado(reservacion && reservacion.notificado))
+      ].join("")),
+      renderPrintSection("Pasajeros y pickup", [
+        renderPrintField("PAX", reservacion && reservacion.pax),
+        renderPrintField("Niños", reservacion && reservacion.ninos),
+        renderPrintField("Pickup place", reservacion && reservacion.pickup_place),
+        renderPrintField("Pickup time", formatPrintTime(reservacion && reservacion.pickup_time))
+      ].join("")),
+      renderPrintSection("Información comercial", [
+        renderPrintField("Plataforma", getPlataformaName(reservacion)),
+        renderPrintField("Vendedor", reservacion && reservacion.vendedor),
+        renderPrintField("Precio total", formatPrintMoney(reservacion && reservacion.precio_total)),
+        renderPrintField("Depósito", formatPrintMoney(reservacion && reservacion.deposito)),
+        renderPrintField("Saldo", formatPrintMoney(reservacion && reservacion.saldo)),
+        renderPrintField("Tipo de cambio", formatPrintMoney(reservacion && reservacion.tipo_cambio)),
+        renderPrintField("Método de pago", reservacion && reservacion.metodo_pago)
+      ].join("")),
+      renderPrintTextSection("Observaciones", reservacion && reservacion.observaciones),
+      cancelacionHtml,
+      "</article>"
+    ].join("");
+  }
+
+  function clearReservacionPrint() {
+    const printRoot = document.getElementById("reservacion-print-root");
+
+    document.body.classList.remove("is-printing-reservacion");
+
+    if (printCleanupTimer) {
+      window.clearTimeout(printCleanupTimer);
+      printCleanupTimer = null;
+    }
+
+    if (printAfterPrintHandler) {
+      window.removeEventListener("afterprint", printAfterPrintHandler);
+      printAfterPrintHandler = null;
+    }
+
+    if (printRoot) {
+      printRoot.innerHTML = "";
+    }
+  }
+
+  function scheduleReservacionPrintCleanup() {
+    if (printCleanupTimer) {
+      window.clearTimeout(printCleanupTimer);
+    }
+
+    printCleanupTimer = window.setTimeout(clearReservacionPrint, PRINT_CLEANUP_DELAY_MS);
+  }
+
+  function prepareReservacionPrint(reservacion) {
+    const printRoot = document.getElementById("reservacion-print-root");
+
+    if (!printRoot) {
+      setMessage("No se encontró el contenedor de impresión.", "is-error");
+      return false;
+    }
+
+    clearReservacionPrint();
+    printRoot.innerHTML = renderReservacionPrintDocument(reservacion);
+    document.body.classList.add("is-printing-reservacion");
+
+    printAfterPrintHandler = function () {
+      clearReservacionPrint();
+    };
+
+    window.addEventListener("afterprint", printAfterPrintHandler, { once: true });
+
+    return true;
+  }
+
+  async function printReservacion(idReservacion, localReservacion) {
+    if (actionLoadingId) {
+      return;
+    }
+
+    actionLoadingId = idReservacion;
+    setLoading(true);
+    setMessage("", "");
+
+    try {
+      if (!catalogsLoaded) {
+        await loadCatalogs();
+      }
+
+      const response = await App.api.apiFetch("/api/reservaciones/" + encodeURIComponent(idReservacion));
+      const remoteReservacion = response && response.datos ? response.datos : null;
+
+      if (!remoteReservacion) {
+        setMessage("Reservación no encontrada.", "is-error");
+        return;
+      }
+
+      const reservacion = mergeReservacionForPrint(localReservacion, remoteReservacion);
+
+      if (!prepareReservacionPrint(reservacion)) {
+        return;
+      }
+
+      actionLoadingId = null;
+      setLoading(false);
+      renderPaginationControls(getElements());
+      window.print();
+      scheduleReservacionPrintCleanup();
+    } catch (error) {
+      clearReservacionPrint();
+      setMessage(getBackendMessage(error, "No fue posible preparar la impresión de la reservación."), "is-error");
+    } finally {
+      if (actionLoadingId === idReservacion) {
+        actionLoadingId = null;
+        setLoading(false);
+        renderPaginationControls(getElements());
+      }
+    }
   }
 
   function textField(id, label, value, attrs, readOnly) {
@@ -1615,6 +1867,11 @@
       return;
     }
 
+    if (action === "print") {
+      printReservacion(id, reservacion);
+      return;
+    }
+
     if (!isAdmin()) {
       setMessage("No tienes permisos para modificar reservaciones.", "is-error");
       return;
@@ -1778,6 +2035,7 @@
         "</div>",
         renderPaginationShell(),
         '<div id="reservaciones-dialog-host"></div>',
+        '<div class="reservacion-print-root" id="reservacion-print-root" aria-hidden="true"></div>',
         "</section>"
       ].join("");
     },

@@ -1164,6 +1164,10 @@ body.is-login-page .page-root {
   min-width: 220px;
 }
 
+.reservacion-print-root {
+  display: none;
+}
+
 .reservaciones-dialog-backdrop {
   position: fixed;
   inset: 0;
@@ -2324,5 +2328,160 @@ body.is-login-page .page-root {
     line-height: 12px;
     white-space: pre-wrap;
     border: 1px solid #000;
+  }
+
+  @page reservacion-individual {
+    size: Letter portrait;
+    margin: 12mm;
+  }
+
+  body.is-printing-reservacion #app,
+  body.is-printing-reservacion .app-shell,
+  body.is-printing-reservacion .page-root,
+  body.is-printing-reservacion .page.reservaciones-page {
+    display: block !important;
+    width: auto;
+    max-width: none;
+    min-height: auto;
+    padding: 0;
+    overflow: visible;
+    background: #fff;
+  }
+
+  body.is-printing-reservacion .page.reservaciones-page > :not(.reservacion-print-root),
+  body.is-printing-reservacion .daily-print-root {
+    display: none !important;
+  }
+
+  body.is-printing-reservacion .reservacion-print-root {
+    display: block !important;
+    width: 100%;
+    background: #fff;
+    font-family: var(--font-family-base);
+  }
+
+  body.is-printing-reservacion .reservacion-print-sheet {
+    page: reservacion-individual;
+    display: grid;
+    width: 100%;
+    gap: 10px;
+  }
+
+  body.is-printing-reservacion .reservacion-print-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #000;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  body.is-printing-reservacion .reservacion-print-company {
+    margin-bottom: 3px;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 13px;
+    text-transform: uppercase;
+  }
+
+  body.is-printing-reservacion .reservacion-print-header h1 {
+    font-size: 24px;
+    font-weight: 800;
+    line-height: 28px;
+  }
+
+  body.is-printing-reservacion .reservacion-print-subtitle {
+    margin-top: 3px;
+    color: #333 !important;
+    font-size: 10px;
+    line-height: 13px;
+  }
+
+  body.is-printing-reservacion .reservacion-print-code-block {
+    display: grid;
+    min-width: 210px;
+    gap: 5px;
+    justify-items: end;
+    text-align: right;
+  }
+
+  body.is-printing-reservacion .reservacion-print-code-block span,
+  body.is-printing-reservacion .reservacion-print-field span {
+    font-size: 8px;
+    font-weight: 800;
+    line-height: 10px;
+    text-transform: uppercase;
+  }
+
+  body.is-printing-reservacion .reservacion-print-code-block strong {
+    overflow-wrap: anywhere;
+    font-size: 16px;
+    font-weight: 800;
+    line-height: 19px;
+  }
+
+  body.is-printing-reservacion .reservacion-print-code-block em {
+    display: inline-block;
+    padding: 3px 7px;
+    font-size: 9px;
+    font-style: normal;
+    font-weight: 800;
+    line-height: 11px;
+    border: 1px solid #000;
+    border-radius: 0;
+  }
+
+  body.is-printing-reservacion .reservacion-print-section {
+    display: grid;
+    gap: 5px;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  body.is-printing-reservacion .reservacion-print-section h2 {
+    font-size: 10px;
+    font-weight: 800;
+    line-height: 12px;
+    letter-spacing: 0;
+    text-transform: uppercase;
+  }
+
+  body.is-printing-reservacion .reservacion-print-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    border-top: 1px solid #000;
+    border-left: 1px solid #000;
+  }
+
+  body.is-printing-reservacion .reservacion-print-field {
+    display: grid;
+    gap: 2px;
+    min-width: 0;
+    padding: 6px 8px;
+    border-right: 1px solid #000;
+    border-bottom: 1px solid #000;
+  }
+
+  body.is-printing-reservacion .reservacion-print-field strong {
+    overflow-wrap: anywhere;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 14px;
+  }
+
+  body.is-printing-reservacion .reservacion-print-text-section p {
+    min-height: 42px;
+    padding: 8px;
+    overflow-wrap: anywhere;
+    font-size: 11px;
+    line-height: 15px;
+    white-space: pre-wrap;
+    border: 1px solid #000;
+  }
+
+  body.is-printing-reservacion .reservacion-print-cancelacion p {
+    border-width: 2px;
   }
 }

@@ -14,6 +14,8 @@ const transportesRoutes = require('./routes/transportes.routes');
 const toursRoutes = require('./routes/tours.routes');
 const usuariosRoutes = require('./routes/usuarios.routes');
 const vehiculosRoutes = require('./routes/vehiculos.routes');
+const whatsappRoutes = require('./routes/whatsapp.routes');
+const fareharborWebhookRoutes = require('./routes/fareharborWebhook.routes');
 
 const app = express();
 const frontendPath = path.join(__dirname, '..', 'frontend');
@@ -71,6 +73,8 @@ app.use('/api/transportes', transportesRoutes);
 app.use('/api/tours', toursRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/vehiculos', vehiculosRoutes);
+app.use('/api/webhooks/fareharbor', fareharborWebhookRoutes);
+app.use('/api/webhooks/whatsapp', whatsappRoutes);
 
 app.get('/', (req, res) => {
     res.send('API del Sistema Integrador de Reservaciones funcionando');
@@ -83,3 +87,4 @@ if (require.main === module) {
 }
 
 module.exports = app;
+
