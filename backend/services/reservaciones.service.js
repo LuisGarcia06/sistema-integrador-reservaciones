@@ -239,7 +239,7 @@ const actualizarReservacionParcialConDb = async (db, idReservacion, campos) => {
     return result.rows[0];
 };
 
-const cancelarReservacionConDb = async (db, idReservacion, motivoCancelacion) => {
+const actualizarReservacionCanceladaConDb = async (db, idReservacion, motivoCancelacion) => {
     const query = `
         UPDATE reservaciones
         SET
@@ -917,44 +917,58 @@ const actualizarReservacionParcial = async (idReservacion, campos, idUsuario) =>
     }
 };
 
+const cancelarReservacionConDb = async (db, idReservacion, idUsuario, motivoCancelacion) => {
+    const reservacionActual = await obtenerReservacionPorIdConDb(db, idReservacion, true);
+
+    if (!reservacionActual) {
+        return null;
+    }
+
+    if (reservacionActual.estado === ESTADO_CANCELADA) {
+        return {
+            reservacion: reservacionActual,
+            yaEstabaCancelada: true
+        };
+    }
+
+    await validarCancelacionReservacion(db, reservacionActual);
+
+    const reservacionCancelada = await actualizarReservacionCanceladaConDb(db, idReservacion, motivoCancelacion);
+
+    await bitacoraService.crearEntradaBitacora({
+        idUsuario,
+        idReservacion,
+        accion: ACCIONES_BITACORA.CANCELAR,
+        descripcion: `Reservación cancelada. motivo_cancelacion: ${motivoCancelacion}`
+    }, db);
+
+    return {
+        reservacion: reservacionCancelada,
+        yaEstabaCancelada: false
+    };
+};
+
 const cancelarReservacion = async (idReservacion, idUsuario, motivoCancelacion) => {
     const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
 
-        const reservacionActual = await obtenerReservacionPorIdConDb(client, idReservacion, true);
+        const resultadoCancelacion = await cancelarReservacionConDb(
+            client,
+            idReservacion,
+            idUsuario,
+            motivoCancelacion
+        );
 
-        if (!reservacionActual) {
+        if (!resultadoCancelacion) {
             await client.query('COMMIT');
             return null;
         }
 
-        if (reservacionActual.estado === ESTADO_CANCELADA) {
-            await client.query('COMMIT');
-            return {
-                reservacion: reservacionActual,
-                yaEstabaCancelada: true
-            };
-        }
-
-        await validarCancelacionReservacion(client, reservacionActual);
-
-        const reservacionCancelada = await cancelarReservacionConDb(client, idReservacion, motivoCancelacion);
-
-        await bitacoraService.crearEntradaBitacora({
-            idUsuario,
-            idReservacion,
-            accion: ACCIONES_BITACORA.CANCELAR,
-            descripcion: `Reservación cancelada. motivo_cancelacion: ${motivoCancelacion}`
-        }, client);
-
         await client.query('COMMIT');
 
-        return {
-            reservacion: reservacionCancelada,
-            yaEstabaCancelada: false
-        };
+        return resultadoCancelacion;
     } catch (error) {
         await client.query('ROLLBACK');
         throw error;
@@ -1085,5 +1099,6 @@ module.exports = {
     crearReservacionConDb,
     actualizarReservacionParcial,
     cancelarReservacion,
+    cancelarReservacionConDb,
     asignarTransporteReservacion
 };

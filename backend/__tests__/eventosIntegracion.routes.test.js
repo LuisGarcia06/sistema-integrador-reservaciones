@@ -256,6 +256,40 @@ describe('eventosIntegracion.routes', () => {
         });
     });
 
+    test('usuario Administrador puede enviar motivo_cancelacion para cancellation', async () => {
+        const response = await request(app)
+            .post('/api/eventos-integracion/1/aplicar')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: { motivo_cancelacion: 'Motivo operativo confirmado' } });
+
+        expect(response.status).toBe(201);
+        expect(aplicarNuevaReservaGetYourGuide).toHaveBeenCalledWith(1, 1, {
+            motivo_cancelacion: 'Motivo operativo confirmado',
+        });
+    });
+
+    test('motivo_cancelacion vacio devuelve 400', async () => {
+        const response = await request(app)
+            .post('/api/eventos-integracion/1/aplicar')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: { motivo_cancelacion: '   ' } });
+
+        expect(response.status).toBe(400);
+        expect(aplicarNuevaReservaGetYourGuide).not.toHaveBeenCalled();
+    });
+
+    test('cancellation sin reservacion vinculada devuelve 409 controlado', async () => {
+        aplicarNuevaReservaGetYourGuide.mockResolvedValueOnce({ tipo: 'reserva_no_vinculada' });
+
+        const response = await request(app)
+            .post('/api/eventos-integracion/1/aplicar')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: { motivo_cancelacion: 'Motivo operativo confirmado' } });
+
+        expect(response.status).toBe(409);
+        expect(response.body.mensaje).toBe('El evento de integracion no tiene reservacion vinculada');
+    });
+
     test('aplicar con campos faltantes devuelve 422', async () => {
         aplicarNuevaReservaGetYourGuide.mockResolvedValueOnce({
             tipo: 'faltan_datos',

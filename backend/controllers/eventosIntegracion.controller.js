@@ -169,6 +169,18 @@ const aplicarEventoIntegracion = async (req, res) => {
             });
         }
 
+        if (resultado.tipo === 'reserva_no_vinculada') {
+            return res.status(409).json({
+                mensaje: 'El evento de integracion no tiene reservacion vinculada',
+            });
+        }
+
+        if (resultado.tipo === 'reserva_no_encontrada') {
+            return res.status(409).json({
+                mensaje: 'La reservacion vinculada no existe',
+            });
+        }
+
         if ([
             'provider_no_soportado',
             'event_type_no_soportado',

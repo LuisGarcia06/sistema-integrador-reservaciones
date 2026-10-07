@@ -1,4 +1,5 @@
 jest.mock('../services/reservaciones.service', () => ({
+    cancelarReservacionConDb: jest.fn(),
     crearReservacionConDb: jest.fn(),
 }));
 
@@ -384,6 +385,15 @@ describe('getyourguideReservationApplication.service', () => {
             id_reservacion: 45,
             codigo: 'RSV-20270101-ABCDE12345',
         });
+        reservacionesService.cancelarReservacionConDb.mockResolvedValue({
+            reservacion: {
+                id_reservacion: 45,
+                codigo: 'RSV-20270101-ABCDE12345',
+                estado: 'Cancelada',
+                motivo_cancelacion: 'Motivo operativo confirmado',
+            },
+            yaEstabaCancelada: false,
+        });
     });
 
     afterEach(() => {
@@ -429,12 +439,153 @@ describe('getyourguideReservationApplication.service', () => {
         expect(resultado.tipo).toBe('no_aprobado');
     });
 
-    test('modification y cancellation no aplican en esta fase', async () => {
+    test('modification no aplica en esta fase', async () => {
         const modification = crearDbPoolFake({ evento: crearEvento({ event_type: 'modification' }) });
-        const cancellation = crearDbPoolFake({ evento: crearEvento({ event_type: 'cancellation' }) });
 
         await expect(aplicarNuevaReservaGetYourGuide(1, 9, {}, modification.pool)).resolves.toHaveProperty('tipo', 'event_type_no_soportado');
-        await expect(aplicarNuevaReservaGetYourGuide(1, 9, {}, cancellation.pool)).resolves.toHaveProperty('tipo', 'event_type_no_soportado');
+    });
+
+    test('cancellation approved con link y motivo cancela reserva y marca evento aplicado', async () => {
+        const { pool, client } = crearDbPoolFake({
+            evento: crearEvento({ event_type: 'cancellation' }),
+            linkExistente: { id_reservacion: 45, provider: 'getyourguide', external_booking_id: 'GYGABC123' },
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            motivo_cancelacion: 'Motivo operativo confirmado',
+        }, pool);
+
+        expect(resultado.tipo).toBe('aplicado');
+        expect(resultado.reservacion).toEqual(expect.objectContaining({
+            id_reservacion: 45,
+            estado: 'Cancelada',
+            motivo_cancelacion: 'Motivo operativo confirmado',
+        }));
+        expect(resultado.link).toEqual(expect.objectContaining({ id_reservacion: 45 }));
+        expect(reservacionesService.cancelarReservacionConDb).toHaveBeenCalledWith(
+            client,
+            45,
+            9,
+            'Motivo operativo confirmado'
+        );
+        expect(client.queries.some((query) => /INSERT INTO reservas_integracion_link/i.test(query))).toBe(false);
+        expect(client.queries).toContain('COMMIT');
+    });
+
+    test('cancellation sin motivo no aplica y no cancela reserva', async () => {
+        const { pool, client } = crearDbPoolFake({
+            evento: crearEvento({ event_type: 'cancellation' }),
+            linkExistente: { id_reservacion: 45, provider: 'getyourguide', external_booking_id: 'GYGABC123' },
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {}, pool);
+
+        expect(resultado.tipo).toBe('faltan_datos');
+        expect(resultado.missingFields).toEqual(['motivo_cancelacion']);
+        expect(reservacionesService.cancelarReservacionConDb).not.toHaveBeenCalled();
+        expect(client.queries).toContain('ROLLBACK');
+    });
+
+    test('cancellation con motivo vacio se rechaza', async () => {
+        const { pool, client } = crearDbPoolFake({
+            evento: crearEvento({ event_type: 'cancellation' }),
+            linkExistente: { id_reservacion: 45, provider: 'getyourguide', external_booking_id: 'GYGABC123' },
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            motivo_cancelacion: '   ',
+        }, pool);
+
+        expect(resultado.tipo).toBe('datos_invalidos');
+        expect(resultado.errores).toContain('El campo motivo_cancelacion debe ser texto no vacío');
+        expect(reservacionesService.cancelarReservacionConDb).not.toHaveBeenCalled();
+        expect(client.queries).toContain('ROLLBACK');
+    });
+
+    test('cancellation sin reservas_integracion_link no aplica', async () => {
+        const { pool, client } = crearDbPoolFake({
+            evento: crearEvento({ event_type: 'cancellation' }),
+            linkExistente: null,
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            motivo_cancelacion: 'Motivo operativo confirmado',
+        }, pool);
+
+        expect(resultado.tipo).toBe('reserva_no_vinculada');
+        expect(reservacionesService.cancelarReservacionConDb).not.toHaveBeenCalled();
+        expect(client.queries).toContain('ROLLBACK');
+    });
+
+    test('cancellation pending_review no aplica', async () => {
+        const { pool } = crearDbPoolFake({
+            evento: crearEvento({ event_type: 'cancellation', review_status: 'pending_review' }),
+            linkExistente: { id_reservacion: 45, provider: 'getyourguide', external_booking_id: 'GYGABC123' },
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            motivo_cancelacion: 'Motivo operativo confirmado',
+        }, pool);
+
+        expect(resultado.tipo).toBe('no_aprobado');
+        expect(reservacionesService.cancelarReservacionConDb).not.toHaveBeenCalled();
+    });
+
+    test('cancellation ya applied se rechaza', async () => {
+        const { pool } = crearDbPoolFake({
+            evento: crearEvento({ event_type: 'cancellation', application_status: 'applied' }),
+            linkExistente: { id_reservacion: 45, provider: 'getyourguide', external_booking_id: 'GYGABC123' },
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            motivo_cancelacion: 'Motivo operativo confirmado',
+        }, pool);
+
+        expect(resultado.tipo).toBe('ya_aplicado');
+        expect(reservacionesService.cancelarReservacionConDb).not.toHaveBeenCalled();
+    });
+
+    test('cancellation de reserva ya cancelada reconcilia evento sin segunda cancelacion', async () => {
+        reservacionesService.cancelarReservacionConDb.mockResolvedValueOnce({
+            reservacion: {
+                id_reservacion: 45,
+                codigo: 'RSV-20270101-ABCDE12345',
+                estado: 'Cancelada',
+                motivo_cancelacion: 'Motivo existente',
+            },
+            yaEstabaCancelada: true,
+        });
+        const { pool } = crearDbPoolFake({
+            evento: crearEvento({ event_type: 'cancellation' }),
+            linkExistente: { id_reservacion: 45, provider: 'getyourguide', external_booking_id: 'GYGABC123' },
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            motivo_cancelacion: 'Motivo nuevo que no debe sobrescribir',
+        }, pool);
+
+        expect(resultado.tipo).toBe('aplicado');
+        expect(resultado.yaEstabaCancelada).toBe(true);
+        expect(resultado.reservacion).toEqual(expect.objectContaining({
+            estado: 'Cancelada',
+            motivo_cancelacion: 'Motivo existente',
+        }));
+    });
+
+    test('fallo al marcar evento aplicado despues de cancelar hace rollback', async () => {
+        const { pool, client } = crearDbPoolFake({
+            evento: crearEvento({ event_type: 'cancellation' }),
+            linkExistente: { id_reservacion: 45, provider: 'getyourguide', external_booking_id: 'GYGABC123' },
+            marcarAplicadoDevuelveFila: false,
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            motivo_cancelacion: 'Motivo operativo confirmado',
+        }, pool);
+
+        expect(resultado.tipo).toBe('ya_aplicado');
+        expect(reservacionesService.cancelarReservacionConDb).toHaveBeenCalled();
+        expect(client.queries).toContain('ROLLBACK');
     });
 
     test('external_booking_id faltante devuelve 422 conceptual', async () => {

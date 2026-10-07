@@ -19,6 +19,11 @@ const CAMPOS_APLICACION_EVENTOS = ['completar'];
 const MAX_TEXTO_FILTRO = 50;
 const MAX_NOTA_REVISION = 500;
 const { CAMPOS_COMPLETAR_PERMITIDOS } = require('../integrations/getyourguide/getyourguideReservation.mapper');
+const { validarCancelacionReservacion } = require('./reservaciones.validator');
+const CAMPOS_COMPLETAR_EVENTO_PERMITIDOS = [
+    ...CAMPOS_COMPLETAR_PERMITIDOS,
+    'motivo_cancelacion',
+];
 
 const PATRON_TEXTO_SEGURO = /^[a-zA-Z0-9_-]+$/;
 
@@ -230,7 +235,29 @@ const normalizarTextoOpcional = (valor, maximo) => {
     };
 };
 
+const validarMotivoCancelacionCompletar = (valor) => {
+    const { errores, cancelacion } = validarCancelacionReservacion({
+        motivo_cancelacion: valor,
+    });
+
+    if (errores.length > 0) {
+        return {
+            valido: false,
+            mensaje: errores[0],
+        };
+    }
+
+    return {
+        valido: true,
+        valor: cancelacion.motivo_cancelacion,
+    };
+};
+
 const validarCampoCompletar = (campo, valor) => {
+    if (campo === 'motivo_cancelacion') {
+        return validarMotivoCancelacionCompletar(valor);
+    }
+
     if (campo === 'id_tour' || campo === 'id_pais' || campo === 'pax') {
         const numero = convertirEnteroPositivo(valor);
         return numero === null
@@ -315,7 +342,7 @@ const validarAplicacionEventoIntegracion = (body) => {
     }
 
     Object.keys(datos.completar).forEach((campo) => {
-        if (!CAMPOS_COMPLETAR_PERMITIDOS.includes(campo)) {
+        if (!CAMPOS_COMPLETAR_EVENTO_PERMITIDOS.includes(campo)) {
             errores.push(`El campo completar.${campo} no esta permitido`);
             return;
         }

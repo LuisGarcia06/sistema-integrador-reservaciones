@@ -1,7 +1,10 @@
 const pool = require('../../config/database');
 const reservacionesService = require('../../services/reservaciones.service');
 const equivalenciasToursExternosService = require('../../services/equivalenciasToursExternos.service');
-const { validarDatosReservacion } = require('../../validators/reservaciones.validator');
+const {
+    validarCancelacionReservacion,
+    validarDatosReservacion,
+} = require('../../validators/reservaciones.validator');
 const {
     mapGetYourGuideNewBookingToReservation,
 } = require('./getyourguideReservation.mapper');
@@ -10,6 +13,7 @@ const PROVIDER_GETYOURGUIDE = 'getyourguide';
 const PLATFORM_NAME_GETYOURGUIDE = 'GetYourGuide';
 const PAIS_NO_ESPECIFICADO = 'No especificado';
 const EVENT_TYPE_NEW_BOOKING = 'new_booking';
+const EVENT_TYPE_CANCELLATION = 'cancellation';
 const REVIEW_STATUS_APPROVED = 'approved';
 const APPLICATION_STATUS_NOT_APPLIED = 'not_applied';
 const APPLICATION_STATUS_APPLIED = 'applied';
@@ -256,7 +260,144 @@ function esUniqueLink(error) {
     return error?.code === '23505' && error?.constraint === LINK_UNIQUE_CONSTRAINT;
 }
 
-async function aplicarNuevaReservaGetYourGuide(eventoId, usuarioId, completar = {}, dbPool = pool) {
+async function aplicarNewBookingConDb(client, evento, usuarioId, completar) {
+    const linkExistente = await obtenerLinkPorExternalBooking(
+        client,
+        evento.provider,
+        evento.external_booking_id
+    );
+
+    if (linkExistente) {
+        return crearResultado('ya_vinculado', { link: linkExistente });
+    }
+
+    const preparacion = await prepararNuevaReservaGetYourGuideConDb(client, evento, completar);
+
+    if (preparacion.tipo !== 'preparado') {
+        return preparacion;
+    }
+
+    if (preparacion.missingFields.length > 0) {
+        return crearResultado('faltan_datos', {
+            missingFields: preparacion.missingFields,
+            warnings: preparacion.warnings,
+        });
+    }
+
+    const referenciaInvalida = await validarReferenciasInternas(client, preparacion.reservationData);
+
+    if (referenciaInvalida) {
+        return crearResultado('referencia_invalida', { campo: referenciaInvalida });
+    }
+
+    const validacion = validarReservacionFinal(preparacion.reservationData);
+
+    if (!validacion.valido) {
+        return crearResultado('datos_invalidos', { errores: validacion.errores });
+    }
+
+    const reservacion = await reservacionesService.crearReservacionConDb(
+        client,
+        validacion.reservacion,
+        usuarioId
+    );
+
+    let link;
+
+    try {
+        link = await crearLinkReservaIntegracion(client, {
+            provider: evento.provider,
+            externalBookingId: evento.external_booking_id,
+            idReservacion: reservacion.id_reservacion,
+        });
+    } catch (error) {
+        if (esUniqueLink(error)) {
+            return crearResultado('ya_vinculado');
+        }
+
+        throw error;
+    }
+
+    const eventoAplicado = await marcarEventoAplicado(client, {
+        idEventoIntegracion: evento.id_evento_integracion,
+        idUsuario: usuarioId,
+    });
+
+    if (!eventoAplicado) {
+        return crearResultado('ya_aplicado');
+    }
+
+    return crearResultado('aplicado', {
+        reservacion,
+        link,
+        evento: eventoAplicado,
+    });
+}
+
+function obtenerMotivoCancelacion(completar = {}) {
+    if (!Object.prototype.hasOwnProperty.call(completar, 'motivo_cancelacion')) {
+        return crearResultado('faltan_datos', { missingFields: ['motivo_cancelacion'] });
+    }
+
+    const { errores, cancelacion } = validarCancelacionReservacion({
+        motivo_cancelacion: completar.motivo_cancelacion,
+    });
+
+    if (errores.length > 0) {
+        return crearResultado('datos_invalidos', { errores });
+    }
+
+    return crearResultado('motivo_valido', {
+        motivoCancelacion: cancelacion.motivo_cancelacion,
+    });
+}
+
+async function aplicarCancellationConDb(client, evento, usuarioId, completar) {
+    const motivo = obtenerMotivoCancelacion(completar);
+
+    if (motivo.tipo !== 'motivo_valido') {
+        return motivo;
+    }
+
+    const link = await obtenerLinkPorExternalBooking(
+        client,
+        evento.provider,
+        evento.external_booking_id
+    );
+
+    if (!link) {
+        return crearResultado('reserva_no_vinculada');
+    }
+
+    const resultadoCancelacion = await reservacionesService.cancelarReservacionConDb(
+        client,
+        link.id_reservacion,
+        usuarioId,
+        motivo.motivoCancelacion
+    );
+
+    if (!resultadoCancelacion) {
+        return crearResultado('reserva_no_encontrada');
+    }
+
+    const eventoAplicado = await marcarEventoAplicado(client, {
+        idEventoIntegracion: evento.id_evento_integracion,
+        idUsuario: usuarioId,
+    });
+
+    if (!eventoAplicado) {
+        return crearResultado('ya_aplicado');
+    }
+
+    return crearResultado('aplicado', {
+        reservacion: resultadoCancelacion.reservacion,
+        yaEstabaCancelada: resultadoCancelacion.yaEstabaCancelada,
+        link,
+        evento: eventoAplicado,
+    });
+}
+
+async function aplicarEventoGetYourGuide(eventoId, usuarioId, completar = {}, dbPool = pool) {
     const client = await dbPool.connect();
 
     try {
@@ -274,11 +415,6 @@ async function aplicarNuevaReservaGetYourGuide(eventoId, usuarioId, completar = 
             return crearResultado('provider_no_soportado');
         }
 
-        if (evento.event_type !== EVENT_TYPE_NEW_BOOKING) {
-            await client.query('ROLLBACK');
-            return crearResultado('event_type_no_soportado');
-        }
-
         if (evento.review_status !== REVIEW_STATUS_APPROVED) {
             await client.query('ROLLBACK');
             return crearResultado('no_aprobado');
@@ -294,86 +430,24 @@ async function aplicarNuevaReservaGetYourGuide(eventoId, usuarioId, completar = 
             return crearResultado('faltan_datos', { missingFields: ['external_booking_id'] });
         }
 
-        const linkExistente = await obtenerLinkPorExternalBooking(
-            client,
-            evento.provider,
-            evento.external_booking_id
-        );
+        let resultado;
 
-        if (linkExistente) {
+        if (evento.event_type === EVENT_TYPE_NEW_BOOKING) {
+            resultado = await aplicarNewBookingConDb(client, evento, usuarioId, completar);
+        } else if (evento.event_type === EVENT_TYPE_CANCELLATION) {
+            resultado = await aplicarCancellationConDb(client, evento, usuarioId, completar);
+        } else {
             await client.query('ROLLBACK');
-            return crearResultado('ya_vinculado', { link: linkExistente });
+            return crearResultado('event_type_no_soportado');
         }
 
-        const preparacion = await prepararNuevaReservaGetYourGuideConDb(client, evento, completar);
-
-        if (preparacion.tipo !== 'preparado') {
+        if (resultado.tipo !== 'aplicado') {
             await client.query('ROLLBACK');
-            return preparacion;
-        }
-
-        if (preparacion.missingFields.length > 0) {
-            await client.query('ROLLBACK');
-            return crearResultado('faltan_datos', {
-                missingFields: preparacion.missingFields,
-                warnings: preparacion.warnings,
-            });
-        }
-
-        const referenciaInvalida = await validarReferenciasInternas(client, preparacion.reservationData);
-
-        if (referenciaInvalida) {
-            await client.query('ROLLBACK');
-            return crearResultado('referencia_invalida', { campo: referenciaInvalida });
-        }
-
-        const validacion = validarReservacionFinal(preparacion.reservationData);
-
-        if (!validacion.valido) {
-            await client.query('ROLLBACK');
-            return crearResultado('datos_invalidos', { errores: validacion.errores });
-        }
-
-        const reservacion = await reservacionesService.crearReservacionConDb(
-            client,
-            validacion.reservacion,
-            usuarioId
-        );
-
-        let link;
-
-        try {
-            link = await crearLinkReservaIntegracion(client, {
-                provider: evento.provider,
-                externalBookingId: evento.external_booking_id,
-                idReservacion: reservacion.id_reservacion,
-            });
-        } catch (error) {
-            if (esUniqueLink(error)) {
-                await client.query('ROLLBACK');
-                return crearResultado('ya_vinculado');
-            }
-
-            throw error;
-        }
-
-        const eventoAplicado = await marcarEventoAplicado(client, {
-            idEventoIntegracion: evento.id_evento_integracion,
-            idUsuario: usuarioId,
-        });
-
-        if (!eventoAplicado) {
-            await client.query('ROLLBACK');
-            return crearResultado('ya_aplicado');
+            return resultado;
         }
 
         await client.query('COMMIT');
-
-        return crearResultado('aplicado', {
-            reservacion,
-            link,
-            evento: eventoAplicado,
-        });
+        return resultado;
     } catch (error) {
         await client.query('ROLLBACK');
         throw error;
@@ -382,10 +456,13 @@ async function aplicarNuevaReservaGetYourGuide(eventoId, usuarioId, completar = 
     }
 }
 
+const aplicarNuevaReservaGetYourGuide = aplicarEventoGetYourGuide;
+
 module.exports = {
     APPLICATION_STATUS_APPLIED,
     APPLICATION_STATUS_NOT_APPLIED,
     LINK_UNIQUE_CONSTRAINT,
+    aplicarEventoGetYourGuide,
     aplicarNuevaReservaGetYourGuide,
     prepararNuevaReservaGetYourGuideConDb,
 };
