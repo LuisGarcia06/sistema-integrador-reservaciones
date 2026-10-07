@@ -400,6 +400,11 @@ CREATE TABLE integracion_sync_estado (
     last_successful_sync_at TIMESTAMP,
     last_error_at TIMESTAMP,
     last_error_code VARCHAR(100),
+    recovery_active BOOLEAN NOT NULL DEFAULT FALSE,
+    recovery_page_token TEXT,
+    recovery_target_history_id VARCHAR(100),
+    recovery_started_at TIMESTAMP,
+    backoff_until TIMESTAMP,
 
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,

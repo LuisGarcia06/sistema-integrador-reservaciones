@@ -11,6 +11,11 @@ const columnasEstadoSync = `
     last_successful_sync_at,
     last_error_at,
     last_error_code,
+    recovery_active,
+    recovery_page_token,
+    recovery_target_history_id,
+    recovery_started_at,
+    backoff_until,
     created_at,
     updated_at
 `;
@@ -61,16 +66,26 @@ async function guardarBaselineSync({
                 source,
                 last_history_id,
                 last_successful_sync_at,
+                recovery_active,
+                recovery_page_token,
+                recovery_target_history_id,
+                recovery_started_at,
+                backoff_until,
                 created_at,
                 updated_at
             )
-            VALUES ($1, $2, $3, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            VALUES ($1, $2, $3, CURRENT_TIMESTAMP, FALSE, NULL, NULL, NULL, NULL, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             ON CONFLICT (provider, source)
             DO UPDATE SET
                 last_history_id = EXCLUDED.last_history_id,
                 last_successful_sync_at = CURRENT_TIMESTAMP,
                 last_error_at = NULL,
                 last_error_code = NULL,
+                recovery_active = FALSE,
+                recovery_page_token = NULL,
+                recovery_target_history_id = NULL,
+                recovery_started_at = NULL,
+                backoff_until = NULL,
                 updated_at = CURRENT_TIMESTAMP
             RETURNING
                 ${columnasEstadoSync}
@@ -120,11 +135,114 @@ async function registrarErrorSync({
     return result.rows[0] || null;
 }
 
+async function iniciarRecoverySync({
+    provider = DEFAULT_PROVIDER,
+    source = DEFAULT_SOURCE,
+    recoveryTargetHistoryId,
+} = {}, db = pool) {
+    const result = await db.query(
+        `
+            UPDATE integracion_sync_estado
+            SET
+                recovery_active = TRUE,
+                recovery_page_token = NULL,
+                recovery_target_history_id = $3,
+                recovery_started_at = CURRENT_TIMESTAMP,
+                backoff_until = NULL,
+                last_error_at = NULL,
+                last_error_code = NULL,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE provider = $1
+              AND source = $2
+            RETURNING
+                ${columnasEstadoSync}
+        `,
+        [
+            normalizarTextoObligatorio(provider, 'provider'),
+            normalizarTextoObligatorio(source, 'source'),
+            normalizarTextoObligatorio(recoveryTargetHistoryId, 'recoveryTargetHistoryId'),
+        ]
+    );
+
+    return result.rows[0] || null;
+}
+
+async function guardarCheckpointRecoverySync({
+    provider = DEFAULT_PROVIDER,
+    source = DEFAULT_SOURCE,
+    recoveryPageToken,
+} = {}, db = pool) {
+    const result = await db.query(
+        `
+            UPDATE integracion_sync_estado
+            SET
+                recovery_active = TRUE,
+                recovery_page_token = $3,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE provider = $1
+              AND source = $2
+              AND recovery_active = TRUE
+            RETURNING
+                ${columnasEstadoSync}
+        `,
+        [
+            normalizarTextoObligatorio(provider, 'provider'),
+            normalizarTextoObligatorio(source, 'source'),
+            normalizarTextoObligatorio(recoveryPageToken, 'recoveryPageToken'),
+        ]
+    );
+
+    return result.rows[0] || null;
+}
+
+async function finalizarRecoverySync({
+    provider = DEFAULT_PROVIDER,
+    source = DEFAULT_SOURCE,
+    lastHistoryId,
+} = {}, db = pool) {
+    return guardarBaselineSync({ provider, source, lastHistoryId }, db);
+}
+
+async function registrarBackoffRecoverySync({
+    provider = DEFAULT_PROVIDER,
+    source = DEFAULT_SOURCE,
+    errorCode,
+    backoffUntil,
+} = {}, db = pool) {
+    const result = await db.query(
+        `
+            UPDATE integracion_sync_estado
+            SET
+                last_error_at = CURRENT_TIMESTAMP,
+                last_error_code = $3,
+                backoff_until = $4,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE provider = $1
+              AND source = $2
+              AND recovery_active = TRUE
+            RETURNING
+                ${columnasEstadoSync}
+        `,
+        [
+            normalizarTextoObligatorio(provider, 'provider'),
+            normalizarTextoObligatorio(source, 'source'),
+            normalizarTextoOpcional(errorCode),
+            backoffUntil,
+        ]
+    );
+
+    return result.rows[0] || null;
+}
+
 module.exports = {
     DEFAULT_PROVIDER,
     DEFAULT_SOURCE,
     actualizarSyncExitoso,
+    finalizarRecoverySync,
     guardarBaselineSync,
+    guardarCheckpointRecoverySync,
+    iniciarRecoverySync,
     obtenerEstadoSync,
+    registrarBackoffRecoverySync,
     registrarErrorSync,
 };

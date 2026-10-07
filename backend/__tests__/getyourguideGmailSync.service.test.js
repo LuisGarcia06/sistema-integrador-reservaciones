@@ -53,7 +53,10 @@ function crearGmailFake({
     historyPages = [],
     messages = {},
     recoveryMessages = [],
+    recoveryPages,
     historyError,
+    messageErrors = {},
+    messagesListError,
 } = {}) {
     const historyList = jest.fn(async ({ pageToken } = {}) => {
         if (historyError) {
@@ -66,15 +69,33 @@ function crearGmailFake({
         };
     });
 
-    const messagesList = jest.fn(async ({ maxResults } = {}) => ({
-        data: {
-            messages: recoveryMessages.slice(0, maxResults),
-        },
-    }));
+    const messagesList = jest.fn(async ({ maxResults, pageToken } = {}) => {
+        if (messagesListError) {
+            throw messagesListError;
+        }
 
-    const messagesGet = jest.fn(async ({ id }) => ({
-        data: messages[id],
-    }));
+        if (recoveryPages) {
+            return {
+                data: recoveryPages[pageToken || 'first'] || { messages: [] },
+            };
+        }
+
+        return {
+            data: {
+                messages: recoveryMessages.slice(0, maxResults),
+            },
+        };
+    });
+
+    const messagesGet = jest.fn(async ({ id }) => {
+        if (messageErrors[id]) {
+            throw messageErrors[id];
+        }
+
+        return {
+            data: messages[id],
+        };
+    });
 
     return {
         users: {
@@ -92,27 +113,87 @@ function crearGmailFake({
 
 function crearSyncEstadoFake(estadoInicial = null) {
     let estado = estadoInicial;
+    const base = () => estado || { provider: 'getyourguide', source: 'gmail' };
 
     return {
         obtenerEstadoSync: jest.fn(async () => estado),
         guardarBaselineSync: jest.fn(async ({ lastHistoryId }) => {
             estado = {
+                ...base(),
                 provider: 'getyourguide',
                 source: 'gmail',
                 last_history_id: lastHistoryId,
+                last_error_at: null,
+                last_error_code: null,
+                recovery_active: false,
+                recovery_page_token: null,
+                recovery_target_history_id: null,
+                recovery_started_at: null,
+                backoff_until: null,
             };
             return estado;
         }),
         actualizarSyncExitoso: jest.fn(async ({ lastHistoryId }) => {
             estado = {
-                ...(estado || { provider: 'getyourguide', source: 'gmail' }),
+                ...base(),
                 last_history_id: lastHistoryId,
+                last_error_at: null,
+                last_error_code: null,
+                recovery_active: false,
+                recovery_page_token: null,
+                recovery_target_history_id: null,
+                recovery_started_at: null,
+                backoff_until: null,
+            };
+            return estado;
+        }),
+        iniciarRecoverySync: jest.fn(async ({ recoveryTargetHistoryId }) => {
+            estado = {
+                ...base(),
+                recovery_active: true,
+                recovery_page_token: null,
+                recovery_target_history_id: recoveryTargetHistoryId,
+                recovery_started_at: new Date('2027-01-01T00:00:00Z'),
+                backoff_until: null,
+                last_error_at: null,
+                last_error_code: null,
+            };
+            return estado;
+        }),
+        guardarCheckpointRecoverySync: jest.fn(async ({ recoveryPageToken }) => {
+            estado = {
+                ...base(),
+                recovery_active: true,
+                recovery_page_token: recoveryPageToken,
+            };
+            return estado;
+        }),
+        finalizarRecoverySync: jest.fn(async ({ lastHistoryId }) => {
+            estado = {
+                ...base(),
+                last_history_id: lastHistoryId,
+                last_error_at: null,
+                last_error_code: null,
+                recovery_active: false,
+                recovery_page_token: null,
+                recovery_target_history_id: null,
+                recovery_started_at: null,
+                backoff_until: null,
+            };
+            return estado;
+        }),
+        registrarBackoffRecoverySync: jest.fn(async ({ errorCode, backoffUntil }) => {
+            estado = {
+                ...base(),
+                last_error_at: new Date('2027-01-01T00:00:00Z'),
+                last_error_code: errorCode,
+                backoff_until: backoffUntil,
             };
             return estado;
         }),
         registrarErrorSync: jest.fn(async ({ errorCode }) => {
             estado = {
-                ...(estado || { provider: 'getyourguide', source: 'gmail' }),
+                ...base(),
                 last_error_code: errorCode,
             };
             return estado;
@@ -317,38 +398,187 @@ describe('getyourguideGmailSync.service', () => {
         expect(syncEstado.registrarErrorSync).toHaveBeenCalled();
     });
 
-    test('404 history expirado inicia recovery y deduplica con limite', async () => {
+    test('history.list 404 valido inicia recovery y captura target historyId al inicio', async () => {
         const historyError = new Error('history expired');
         historyError.response = { status: 404, data: { error: { status: 'NOT_FOUND' } } };
         const gmail = crearGmailFake({
             historyError,
-            profileHistoryId: 'h-new-baseline',
-            recoveryMessages: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
+            profileHistoryId: 'h-target',
+            recoveryMessages: [{ id: 'a' }],
+            messages: { a: crearMensaje({ id: 'a', subject: 'Reserva - S1 - GYGA001' }) },
+        });
+        const syncEstado = crearSyncEstadoFake({ last_history_id: 'old', recovery_active: false });
+        const registrarEvento = jest.fn(async () => ({ duplicate: false, event: {} }));
+
+        const resultado = await ejecutarCicloSincronizacion({ gmail, syncEstado, registrarEvento, logger: loggerSilencioso });
+
+        expect(esHistoryIdExpirado(historyError)).toBe(true);
+        expect(resultado.recovery).toBe(true);
+        expect(gmail.users.getProfile).toHaveBeenCalledTimes(1);
+        expect(syncEstado.iniciarRecoverySync).toHaveBeenCalledWith(expect.objectContaining({ recoveryTargetHistoryId: 'h-target' }), undefined);
+    });
+
+    test('messages.get 404 se salta y no inicia recovery', async () => {
+        const notFound = new Error('message not found');
+        notFound.response = { status: 404, data: { error: { status: 'NOT_FOUND' } } };
+        const gmail = crearGmailFake({
+            historyPages: [{ history: [{ messagesAdded: [{ message: { id: 'missing' } }, { message: { id: 'ok' } }] }], historyId: 'h2' }],
+            messages: { ok: crearMensaje({ id: 'ok', subject: 'Reserva - S1 - GYGOK001' }) },
+            messageErrors: { missing: notFound },
+        });
+        const syncEstado = crearSyncEstadoFake({ last_history_id: 'h1', recovery_active: false });
+        const registrarEvento = jest.fn(async () => ({ duplicate: false, event: {} }));
+
+        const resultado = await ejecutarCicloSincronizacion({ gmail, syncEstado, registrarEvento, logger: loggerSilencioso });
+
+        expect(resultado.skipped).toBe(1);
+        expect(resultado.eventsRegistered).toBe(1);
+        expect(syncEstado.iniciarRecoverySync).not.toHaveBeenCalled();
+        expect(syncEstado.actualizarSyncExitoso).toHaveBeenCalledWith(expect.objectContaining({ lastHistoryId: 'h2' }), undefined);
+    });
+
+    test('recovery procesa maximo batch size 25 por ciclo', async () => {
+        const recoveryMessages = Array.from({ length: 30 }, (_, index) => ({ id: `msg-${index}` }));
+        const messages = Object.fromEntries(recoveryMessages.map(({ id }) => [id, crearMensaje({ id, subject: `Reserva - S1 - GYG${id.toUpperCase()}` })]));
+        const gmail = crearGmailFake({ recoveryMessages, messages });
+        const syncEstado = crearSyncEstadoFake({
+            last_history_id: 'old',
+            recovery_active: true,
+            recovery_target_history_id: 'h-target',
+        });
+        const registrarEvento = jest.fn(async () => ({ duplicate: false, event: {} }));
+
+        const resultado = await ejecutarCicloSincronizacion({ gmail, syncEstado, registrarEvento, logger: loggerSilencioso });
+
+        expect(gmail.users.messages.list).toHaveBeenCalledWith(expect.objectContaining({ maxResults: 25 }));
+        expect(resultado.messagesDetected).toBe(25);
+        expect(gmail.users.messages.get).toHaveBeenCalledTimes(25);
+    });
+
+    test('pagina completa con nextPageToken guarda checkpoint sin avanzar last_history_id', async () => {
+        const gmail = crearGmailFake({
+            recoveryPages: { first: { messages: [{ id: 'a' }], nextPageToken: 'page-2' } },
+            messages: { a: crearMensaje({ id: 'a', subject: 'Reserva - S1 - GYGA001' }) },
+        });
+        const syncEstado = crearSyncEstadoFake({ last_history_id: 'old', recovery_active: true, recovery_target_history_id: 'h-target' });
+        const registrarEvento = jest.fn(async () => ({ duplicate: false, event: {} }));
+
+        const resultado = await ejecutarCicloSincronizacion({ gmail, syncEstado, registrarEvento, logger: loggerSilencioso });
+
+        expect(resultado.recoveryCompleted).toBe(false);
+        expect(syncEstado.guardarCheckpointRecoverySync).toHaveBeenCalledWith(expect.objectContaining({ recoveryPageToken: 'page-2' }), undefined);
+        expect(syncEstado.finalizarRecoverySync).not.toHaveBeenCalled();
+    });
+
+    test('siguiente ciclo usa recovery_page_token persistido', async () => {
+        const gmail = crearGmailFake({
+            recoveryPages: { 'page-2': { messages: [{ id: 'b' }] } },
+            messages: { b: crearMensaje({ id: 'b', subject: 'Reserva - S1 - GYGB001' }) },
+        });
+        const syncEstado = crearSyncEstadoFake({
+            last_history_id: 'old',
+            recovery_active: true,
+            recovery_page_token: 'page-2',
+            recovery_target_history_id: 'h-target',
+        });
+        const registrarEvento = jest.fn(async () => ({ duplicate: false, event: {} }));
+
+        await ejecutarCicloSincronizacion({ gmail, syncEstado, registrarEvento, logger: loggerSilencioso });
+
+        expect(gmail.users.messages.list).toHaveBeenCalledWith(expect.objectContaining({ pageToken: 'page-2' }));
+    });
+
+    test('error a mitad de pagina no avanza checkpoint', async () => {
+        const gmail = crearGmailFake({
+            recoveryPages: { first: { messages: [{ id: 'a' }, { id: 'b' }], nextPageToken: 'page-2' } },
             messages: {
                 a: crearMensaje({ id: 'a', subject: 'Reserva - S1 - GYGA001' }),
-                b: crearMensaje({ id: 'b', subject: 'Reserva - S2 - GYGB001' }),
-                c: crearMensaje({ id: 'c', subject: 'Reserva - S3 - GYGC001' }),
+                b: crearMensaje({ id: 'b', subject: 'Reserva - S1 - GYGB001' }),
             },
         });
-        const syncEstado = crearSyncEstadoFake({ last_history_id: 'old' });
-        const registrarEvento = jest.fn(async (_, index = registrarEvento.mock.calls.length) => ({
-            duplicate: index > 1,
-            event: {},
-        }));
+        const syncEstado = crearSyncEstadoFake({ last_history_id: 'old', recovery_active: true, recovery_target_history_id: 'h-target' });
+        const registrarEvento = jest.fn(async (_, index = registrarEvento.mock.calls.length) => {
+            if (index > 1) throw new Error('fallo mitad pagina');
+            return { duplicate: false, event: {} };
+        });
+
+        await expect(ejecutarCicloSincronizacion({ gmail, syncEstado, registrarEvento, logger: loggerSilencioso })).rejects.toThrow('fallo mitad pagina');
+        expect(syncEstado.guardarCheckpointRecoverySync).not.toHaveBeenCalled();
+    });
+
+    test('duplicados al repetir pagina no crean eventos nuevos', async () => {
+        const gmail = crearGmailFake({
+            recoveryMessages: [{ id: 'a' }, { id: 'b' }],
+            messages: {
+                a: crearMensaje({ id: 'a', subject: 'Reserva - S1 - GYGA001' }),
+                b: crearMensaje({ id: 'b', subject: 'Reserva - S1 - GYGB001' }),
+            },
+        });
+        const syncEstado = crearSyncEstadoFake({ last_history_id: 'old', recovery_active: true, recovery_target_history_id: 'h-target' });
+        const registrarEvento = jest.fn(async () => ({ duplicate: true, event: {} }));
+
+        const resultado = await ejecutarCicloSincronizacion({ gmail, syncEstado, registrarEvento, logger: loggerSilencioso });
+
+        expect(resultado.eventsRegistered).toBe(0);
+        expect(resultado.duplicates).toBe(2);
+    });
+
+    test('quota exceeded guarda backoff y conserva checkpoint', async () => {
+        const quota = new Error('Quota exceeded');
+        quota.response = { status: 429, data: { error: { status: 'RESOURCE_EXHAUSTED' } } };
+        const gmail = crearGmailFake({
+            recoveryPages: { first: { messages: [{ id: 'a' }, { id: 'b' }], nextPageToken: 'page-2' } },
+            messages: { a: crearMensaje({ id: 'a', subject: 'Reserva - S1 - GYGA001' }) },
+            messageErrors: { b: quota },
+        });
+        const syncEstado = crearSyncEstadoFake({ last_history_id: 'old', recovery_active: true, recovery_target_history_id: 'h-target' });
+        const registrarEvento = jest.fn(async () => ({ duplicate: false, event: {} }));
 
         const resultado = await ejecutarCicloSincronizacion({
             gmail,
             syncEstado,
             registrarEvento,
             logger: loggerSilencioso,
-            env: { GYG_GMAIL_RECOVERY_MAX_MESSAGES: '2' },
+            env: { GYG_GMAIL_QUOTA_BACKOFF_MS: '900000' },
         });
 
-        expect(esHistoryIdExpirado(historyError)).toBe(true);
-        expect(resultado.recovery).toBe(true);
-        expect(resultado.messagesDetected).toBe(2);
-        expect(gmail.users.messages.list).toHaveBeenCalledWith(expect.objectContaining({ maxResults: 2 }));
-        expect(syncEstado.actualizarSyncExitoso).toHaveBeenCalledWith(expect.objectContaining({ lastHistoryId: 'h-new-baseline' }), undefined);
+        expect(resultado.quotaLimited).toBe(true);
+        expect(syncEstado.registrarBackoffRecoverySync).toHaveBeenCalledWith(expect.objectContaining({ errorCode: expect.any(String), backoffUntil: expect.any(Date) }), undefined);
+        expect(syncEstado.guardarCheckpointRecoverySync).not.toHaveBeenCalled();
+        expect(syncEstado.finalizarRecoverySync).not.toHaveBeenCalled();
+    });
+
+    test('ciclo durante backoff no llama Gmail', async () => {
+        const gmail = crearGmailFake();
+        const syncEstado = crearSyncEstadoFake({
+            last_history_id: 'old',
+            recovery_active: true,
+            recovery_target_history_id: 'h-target',
+            backoff_until: new Date(Date.now() + 60000),
+        });
+
+        const resultado = await ejecutarCicloSincronizacion({ gmail, syncEstado, logger: loggerSilencioso });
+
+        expect(resultado.backoff).toBe(true);
+        expect(gmail.users.messages.list).not.toHaveBeenCalled();
+        expect(gmail.users.messages.get).not.toHaveBeenCalled();
+    });
+
+    test('recovery final usa target inicial y no obtiene historyId nuevo al final', async () => {
+        const gmail = crearGmailFake({
+            profileHistoryId: 'h-should-not-use-at-end',
+            recoveryMessages: [{ id: 'a' }],
+            messages: { a: crearMensaje({ id: 'a', subject: 'Reserva - S1 - GYGA001' }) },
+        });
+        const syncEstado = crearSyncEstadoFake({ last_history_id: 'old', recovery_active: true, recovery_target_history_id: 'h-target' });
+        const registrarEvento = jest.fn(async () => ({ duplicate: false, event: {} }));
+
+        const resultado = await ejecutarCicloSincronizacion({ gmail, syncEstado, registrarEvento, logger: loggerSilencioso });
+
+        expect(resultado.recoveryCompleted).toBe(true);
+        expect(resultado.historyId).toBe('h-target');
+        expect(syncEstado.finalizarRecoverySync).toHaveBeenCalledWith(expect.objectContaining({ lastHistoryId: 'h-target' }), undefined);
+        expect(gmail.users.getProfile).not.toHaveBeenCalled();
     });
 
     test('Gmail error no history no se trata como recovery', async () => {
