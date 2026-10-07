@@ -74,7 +74,7 @@ function extractFirstElementTextByClass(html, className) {
     return undefined;
   }
 
-  const elementPattern = /<([a-zA-Z0-9]+)\b([^>]*\bclass\s*=\s*["'][^"']+["'][^>]*)>([\s\S]*?)<\/\1>/g;
+  const elementPattern = /<([a-zA-Z0-9]+)\b([^>]*)>/g;
   let match;
 
   while ((match = elementPattern.exec(html)) !== null) {
@@ -82,7 +82,15 @@ function extractFirstElementTextByClass(html, className) {
       continue;
     }
 
-    const text = normalizarTextoHtml(match[3]);
+    const closingPattern = new RegExp(`</${match[1]}\\s*>`, 'i');
+    const remainingHtml = html.slice(elementPattern.lastIndex);
+    const closingMatch = closingPattern.exec(remainingHtml);
+
+    if (!closingMatch) {
+      continue;
+    }
+
+    const text = normalizarTextoHtml(remainingHtml.slice(0, closingMatch.index));
 
     if (text) {
       return text;

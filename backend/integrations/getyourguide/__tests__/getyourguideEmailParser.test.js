@@ -181,11 +181,33 @@ test('no inventa valores faltantes al parsear pares etiqueta valor', () => {
   });
   expect(event.data).not.toHaveProperty('pax');
   expect(event.data).not.toHaveProperty('pickup_place');
-});test('extrae titulos desde clases HTML reales de GetYourGuide', () => {
+});
+
+test('extrae titulos desde clases HTML reales de GetYourGuide', () => {
   const html = `
     <html><body>
       <div class="activity activity-title">Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Ka'an</div>
       <div class="activity activity-option-title">Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía</div>
+    </body></html>
+  `;
+
+  expect(parseGetYourGuideHtmlFields(html)).toEqual({
+    activity_title: "Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Ka'an",
+    option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
+  });
+});
+
+test('extrae titulos HTML sin depender del orden de clases ni de tags internos', () => {
+  const html = `
+    <html><body>
+      <section class="activity-card">
+        <div class="activity-title activity">
+          <strong>Riviera Maya:</strong> tour por los antiguos canales mayas de la reserva de Sian Ka'an
+        </div>
+        <div class="activity   activity-option-title">
+          Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía
+        </div>
+      </section>
     </body></html>
   `;
 
