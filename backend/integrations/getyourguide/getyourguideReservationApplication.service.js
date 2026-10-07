@@ -8,6 +8,7 @@ const {
 
 const PROVIDER_GETYOURGUIDE = 'getyourguide';
 const PLATFORM_NAME_GETYOURGUIDE = 'GetYourGuide';
+const PAIS_NO_ESPECIFICADO = 'No especificado';
 const EVENT_TYPE_NEW_BOOKING = 'new_booking';
 const REVIEW_STATUS_APPROVED = 'approved';
 const APPLICATION_STATUS_NOT_APPLIED = 'not_applied';
@@ -74,6 +75,23 @@ async function existePais(db, idPais) {
     );
 
     return Boolean(result.rows[0]);
+}
+
+async function obtenerPaisNoEspecificado(db) {
+    const result = await db.query(
+        `
+            SELECT id_pais, nombre
+            FROM paises
+            WHERE nombre = $1
+        `,
+        [PAIS_NO_ESPECIFICADO]
+    );
+
+    if (result.rows.length !== 1) {
+        return null;
+    }
+
+    return result.rows[0];
 }
 
 async function obtenerLinkPorExternalBooking(db, provider, externalBookingId) {
@@ -159,6 +177,26 @@ async function obtenerCompletarDerivadoDesdeEquivalencia(db, evento) {
     };
 }
 
+async function obtenerCompletarDerivadoDesdePaisGenerico(db, evento, completar = {}) {
+    if (evento?.provider !== PROVIDER_GETYOURGUIDE) {
+        return {};
+    }
+
+    if (Object.prototype.hasOwnProperty.call(completar, 'id_pais')) {
+        return {};
+    }
+
+    const pais = await obtenerPaisNoEspecificado(db);
+
+    if (!pais) {
+        return {};
+    }
+
+    return {
+        id_pais: pais.id_pais,
+    };
+}
+
 async function prepararNuevaReservaGetYourGuideConDb(db, evento, completar = {}) {
     const plataforma = await obtenerPlataformaGetYourGuide(db);
 
@@ -169,7 +207,10 @@ async function prepararNuevaReservaGetYourGuideConDb(db, evento, completar = {})
         });
     }
 
-    const completarDerivado = await obtenerCompletarDerivadoDesdeEquivalencia(db, evento);
+    const completarDerivado = {
+        ...(await obtenerCompletarDerivadoDesdeEquivalencia(db, evento)),
+        ...(await obtenerCompletarDerivadoDesdePaisGenerico(db, evento, completar)),
+    };
     const completarFinal = {
         ...completarDerivado,
         ...completar,

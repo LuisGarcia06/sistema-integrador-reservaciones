@@ -6,6 +6,7 @@ const reservacionesService = require('../services/reservaciones.service');
 const {
     aplicarNuevaReservaGetYourGuide,
     LINK_UNIQUE_CONSTRAINT,
+    prepararNuevaReservaGetYourGuideConDb,
 } = require('../integrations/getyourguide/getyourguideReservationApplication.service');
 const {
     mapGetYourGuideNewBookingToReservation,
@@ -34,6 +35,22 @@ function crearEvento(sobrescrituras = {}) {
     };
 }
 
+function crearEventoConTitulosEquivalencia(sobrescrituras = {}) {
+    return crearEvento({
+        normalized_data: {
+            date: '2027-01-15',
+            pax: 2,
+            customer_name: 'Cliente Prueba',
+            customer_phone: '5551234567',
+            pickup_place: 'Hotel Prueba',
+            price: 1000,
+            activity_title: 'Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Kaan',
+            option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
+        },
+        ...sobrescrituras,
+    });
+}
+
 function crearDbPoolFake({
     evento = crearEvento(),
     plataforma = { id_plataforma: 7, nombre: 'GetYourGuide' },
@@ -43,6 +60,7 @@ function crearDbPoolFake({
     fallaInsertLink = null,
     marcarAplicadoDevuelveFila = true,
     equivalenciaActiva = null,
+    paisNoEspecificadoRows = [{ id_pais: 99, nombre: 'No especificado' }],
 } = {}) {
     const client = {
         queries: [],
@@ -67,6 +85,10 @@ function crearDbPoolFake({
 
             if (/FROM equivalencias_tours_externos/i.test(query)) {
                 return { rows: equivalenciaActiva ? [equivalenciaActiva] : [] };
+            }
+
+            if (/FROM paises[\s\S]+WHERE nombre = \$1/i.test(query)) {
+                return { rows: paisNoEspecificadoRows };
             }
 
             if (/SELECT id_tour FROM tours/i.test(query)) {
@@ -482,6 +504,216 @@ describe('getyourguideReservationApplication.service', () => {
             expect.objectContaining({ id_tour: 74, turno: 'Tarde' }),
             9
         );
+    });
+
+    test('GetYourGuide sin pais usa No especificado existente sin hardcodear id', async () => {
+        const { pool } = crearDbPoolFake({
+            evento: crearEventoConTitulosEquivalencia(),
+            equivalenciaActiva: {
+                id_equivalencia_tour_externo: 1,
+                provider: 'getyourguide',
+                id_tour: 74,
+                turno: 'Tarde',
+            },
+            paisNoEspecificadoRows: [{ id_pais: 987, nombre: 'No especificado' }],
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            pickup_time: '08:30',
+        }, pool);
+
+        expect(resultado.tipo).toBe('aplicado');
+        expect(reservacionesService.crearReservacionConDb).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ id_pais: 987, id_tour: 74, turno: 'Tarde' }),
+            9
+        );
+    });
+
+    test('completar manual de id_pais tiene prioridad sobre No especificado', async () => {
+        const { pool, client } = crearDbPoolFake({
+            evento: crearEventoConTitulosEquivalencia(),
+            equivalenciaActiva: {
+                id_equivalencia_tour_externo: 1,
+                provider: 'getyourguide',
+                id_tour: 74,
+                turno: 'Tarde',
+            },
+            paisNoEspecificadoRows: [{ id_pais: 987, nombre: 'No especificado' }],
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            id_pais: 5,
+            pickup_time: '08:30',
+        }, pool);
+
+        expect(resultado.tipo).toBe('aplicado');
+        expect(reservacionesService.crearReservacionConDb).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({ id_pais: 5 }),
+            9
+        );
+        expect(client.queries.some((query) => /FROM paises[\s\S]+WHERE nombre = \$1/i.test(query))).toBe(false);
+    });
+
+    test('No especificado inexistente mantiene id_pais en missing_fields', async () => {
+        const { pool } = crearDbPoolFake({
+            evento: crearEventoConTitulosEquivalencia(),
+            equivalenciaActiva: {
+                id_equivalencia_tour_externo: 1,
+                provider: 'getyourguide',
+                id_tour: 74,
+                turno: 'Tarde',
+            },
+            paisNoEspecificadoRows: [],
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            pickup_time: '08:30',
+        }, pool);
+
+        expect(resultado.tipo).toBe('faltan_datos');
+        expect(resultado.missingFields).toContain('id_pais');
+        expect(reservacionesService.crearReservacionConDb).not.toHaveBeenCalled();
+    });
+
+    test('No especificado duplicado no se elige arbitrariamente', async () => {
+        const { pool } = crearDbPoolFake({
+            evento: crearEventoConTitulosEquivalencia(),
+            equivalenciaActiva: {
+                id_equivalencia_tour_externo: 1,
+                provider: 'getyourguide',
+                id_tour: 74,
+                turno: 'Tarde',
+            },
+            paisNoEspecificadoRows: [
+                { id_pais: 987, nombre: 'No especificado' },
+                { id_pais: 988, nombre: 'No especificado' },
+            ],
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            pickup_time: '08:30',
+        }, pool);
+
+        expect(resultado.tipo).toBe('faltan_datos');
+        expect(resultado.missingFields).toContain('id_pais');
+        expect(reservacionesService.crearReservacionConDb).not.toHaveBeenCalled();
+    });
+
+    test('no infiere pais desde idioma telefono ni pickup_place', async () => {
+        const { pool } = crearDbPoolFake({
+            evento: crearEvento({
+                normalized_data: {
+                    date: '2027-01-15',
+                    pax: 2,
+                    customer_name: 'Cliente Prueba',
+                    customer_phone: '+15555550123',
+                    customer_language: 'Inglés',
+                    tour_language: 'Inglés (Guía)',
+                    pickup_place: 'Hotel Prueba, Tulum, Mexico',
+                    price: 1000,
+                    activity_title: 'Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Kaan',
+                    option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
+                },
+            }),
+            equivalenciaActiva: {
+                id_equivalencia_tour_externo: 1,
+                provider: 'getyourguide',
+                id_tour: 74,
+                turno: 'Tarde',
+            },
+            paisNoEspecificadoRows: [],
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            pickup_time: '08:30',
+        }, pool);
+
+        expect(resultado.tipo).toBe('faltan_datos');
+        expect(resultado.missingFields).toContain('id_pais');
+        expect(reservacionesService.crearReservacionConDb).not.toHaveBeenCalled();
+    });
+
+    test('otra plataforma no recibe automaticamente la regla de pais GetYourGuide', async () => {
+        const { pool, client } = crearDbPoolFake({
+            evento: crearEvento({ provider: 'fareharbor' }),
+            paisNoEspecificadoRows: [{ id_pais: 987, nombre: 'No especificado' }],
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            pickup_time: '08:30',
+        }, pool);
+
+        expect(resultado.tipo).toBe('provider_no_soportado');
+        expect(client.queries.some((query) => /FROM paises[\s\S]+WHERE nombre = \$1/i.test(query))).toBe(false);
+        expect(reservacionesService.crearReservacionConDb).not.toHaveBeenCalled();
+    });
+
+    test('pickup_time sigue siendo manual aunque id_pais se resuelva automaticamente', async () => {
+        const { pool } = crearDbPoolFake({
+            evento: crearEventoConTitulosEquivalencia(),
+            equivalenciaActiva: {
+                id_equivalencia_tour_externo: 1,
+                provider: 'getyourguide',
+                id_tour: 74,
+                turno: 'Tarde',
+            },
+            paisNoEspecificadoRows: [{ id_pais: 987, nombre: 'No especificado' }],
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {}, pool);
+
+        expect(resultado.tipo).toBe('faltan_datos');
+        expect(resultado.missingFields).toContain('pickup_time');
+        expect(resultado.missingFields).not.toContain('id_pais');
+        expect(reservacionesService.crearReservacionConDb).not.toHaveBeenCalled();
+    });
+
+    test('preparacion GetYourGuide conserva Ancient Canal y Tarde con pais generico', async () => {
+        const { client } = crearDbPoolFake({
+            evento: crearEvento({
+                normalized_data: {
+                    date: '7 de febrero de 2027',
+                    pax: 2,
+                    customer_name: 'Cliente Prueba',
+                    pickup_place: 'Hotel Prueba',
+                    price: 6760,
+                    activity_title: 'Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Kaan',
+                    option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
+                },
+            }),
+            equivalenciaActiva: {
+                id_equivalencia_tour_externo: 1,
+                provider: 'getyourguide',
+                id_tour: 74,
+                turno: 'Tarde',
+            },
+            paisNoEspecificadoRows: [{ id_pais: 987, nombre: 'No especificado' }],
+        });
+
+        const resultado = await prepararNuevaReservaGetYourGuideConDb(client, crearEvento({
+            normalized_data: {
+                date: '7 de febrero de 2027',
+                pax: 2,
+                customer_name: 'Cliente Prueba',
+                pickup_place: 'Hotel Prueba',
+                price: 6760,
+                activity_title: 'Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Kaan',
+                option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
+            },
+        }), { pickup_time: '08:30' });
+
+        expect(resultado.tipo).toBe('preparado');
+        expect(resultado.reservationData).toEqual(expect.objectContaining({
+            id_tour: 74,
+            turno: 'Tarde',
+            id_pais: 987,
+            pickup_time: '08:30',
+        }));
+        expect(resultado.missingFields).not.toContain('id_tour');
+        expect(resultado.missingFields).not.toContain('turno');
+        expect(resultado.missingFields).not.toContain('id_pais');
     });
 
     test('completar manual sobrescribe id_tour derivado', async () => {
