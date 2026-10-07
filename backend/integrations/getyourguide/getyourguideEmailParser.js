@@ -164,6 +164,14 @@ function cleanCustomerName(value) {
   return cleaned || undefined;
 }
 
+function cleanPickupPlace(value) {
+  const cleaned = normalizeInlineText(value)
+    .replace(/\s+Abrir en Google Maps\s*$/i, '')
+    .trim();
+
+  return cleaned || undefined;
+}
+
 const CUSTOMER_INLINE_NEXT_LABEL = '(?:Tel[eé]fono|Idioma|Idioma del tour|Idioma de la actividad|Fecha|Actividad|Tour|Producto|Opcion|Opción|Participantes|PAX|Lugar de recogida|Pickup|Punto de recogida|Precio|Total|Importe|Email|Correo)';
 const CUSTOMER_PHONE_PATTERN = new RegExp(`\\bTel[eé]fono\\s*:\\s*(.*?)(?=\\s+\\b${CUSTOMER_INLINE_NEXT_LABEL}\\b\\s*:|$)`, 'i');
 const CUSTOMER_LANGUAGE_PATTERN = new RegExp(`\\bIdioma\\s*:\\s*(.*?)(?=\\s+\\b${CUSTOMER_INLINE_NEXT_LABEL}\\b\\s*:|$)`, 'i');
@@ -254,6 +262,14 @@ function applyParsedField(parsedData, field, value) {
     }
     if (money.currency !== undefined && parsedData.currency === undefined) {
       parsedData.currency = money.currency;
+    }
+    return;
+  }
+
+  if (field === 'pickup_place') {
+    const pickupPlace = cleanPickupPlace(value);
+    if (pickupPlace) {
+      parsedData.pickup_place = pickupPlace;
     }
     return;
   }

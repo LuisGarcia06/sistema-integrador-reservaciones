@@ -162,6 +162,61 @@ test('parsea pares etiqueta valor sin dos puntos', () => {
   }));
 });
 
+test('limpia texto de enlace de Google Maps en pickup_place sin truncar direcciones', () => {
+  const longAddress = 'Hotel de Prueba, Calle 1, Tulum, Quintana Roo, Mexico, Referencia interior sin recorte por longitud';
+  const eventWithLink = parseGetYourGuideEmail({
+    email_message_id: 'fixture-gyg-message-pickup-link-001',
+    email_thread_id: 'fixture-gyg-thread-pickup-link-001',
+    subject: 'Reserva - GYGPICKUPLINK001',
+    html: `
+      <html><body>
+        <div class="activity activity-title">Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Ka'an</div>
+        <div class="activity activity-option-title">Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía</div>
+      </body></html>
+    `,
+    text: [
+      'Fecha',
+      '7 de febrero de 2027',
+      'Número de participantes',
+      '2 x Adults',
+      'Cliente principal',
+      'Cliente Prueba GYG customer-test123@reply.getyourguide.com Teléfono: +15555550123 Idioma: Inglés',
+      'Idioma del tour',
+      'Inglés (Guía)',
+      'Pickup',
+      'Hotel de Prueba, Calle 1, Tulum, Quintana Roo, Mexico Abrir en Google Maps',
+      'Precio',
+      '6760,00 MXN',
+    ].join('\n'),
+  });
+  const eventWithoutLink = parseGetYourGuideEmail({
+    email_message_id: 'fixture-gyg-message-pickup-no-link-001',
+    email_thread_id: 'fixture-gyg-thread-pickup-no-link-001',
+    subject: 'Reserva - GYGPICKUPNOLINK001',
+    text: [
+      'Pickup',
+      longAddress,
+    ].join('\n'),
+  });
+
+  expect(eventWithLink.data).toEqual(expect.objectContaining({
+    pickup_place: 'Hotel de Prueba, Calle 1, Tulum, Quintana Roo, Mexico',
+    date: '7 de febrero de 2027',
+    pax: 2,
+    price: 6760,
+    currency: 'MXN',
+    customer_name: 'Cliente Prueba GYG',
+    customer_phone: '+15555550123',
+    customer_language: 'Inglés',
+    tour_language: 'Inglés (Guía)',
+    activity_title: "Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Ka'an",
+    option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
+  }));
+  expect(eventWithLink.data.pickup_place).not.toContain('Abrir en Google Maps');
+  expect(eventWithoutLink.data.pickup_place).toBe(longAddress);
+  expect(eventWithoutLink.data.pickup_place.length).toBeGreaterThan(80);
+});
+
 test('no inventa valores faltantes al parsear pares etiqueta valor', () => {
   const event = parseGetYourGuideEmail({
     email_message_id: 'fixture-gyg-message-partial-adjacent-001',
