@@ -1,0 +1,6 @@
+{
+  "email_message_id": "fixture-gyg-message-urgent-001",
+  "email_thread_id": "fixture-gyg-thread-booking-002",
+  "subject": "Urgente: nueva reserva recibida - GYG987654321",
+  "text": "Referencia: GYG987654321\nActividad: Tour Sian Ka'an Sanitizado\nFecha: 2026-11-13\nHora de inicio: 14:00\nParticipantes: 2\nCliente: Cliente Urgente Sanitizado\nCorreo del cliente: urgente.sanitizado@example.test\nTeléfono: +52 000 000 0001\nLugar de recogida: Punto Sanitizado\nTotal: 180 USD"
+}

@@ -1,5 +1,6 @@
 const bcrypt = require('bcryptjs');
 const pool = require('../../config/database');
+const { construirDatosEquivalenciaTourExterno } = require('../../services/equivalenciasToursExternos.service');
 
 const MAIN_DATABASE_NAME = 'sian_kaan_reservaciones';
 const TEST_PASSWORD = 'PasswordCP044!';
@@ -88,6 +89,7 @@ const limpiarDatosPrueba = async (client) => {
     await client.query(`
         TRUNCATE TABLE
             bitacora,
+            equivalencias_tours_externos,
             reservaciones,
             transportes_operacion,
             operaciones_tour,
@@ -158,6 +160,53 @@ const prepararBaseDePruebas = async () => {
             `,
             ['Tour CP044', 'Tour controlado para pruebas API CP-044']
         );
+
+        await client.query(
+            `
+                INSERT INTO tours (id_tour, nombre, descripcion, activo)
+                OVERRIDING SYSTEM VALUE
+                VALUES ($1, $2, $3, TRUE)
+            `,
+            [74, 'Ancient Canal', 'Tour controlado para equivalencias GetYourGuide']
+        );
+
+        const equivalenciaGetYourGuide = construirDatosEquivalenciaTourExterno({
+            provider: 'getyourguide',
+            activityTitle: 'Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Kaan',
+            optionTitle: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
+            idTour: 74,
+            turno: 'Tarde',
+            notas: 'Equivalencia aprobada por negocio para pruebas',
+        });
+
+        await client.query(
+            `
+                INSERT INTO equivalencias_tours_externos (
+                    provider,
+                    activity_title,
+                    option_title,
+                    activity_title_normalizado,
+                    option_title_normalizado,
+                    id_tour,
+                    turno,
+                    activo,
+                    notas
+                )
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+            `,
+            [
+                equivalenciaGetYourGuide.provider,
+                equivalenciaGetYourGuide.activity_title,
+                equivalenciaGetYourGuide.option_title,
+                equivalenciaGetYourGuide.activity_title_normalizado,
+                equivalenciaGetYourGuide.option_title_normalizado,
+                equivalenciaGetYourGuide.id_tour,
+                equivalenciaGetYourGuide.turno,
+                equivalenciaGetYourGuide.activo,
+                equivalenciaGetYourGuide.notas,
+            ]
+        );
+
         const paisResult = await client.query(
             `
                 INSERT INTO paises (nombre)
@@ -166,7 +215,6 @@ const prepararBaseDePruebas = async () => {
             `,
             ['País CP044']
         );
-
         await client.query('COMMIT');
         transaccionIniciada = false;
 

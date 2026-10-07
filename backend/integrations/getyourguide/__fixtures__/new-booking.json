@@ -1,0 +1,6 @@
+{
+  "email_message_id": "fixture-gyg-message-new-001",
+  "email_thread_id": "fixture-gyg-thread-booking-001",
+  "subject": "Reserva - GYG123456789",
+  "text": "Referencia: GYG123456789\nReferencia interna: STEST001\nActividad: Tour Sian Ka'an Sanitizado\nOpción: Opción privada sanitizada\nFecha: 2026-11-12\nHora de inicio: 08:30\nParticipantes: 4\nCliente: Cliente Sanitizado\nEmail del cliente: cliente.sanitizado@example.test\nTeléfono del cliente: +52 000 000 0000\nIdioma del cliente: Español\nIdioma del tour: Español\nLugar de recogida: Hotel Sanitizado\nPrecio: 320.50 USD"
+}

@@ -1,0 +1,6 @@
+{
+  "email_message_id": "fixture-gyg-message-cancellation-001",
+  "email_thread_id": "fixture-gyg-thread-booking-001",
+  "subject": "Se ha cancelado una reserva - GYG123456789",
+  "text": "Referencia: GYG123456789\nActividad: Tour Sian Ka'an Sanitizado\nCliente: Cliente Sanitizado\nFecha: 2026-11-12\nHora de inicio: 08:30"
+}

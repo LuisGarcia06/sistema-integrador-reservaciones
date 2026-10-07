@@ -1,0 +1,6 @@
+{
+  "email_message_id": "fixture-gyg-message-modification-001",
+  "email_thread_id": "fixture-gyg-thread-booking-001",
+  "subject": "Cambio en los detalles de la reserva: GYG123456789",
+  "text": "Referencia: GYG123456789\nSe actualizaron los siguientes detalles:\nParticipantes: 4 -> 5\nLugar de recogida: Hotel Sanitizado -> Lobby Sanitizado\nNota: este correo no incluye todos los detalles originales."
+}

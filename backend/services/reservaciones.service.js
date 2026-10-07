@@ -800,20 +800,41 @@ const obtenerReservacionPorId = async (idReservacion) => {
     return obtenerReservacionPorIdConDb(pool, idReservacion);
 };
 
+const crearReservacionConDb = async (db, reservacion, idUsuario) => {
+    for (let intento = 1; intento <= MAX_INTENTOS_GENERAR_CODIGO; intento += 1) {
+        const reservacionConCodigo = {
+            ...reservacion,
+            codigo: generarCodigoReservacion()
+        };
+
+        try {
+            const reservacionCreada = await insertarReservacionConDb(db, reservacionConCodigo);
+
+            await bitacoraService.crearEntradaBitacora({
+                idUsuario,
+                idReservacion: reservacionCreada.id_reservacion,
+                accion: ACCIONES_BITACORA.CREAR,
+                descripcion: `Reservación creada con código ${reservacionCreada.codigo}`
+            }, db);
+
+            return reservacionCreada;
+        } catch (error) {
+            if (!esColisionCodigoReservacion(error)) {
+                throw error;
+            }
+        }
+    }
+
+    throw crearErrorGeneracionCodigo();
+};
+
 const crearReservacionEnTransaccion = async (reservacion, idUsuario) => {
     const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
 
-        const reservacionCreada = await insertarReservacionConDb(client, reservacion);
-
-        await bitacoraService.crearEntradaBitacora({
-            idUsuario,
-            idReservacion: reservacionCreada.id_reservacion,
-            accion: ACCIONES_BITACORA.CREAR,
-            descripcion: `Reservación creada con código ${reservacionCreada.codigo}`
-        }, client);
+        const reservacionCreada = await crearReservacionConDb(client, reservacion, idUsuario);
 
         await client.query('COMMIT');
 
@@ -826,24 +847,7 @@ const crearReservacionEnTransaccion = async (reservacion, idUsuario) => {
     }
 };
 
-const crearReservacion = async (reservacion, idUsuario) => {
-    for (let intento = 1; intento <= MAX_INTENTOS_GENERAR_CODIGO; intento += 1) {
-        const reservacionConCodigo = {
-            ...reservacion,
-            codigo: generarCodigoReservacion()
-        };
-
-        try {
-            return await crearReservacionEnTransaccion(reservacionConCodigo, idUsuario);
-        } catch (error) {
-            if (!esColisionCodigoReservacion(error)) {
-                throw error;
-            }
-        }
-    }
-
-    throw crearErrorGeneracionCodigo();
-};
+const crearReservacion = async (reservacion, idUsuario) => crearReservacionEnTransaccion(reservacion, idUsuario);
 
 const actualizarReservacionParcial = async (idReservacion, campos, idUsuario) => {
     const client = await pool.connect();
@@ -1078,6 +1082,7 @@ module.exports = {
     obtenerReservacionesPaginadas,
     obtenerReservacionPorId,
     crearReservacion,
+    crearReservacionConDb,
     actualizarReservacionParcial,
     cancelarReservacion,
     asignarTransporteReservacion

@@ -257,6 +257,156 @@ CREATE TABLE daily_observaciones (
 );
 
 
+
+-- =========================================================
+-- TABLA: eventos_integracion
+-- =========================================================
+
+CREATE TABLE eventos_integracion (
+    id_evento_integracion INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    provider VARCHAR(50) NOT NULL,
+    external_event_id VARCHAR(255) NOT NULL,
+    external_thread_id VARCHAR(255),
+    external_booking_id VARCHAR(100),
+
+    event_type VARCHAR(50) NOT NULL,
+    urgent BOOLEAN NOT NULL DEFAULT FALSE,
+    review_status VARCHAR(30) NOT NULL DEFAULT 'pending_review',
+    application_status VARCHAR(30) NOT NULL DEFAULT 'not_applied',
+    applied_by INTEGER,
+    applied_at TIMESTAMP,
+    reviewed_by INTEGER,
+    reviewed_at TIMESTAMP,
+    review_note TEXT,
+
+    normalized_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+    source_subject TEXT,
+    source_received_at TIMESTAMP,
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT chk_eventos_integracion_review_status
+        CHECK (review_status IN ('pending_review', 'dismissed', 'approved', 'applied')),
+
+    CONSTRAINT fk_eventos_integracion_reviewed_by
+        FOREIGN KEY (reviewed_by)
+        REFERENCES usuarios(id_usuario),
+
+    CONSTRAINT fk_eventos_integracion_applied_by
+        FOREIGN KEY (applied_by)
+        REFERENCES usuarios(id_usuario),
+
+    CONSTRAINT chk_eventos_integracion_application_status
+        CHECK (application_status IN ('not_applied', 'applied')),
+
+    CONSTRAINT uq_eventos_integracion_provider_external_event
+        UNIQUE (provider, external_event_id)
+);
+
+CREATE INDEX idx_eventos_integracion_provider_booking
+ON eventos_integracion (provider, external_booking_id);
+
+
+
+
+
+-- =========================================================
+-- TABLA: reservas_integracion_link
+-- =========================================================
+
+CREATE TABLE reservas_integracion_link (
+    id_reserva_integracion_link INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    provider VARCHAR(50) NOT NULL,
+    external_booking_id VARCHAR(100) NOT NULL,
+    id_reservacion INTEGER NOT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_reservas_integracion_link_reservaciones
+        FOREIGN KEY (id_reservacion)
+        REFERENCES reservaciones(id_reservacion),
+
+    CONSTRAINT uq_reservas_integracion_link_provider_booking
+        UNIQUE (provider, external_booking_id),
+
+    CONSTRAINT uq_reservas_integracion_link_reservacion
+        UNIQUE (id_reservacion)
+);
+
+
+-- =========================================================
+-- TABLA: equivalencias_tours_externos
+-- =========================================================
+
+CREATE TABLE equivalencias_tours_externos (
+    id_equivalencia_tour_externo INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    provider VARCHAR(50) NOT NULL,
+    activity_title TEXT NOT NULL,
+    option_title TEXT NOT NULL,
+    activity_title_normalizado TEXT NOT NULL,
+    option_title_normalizado TEXT NOT NULL,
+
+    id_tour INTEGER NOT NULL,
+    turno VARCHAR(10) NOT NULL,
+    activo BOOLEAN NOT NULL DEFAULT TRUE,
+    notas TEXT,
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT fk_equivalencias_tours_externos_tours
+        FOREIGN KEY (id_tour)
+        REFERENCES tours(id_tour),
+
+    CONSTRAINT chk_equivalencias_tours_externos_turno
+        CHECK (turno IN ('Mañana', 'Tarde')),
+
+    CONSTRAINT chk_equivalencias_tours_externos_provider_no_vacio
+        CHECK (BTRIM(provider) <> ''),
+
+    CONSTRAINT chk_equivalencias_tours_externos_activity_title_no_vacio
+        CHECK (BTRIM(activity_title) <> ''),
+
+    CONSTRAINT chk_equivalencias_tours_externos_option_title_no_vacio
+        CHECK (BTRIM(option_title) <> ''),
+
+    CONSTRAINT chk_equivalencias_tours_externos_activity_title_normalizado_no_vacio
+        CHECK (BTRIM(activity_title_normalizado) <> ''),
+
+    CONSTRAINT chk_equivalencias_tours_externos_option_title_normalizado_no_vacio
+        CHECK (BTRIM(option_title_normalizado) <> '')
+);
+
+CREATE UNIQUE INDEX uq_equivalencias_tours_externos_activa
+ON equivalencias_tours_externos (
+    LOWER(BTRIM(provider)),
+    activity_title_normalizado,
+    option_title_normalizado
+)
+WHERE activo = TRUE;
+-- =========================================================
+-- TABLA: integracion_sync_estado
+-- =========================================================
+
+CREATE TABLE integracion_sync_estado (
+    id_integracion_sync_estado INTEGER GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+
+    provider VARCHAR(50) NOT NULL,
+    source VARCHAR(50) NOT NULL,
+    last_history_id VARCHAR(100) NOT NULL,
+    last_successful_sync_at TIMESTAMP,
+    last_error_at TIMESTAMP,
+    last_error_code VARCHAR(100),
+
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT uq_integracion_sync_estado_provider_source
+        UNIQUE (provider, source)
+);
 -- =========================================================
 -- TABLA: bitacora
 -- =========================================================

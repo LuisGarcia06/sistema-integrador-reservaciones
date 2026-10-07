@@ -965,6 +965,7 @@ const validarDatosActualizacionReservacion = (datos) => {
 module.exports = {
     camposObligatorios,
     camposEditables,
+    ESTADO_INICIAL_RESERVACION,
     filtrosReservacionesPermitidos,
     validarIdReservacion,
     validarFiltrosReservaciones,

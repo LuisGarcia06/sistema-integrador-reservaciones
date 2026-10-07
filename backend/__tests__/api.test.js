@@ -10,6 +10,8 @@ process.env.APP_CONFIG_PATH = envPath;
 process.env.NODE_ENV = process.env.NODE_ENV || 'test';
 
 const app = require('../server');
+const pool = require('../config/database');
+const { construirDatosEquivalenciaTourExterno } = require('../services/equivalenciasToursExternos.service');
 const {
     prepararBaseDePruebas,
     cerrarPool
@@ -362,5 +364,74 @@ describe('API CP-044', () => {
 
     test('la suite usa la base de datos de prueba esperada', () => {
         expect(contexto.currentDatabase).toBe('sian_kaan_reservaciones_test');
+    });
+    const insertarEquivalenciaTourExterno = (client, equivalencia) => client.query(
+        `
+            INSERT INTO equivalencias_tours_externos (
+                provider,
+                activity_title,
+                option_title,
+                activity_title_normalizado,
+                option_title_normalizado,
+                id_tour,
+                turno,
+                activo,
+                notas
+            )
+            VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        `,
+        [
+            equivalencia.provider,
+            equivalencia.activity_title,
+            equivalencia.option_title,
+            equivalencia.activity_title_normalizado,
+            equivalencia.option_title_normalizado,
+            equivalencia.id_tour,
+            equivalencia.turno,
+            equivalencia.activo,
+            equivalencia.notas,
+        ]
+    );
+
+    test('equivalencias de tours externos rechaza id_tour inexistente por FK', async () => {
+        const client = await pool.connect();
+
+        try {
+            await client.query('BEGIN');
+            const equivalencia = construirDatosEquivalenciaTourExterno({
+                provider: 'getyourguide',
+                activityTitle: 'Actividad con FK invalida CP044',
+                optionTitle: 'Opcion con FK invalida CP044',
+                idTour: 999999,
+                turno: 'Tarde',
+            });
+
+            await expect(insertarEquivalenciaTourExterno(client, equivalencia))
+                .rejects.toMatchObject({ code: '23503' });
+        } finally {
+            await client.query('ROLLBACK').catch(() => {});
+            client.release();
+        }
+    });
+
+    test('equivalencias de tours externos impide duplicado activo por DB', async () => {
+        const client = await pool.connect();
+
+        try {
+            await client.query('BEGIN');
+            const equivalencia = construirDatosEquivalenciaTourExterno({
+                provider: 'getyourguide',
+                activityTitle: 'Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Kaan',
+                optionTitle: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
+                idTour: 74,
+                turno: 'Tarde',
+            });
+
+            await expect(insertarEquivalenciaTourExterno(client, equivalencia))
+                .rejects.toMatchObject({ code: '23505' });
+        } finally {
+            await client.query('ROLLBACK').catch(() => {});
+            client.release();
+        }
     });
 });

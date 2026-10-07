@@ -16,6 +16,11 @@ const usuariosRoutes = require('./routes/usuarios.routes');
 const vehiculosRoutes = require('./routes/vehiculos.routes');
 const whatsappRoutes = require('./routes/whatsapp.routes');
 const fareharborWebhookRoutes = require('./routes/fareharborWebhook.routes');
+const eventosIntegracionRoutes = require('./routes/eventosIntegracion.routes');
+const {
+    iniciarWorkerSincronizacion,
+    detenerWorkerSincronizacion
+} = require('./integrations/getyourguide/getyourguideGmailSync.service');
 
 const app = express();
 const frontendPath = path.join(__dirname, '..', 'frontend');
@@ -63,6 +68,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/bitacora', bitacoraRoutes);
 app.use('/api/daily', dailyRoutes);
 app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/eventos-integracion', eventosIntegracionRoutes);
 app.use('/api/guias', guiasRoutes);
 app.use('/api/operadores', operadoresRoutes);
 app.use('/api/operaciones', operacionesRoutes);
@@ -81,10 +87,20 @@ app.get('/', (req, res) => {
 });
 
 if (require.main === module) {
-    app.listen(PORT, HOST, () => {
+    const server = app.listen(PORT, HOST, () => {
         console.log(`Servidor ejecutándose en http://${HOST}:${PORT}`);
+        iniciarWorkerSincronizacion();
     });
+
+    const cerrarServidor = () => {
+        detenerWorkerSincronizacion();
+        server.close(() => {
+            process.exit(0);
+        });
+    };
+
+    process.on('SIGINT', cerrarServidor);
+    process.on('SIGTERM', cerrarServidor);
 }
 
 module.exports = app;
-
