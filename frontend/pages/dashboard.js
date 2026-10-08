@@ -5,7 +5,7 @@
   const EMPTY_VALUE = "--";
   const TURNO_SIN_CLASIFICAR = "Sin clasificar";
   const INTEGRATION_REFRESH_MS = 60000;
-  const MANUAL_NEW_BOOKING_FIELDS = ["id_tour", "turno", "pickup_time"];
+  const MANUAL_NEW_BOOKING_FIELDS = ["id_tour", "turno", "pickup_place", "pickup_time"];
   const TURNOS_VALIDOS = ["Mañana", "Tarde"];
   const EVENT_TYPE_LABELS = {
     new_booking: "Nueva reservación",
@@ -385,6 +385,10 @@
 
   function needsManualField(evento, field) {
     return getNewBookingMissingFields(evento).indexOf(field) !== -1;
+  }
+
+  function canEditIntegrationManually() {
+    return Boolean(App.auth && App.auth.esAdministrador());
   }
 
   function getPreviewReservationData(evento) {
@@ -828,7 +832,7 @@
     const needsTour = needsManualField(evento, "id_tour");
     const tours = getSelectableTours();
 
-    if (!needsTour) {
+    if (!needsTour || !canEditIntegrationManually()) {
       return "";
     }
 
@@ -852,7 +856,7 @@
   function renderTurnoSelect(evento) {
     const needsTurno = needsManualField(evento, "turno");
 
-    if (!needsTurno) {
+    if (!needsTurno || !canEditIntegrationManually()) {
       return "";
     }
 
@@ -869,6 +873,19 @@
     ].join("");
   }
 
+  function renderPickupPlaceInput(evento) {
+    if (!needsManualField(evento, "pickup_place") || !canEditIntegrationManually()) {
+      return "";
+    }
+
+    return [
+      '<label class="field dashboard-integration-full">',
+      '<span>Lugar de pickup *</span>',
+      '<input id="integration-pickup-place" type="text" maxlength="120" required>',
+      "</label>"
+    ].join("");
+  }
+
   function getManualTourValue() {
     const input = document.getElementById("integration-tour-id");
 
@@ -877,6 +894,12 @@
 
   function getManualTurnoValue() {
     const input = document.getElementById("integration-turno");
+
+    return input ? String(input.value || "").trim() : "";
+  }
+
+  function getManualPickupPlaceValue() {
+    const input = document.getElementById("integration-pickup-place");
 
     return input ? String(input.value || "").trim() : "";
   }
@@ -899,6 +922,10 @@
     }
 
     if (needsManualField(evento, "turno") && TURNOS_VALIDOS.indexOf(getManualTurnoValue()) === -1) {
+      return false;
+    }
+
+    if (needsManualField(evento, "pickup_place") && !getManualPickupPlaceValue()) {
       return false;
     }
 
@@ -928,6 +955,7 @@
       renderNormalizedData(evento),
       renderTourSelect(evento),
       renderTurnoSelect(evento),
+      renderPickupPlaceInput(evento),
       needsPickupTime
         ? [
             '<label class="field dashboard-integration-full">',
@@ -1187,7 +1215,7 @@
       });
     });
 
-    ["integration-tour-id", "integration-turno", "integration-pickup-time"].forEach(function (id) {
+    ["integration-tour-id", "integration-turno", "integration-pickup-place", "integration-pickup-time"].forEach(function (id) {
       const input = document.getElementById(id);
 
       if (input) {
@@ -1397,6 +1425,17 @@
       }
 
       completar.turno = turno;
+    }
+
+    if (needsManualField(evento, "pickup_place")) {
+      const pickupPlace = getManualPickupPlaceValue();
+
+      if (!pickupPlace) {
+        setModalError("El lugar de pickup es obligatorio.");
+        return;
+      }
+
+      completar.pickup_place = pickupPlace;
     }
 
     if (!hasPickupTime(evento)) {

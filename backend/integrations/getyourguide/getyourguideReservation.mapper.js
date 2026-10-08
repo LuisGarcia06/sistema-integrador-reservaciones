@@ -103,7 +103,10 @@ function normalizarFechaEspanol(valor) {
         return null;
     }
 
-    const match = valor.trim().replace(/\s+/g, ' ').match(/^(\d{1,2}) de ([a-záéíóúñ]+) de (\d{4})$/i);
+    const match = valor
+        .trim()
+        .replace(/\s+/g, ' ')
+        .match(/^(\d{1,2}) de ([a-záéíóúñ]+) de (\d{4})(?:,\s*(?:[01]?\d|2[0-3]):[0-5]\d)?$/i);
 
     if (!match) {
         return null;
@@ -129,7 +132,10 @@ function normalizarFechaIngles(valor) {
         return null;
     }
 
-    const match = valor.trim().replace(/\s+/g, ' ').match(/^([A-Za-z]+) (\d{1,2}), (\d{4})$/);
+    const match = valor
+        .trim()
+        .replace(/\s+/g, ' ')
+        .match(/^([A-Za-z]+) (\d{1,2}), (\d{4})(?:\s+(?:0?[1-9]|1[0-2]):[0-5]\d\s*(?:AM|PM))?$/i);
 
     if (!match) {
         return null;

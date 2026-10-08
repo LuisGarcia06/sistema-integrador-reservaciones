@@ -191,6 +191,8 @@ describe('getyourguideReservation.mapper', () => {
         expect(normalizarFechaEspanol('07 de febrero de 2027')).toBe('2027-02-07');
         expect(normalizarFechaEspanol('1 de enero de 2026')).toBe('2026-01-01');
         expect(normalizarFechaEspanol('31 de diciembre de 2027')).toBe('2027-12-31');
+        expect(normalizarFechaEspanol('19 de octubre de 2026, 7:00')).toBe('2026-10-19');
+        expect(normalizarFechaEspanol('7 de enero de 2027, 7:00')).toBe('2027-01-07');
     });
 
     test('normaliza todos los meses españoles', () => {
@@ -215,6 +217,7 @@ describe('getyourguideReservation.mapper', () => {
 
     test('rechaza fechas españolas invalidas o incompletas', () => {
         expect(normalizarFechaEspanol('31 de febrero de 2027')).toBeNull();
+        expect(normalizarFechaEspanol('31 de febrero de 2027, 7:00')).toBeNull();
         expect(normalizarFechaEspanol('32 de enero de 2027')).toBeNull();
         expect(normalizarFechaEspanol('0 de marzo de 2027')).toBeNull();
         expect(normalizarFechaEspanol('7 de foo de 2027')).toBeNull();
@@ -225,11 +228,15 @@ describe('getyourguideReservation.mapper', () => {
         expect(normalizarFechaIngles('August 11, 2026')).toBe('2026-08-11');
         expect(normalizarFechaIngles('January 2, 2027')).toBe('2027-01-02');
         expect(normalizarFechaIngles('December 31, 2026')).toBe('2026-12-31');
+        expect(normalizarFechaIngles('August 18, 2026 7:00 AM')).toBe('2026-08-18');
+        expect(normalizarFechaIngles('January 2, 2027 10:30 PM')).toBe('2027-01-02');
     });
 
     test('rechaza fechas inglesas invalidas o con mes desconocido', () => {
         expect(normalizarFechaIngles('February 30, 2026')).toBeNull();
+        expect(normalizarFechaIngles('February 30, 2026 7:00 AM')).toBeNull();
         expect(normalizarFechaIngles('Foo 10, 2026')).toBeNull();
+        expect(normalizarFechaIngles('Foo 20, 2026 8:00 AM')).toBeNull();
         expect(normalizarFechaIngles('11 August 2026')).toBeNull();
     });
 
@@ -281,6 +288,31 @@ describe('getyourguideReservation.mapper', () => {
         });
 
         expect(resultado.reservationData.fecha).toBe('2027-02-07');
+        expect(resultado.missingFields).not.toContain('fecha');
+        expect(resultado.warnings).not.toContain('date_no_tiene_formato_seguro');
+    });
+
+    test('fecha con hora se normaliza sin generar pickup_time', () => {
+        const resultado = mapGetYourGuideNewBookingToReservation({
+            normalized_data: {
+                date: 'August 18, 2026 7:00 AM',
+                pax: 2,
+                customer_name: 'Cliente Prueba',
+                pickup_place: 'Hotel Prueba',
+                price: 1000,
+            },
+        }, {
+            idPlataforma: 7,
+            completar: {
+                id_tour: 74,
+                id_pais: 5,
+                turno: 'Tarde',
+            },
+        });
+
+        expect(resultado.reservationData.fecha).toBe('2026-08-18');
+        expect(resultado.reservationData).not.toHaveProperty('pickup_time');
+        expect(resultado.missingFields).toContain('pickup_time');
         expect(resultado.missingFields).not.toContain('fecha');
         expect(resultado.warnings).not.toContain('date_no_tiene_formato_seguro');
     });
@@ -1247,6 +1279,39 @@ describe('getyourguideReservationApplication.service', () => {
         expect(resultado.referencias.pais).toEqual({ id_pais: 987, nombre: 'No especificado' });
     });
 
+    test('preparacion GetYourGuide con fecha inglesa con hora y pickup faltante expone solo campos manuales', async () => {
+        const evento = crearEvento({
+            normalized_data: {
+                date: 'August 18, 2026 7:00 AM',
+                pax: 2,
+                customer_name: 'Cliente Prueba',
+                price: 1000,
+                activity_title: 'Actividad sin equivalencia con pickup manual',
+                option_title: 'Opcion sin equivalencia con pickup manual',
+            },
+        });
+        const { client } = crearDbPoolFake({
+            evento,
+            equivalenciaActiva: null,
+            paisNoEspecificadoRows: [{ id_pais: 987, nombre: 'No especificado' }],
+        });
+
+        const resultado = await obtenerPreviewNuevaReservaGetYourGuideConDb(client, evento, {});
+
+        expect(resultado.tipo).toBe('preview');
+        expect(resultado.reservationData).toEqual(expect.objectContaining({
+            fecha: '2026-08-18',
+            id_pais: 987,
+            pax: 2,
+        }));
+        expect(resultado.reservationData).not.toHaveProperty('pickup_time');
+        expect(resultado.reservationData).not.toHaveProperty('pickup_place');
+        expect(resultado.missingFields).toEqual(expect.arrayContaining(['id_tour', 'turno', 'pickup_place', 'pickup_time']));
+        expect(resultado.missingFields).not.toContain('fecha');
+        expect(resultado.referencias.tour).toBeNull();
+        expect(resultado.referencias.pais).toEqual({ id_pais: 987, nombre: 'No especificado' });
+    });
+
     test('preparacion GetYourGuide conserva Ancient Canal y Tarde con pais generico', async () => {
         const { client } = crearDbPoolFake({
             evento: crearEvento({
@@ -1359,6 +1424,43 @@ describe('getyourguideReservationApplication.service', () => {
         expect(reservacionesService.crearReservacionConDb).toHaveBeenCalledWith(
             expect.anything(),
             expect.objectContaining({ id_tour: 74, turno: 'Mañana' }),
+            9
+        );
+    });
+
+    test('completar manual permite registrar pickup_place faltante', async () => {
+        const { pool } = crearDbPoolFake({
+            evento: crearEvento({
+                normalized_data: {
+                    date: 'August 18, 2026 7:00 AM',
+                    pax: 2,
+                    customer_name: 'Cliente Prueba',
+                    price: 1000,
+                    activity_title: 'Actividad sin equivalencia con pickup manual',
+                    option_title: 'Opcion sin equivalencia con pickup manual',
+                },
+            }),
+            equivalenciaActiva: null,
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            id_tour: 74,
+            id_pais: 5,
+            pickup_place: 'Punto acordado en Tulum',
+            pickup_time: '10:00',
+            turno: 'Tarde',
+        }, pool);
+
+        expect(resultado.tipo).toBe('aplicado');
+        expect(reservacionesService.crearReservacionConDb).toHaveBeenCalledWith(
+            expect.anything(),
+            expect.objectContaining({
+                fecha: '2026-08-18',
+                id_tour: 74,
+                pickup_place: 'Punto acordado en Tulum',
+                pickup_time: '10:00',
+                turno: 'Tarde',
+            }),
             9
         );
     });
