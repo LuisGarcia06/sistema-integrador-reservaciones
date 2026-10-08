@@ -490,6 +490,315 @@ describe('API CP-044', () => {
         expect(eventoDespues.rows[0]).toEqual(eventoAntes.rows[0]);
         expect(bitacoraDespues.rows[0].total).toBe(bitacoraAntes.rows[0].total);
     });
+
+    test('POST /api/eventos-integracion/:id/aplicar procesa modification approved de forma atomica', async () => {
+        expect(contexto.currentDatabase).toBe('sian_kaan_reservaciones_test');
+
+        const crearReservacionModification = async (sobrescrituras = {}) => {
+            const response = await request(app)
+                .post('/api/reservaciones')
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send(crearPayloadReservacionValida({
+                    fecha: '2026-10-08',
+                    id_tour: 74,
+                    nombre_cliente: `Cliente Modification ${Date.now()}`,
+                    pax: 2,
+                    pickup_place: 'Hotel Original',
+                    pickup_time: '10:00',
+                    turno: 'Tarde',
+                    idioma: 'Español (Guía)',
+                    precio_total: 6760,
+                    ...sobrescrituras,
+                }));
+
+            expect(response.status).toBe(201);
+            return response.body.datos;
+        };
+        const crearLinkModification = (externalBookingId, idReservacion) => pool.query(
+            `
+                INSERT INTO reservas_integracion_link (
+                    provider,
+                    external_booking_id,
+                    id_reservacion
+                )
+                VALUES ('getyourguide', $1, $2)
+            `,
+            [externalBookingId, idReservacion]
+        );
+        const crearEventoModification = async ({
+            externalBookingId,
+            suffix,
+            normalizedData,
+            reviewStatus = 'pending_review',
+            applicationStatus = 'not_applied',
+            sourceReceivedAt = new Date('2026-10-07T10:00:00.000Z'),
+        }) => {
+            const result = await pool.query(
+                `
+                    INSERT INTO eventos_integracion (
+                        provider,
+                        external_event_id,
+                        external_thread_id,
+                        external_booking_id,
+                        event_type,
+                        urgent,
+                        review_status,
+                        application_status,
+                        normalized_data,
+                        source_subject,
+                        source_received_at,
+                        applied_at,
+                        applied_by,
+                        created_at,
+                        updated_at
+                    )
+                    VALUES (
+                        'getyourguide',
+                        $1,
+                        $2,
+                        $3,
+                        'modification',
+                        FALSE,
+                        $4::varchar,
+                        $5::varchar,
+                        $6::jsonb,
+                        $7,
+                        $8,
+                        CASE WHEN $5::varchar = 'applied' THEN CURRENT_TIMESTAMP ELSE NULL END,
+                        CASE WHEN $5::varchar = 'applied' THEN $9::integer ELSE NULL::integer END,
+                        CURRENT_TIMESTAMP,
+                        CURRENT_TIMESTAMP
+                    )
+                    RETURNING id_evento_integracion
+                `,
+                [
+                    `${externalBookingId}-${suffix}`,
+                    `${externalBookingId}-${suffix}-thread`,
+                    externalBookingId,
+                    reviewStatus,
+                    applicationStatus,
+                    JSON.stringify(normalizedData),
+                    `Modification controlada ${externalBookingId}`,
+                    sourceReceivedAt,
+                    contexto.usuarios.administrador.id_usuario,
+                ]
+            );
+
+            return result.rows[0].id_evento_integracion;
+        };
+        const normalizedConCambios = {
+            date: '2026-10-09',
+            pax: 3,
+            pickup_place: 'Lobby Nuevo',
+            tour_language: 'Inglés (Guía)',
+            activity_title: 'Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Kaan',
+            option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
+        };
+
+        const reservacion = await crearReservacionModification({ nombre_cliente: 'Cliente Modification Aplicar' });
+        const externalBookingId = `GYGMODAPPLY${Date.now()}`;
+        await crearLinkModification(externalBookingId, reservacion.id_reservacion);
+        const idEvento = await crearEventoModification({
+            externalBookingId,
+            suffix: 'event-001',
+            normalizedData: normalizedConCambios,
+        });
+
+        const diffResponse = await request(app)
+            .get(`/api/eventos-integracion/${idEvento}/diff`)
+            .set('Authorization', `Bearer ${tokenConsulta}`);
+
+        expect(diffResponse.status).toBe(200);
+        expect(diffResponse.body.datos.diff_has_changes).toBe(true);
+
+        const approveResponse = await request(app)
+            .patch(`/api/eventos-integracion/${idEvento}/revision`)
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ accion: 'approve', nota: 'Aprobado modification E2E' });
+
+        expect(approveResponse.status).toBe(200);
+
+        const bitacoraAntes = await pool.query(
+            `SELECT COUNT(*)::int AS total FROM bitacora WHERE id_reservacion = $1 AND accion = 'MODIFICAR'`,
+            [reservacion.id_reservacion]
+        );
+        const applyResponse = await request(app)
+            .post(`/api/eventos-integracion/${idEvento}/aplicar`)
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: {} });
+
+        expect(applyResponse.status).toBe(201);
+        expect(applyResponse.body.datos).toEqual(expect.objectContaining({
+            id_reservacion: reservacion.id_reservacion,
+            codigo: reservacion.codigo,
+            external_booking_id: externalBookingId,
+            campos_modificados: ['fecha', 'pax', 'pickup_place', 'idioma'],
+        }));
+
+        const reservacionFinal = await pool.query(
+            `
+                SELECT fecha::text, pax, pickup_place, id_tour, turno, idioma, estado
+                FROM reservaciones
+                WHERE id_reservacion = $1
+            `,
+            [reservacion.id_reservacion]
+        );
+        expect(reservacionFinal.rows[0]).toEqual(expect.objectContaining({
+            fecha: '2026-10-09',
+            pax: 3,
+            pickup_place: 'Lobby Nuevo',
+            id_tour: 74,
+            turno: 'Tarde',
+            idioma: 'Inglés (Guía)',
+            estado: 'Pendiente',
+        }));
+
+        const bitacoraDespues = await pool.query(
+            `
+                SELECT accion, descripcion
+                FROM bitacora
+                WHERE id_reservacion = $1 AND accion = 'MODIFICAR'
+                ORDER BY id_bitacora DESC
+            `,
+            [reservacion.id_reservacion]
+        );
+        expect(bitacoraDespues.rows.length).toBe(bitacoraAntes.rows[0].total + 1);
+        expect(bitacoraDespues.rows[0].descripcion).toContain('fecha: 2026-10-08 -> 2026-10-09');
+        expect(bitacoraDespues.rows[0].descripcion).toContain('pax: 2 -> 3');
+        expect(bitacoraDespues.rows[0].descripcion).toContain('pickup_place: Hotel Original -> Lobby Nuevo');
+        expect(bitacoraDespues.rows[0].descripcion).toContain('idioma: Español (Guía) -> Inglés (Guía)');
+
+        const eventoFinal = await pool.query(
+            `
+                SELECT review_status, application_status, applied_at, applied_by
+                FROM eventos_integracion
+                WHERE id_evento_integracion = $1
+            `,
+            [idEvento]
+        );
+        expect(eventoFinal.rows[0]).toEqual(expect.objectContaining({
+            review_status: 'approved',
+            application_status: 'applied',
+            applied_by: contexto.usuarios.administrador.id_usuario,
+        }));
+        expect(eventoFinal.rows[0].applied_at).toBeTruthy();
+
+        const reapplyResponse = await request(app)
+            .post(`/api/eventos-integracion/${idEvento}/aplicar`)
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: {} });
+        expect(reapplyResponse.status).toBe(409);
+
+        const reservacionSinCambios = await crearReservacionModification({
+            nombre_cliente: 'Cliente Modification Sin Cambios',
+        });
+        const bookingSinCambios = `${externalBookingId}NOCHANGES`;
+        await crearLinkModification(bookingSinCambios, reservacionSinCambios.id_reservacion);
+        const idEventoSinCambios = await crearEventoModification({
+            externalBookingId: bookingSinCambios,
+            suffix: 'event-001',
+            reviewStatus: 'approved',
+            normalizedData: {
+                date: '2026-10-08',
+                pax: 2,
+                pickup_place: 'Hotel Original',
+                tour_language: 'Español (Guía)',
+                activity_title: 'Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Kaan',
+                option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
+            },
+        });
+        const bitacoraSinCambiosAntes = await pool.query(
+            `SELECT COUNT(*)::int AS total FROM bitacora WHERE id_reservacion = $1`,
+            [reservacionSinCambios.id_reservacion]
+        );
+        const applySinCambios = await request(app)
+            .post(`/api/eventos-integracion/${idEventoSinCambios}/aplicar`)
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: {} });
+        expect(applySinCambios.status).toBe(201);
+        expect(applySinCambios.body.datos.campos_modificados).toEqual([]);
+        const bitacoraSinCambiosDespues = await pool.query(
+            `SELECT COUNT(*)::int AS total FROM bitacora WHERE id_reservacion = $1`,
+            [reservacionSinCambios.id_reservacion]
+        );
+        expect(bitacoraSinCambiosDespues.rows[0].total).toBe(bitacoraSinCambiosAntes.rows[0].total);
+
+        const reservacionTransporte = await crearReservacionModification({
+            nombre_cliente: 'Cliente Modification Transporte',
+        });
+        const vehiculo = await pool.query(
+            `
+                INSERT INTO vehiculos (identificador, placas, color, capacidad, estado)
+                VALUES ($1, $2, 'Blanco', 12, TRUE)
+                RETURNING id_vehiculo
+            `,
+            [`VEH-MOD-${Date.now()}`, `M${String(Date.now()).slice(-5)}`]
+        );
+        const operacion = await pool.query(
+            `
+                INSERT INTO operaciones_tour (fecha, id_tour, turno, numero_grupo, hora_inicio, id_guia, estado)
+                VALUES ('2026-10-08', 74, 'Tarde', 1, '10:00', NULL, 'Pendiente')
+                RETURNING id_operacion_tour
+            `
+        );
+        const transporte = await pool.query(
+            `
+                INSERT INTO transportes_operacion (id_operacion_tour, id_vehiculo, id_operador, observaciones_operador, estado)
+                VALUES ($1, $2, NULL, NULL, 'Pendiente')
+                RETURNING id_transporte_operacion
+            `,
+            [operacion.rows[0].id_operacion_tour, vehiculo.rows[0].id_vehiculo]
+        );
+        await pool.query(
+            'UPDATE reservaciones SET id_transporte_operacion = $1 WHERE id_reservacion = $2',
+            [transporte.rows[0].id_transporte_operacion, reservacionTransporte.id_reservacion]
+        );
+        const bookingTransporte = `${externalBookingId}TRANSPORT`;
+        await crearLinkModification(bookingTransporte, reservacionTransporte.id_reservacion);
+        const idEventoTransporte = await crearEventoModification({
+            externalBookingId: bookingTransporte,
+            suffix: 'event-001',
+            reviewStatus: 'approved',
+            normalizedData: { date: '2026-10-09' },
+        });
+        const applyTransporte = await request(app)
+            .post(`/api/eventos-integracion/${idEventoTransporte}/aplicar`)
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: {} });
+        expect(applyTransporte.status).toBe(422);
+        const eventoTransporte = await pool.query(
+            'SELECT application_status FROM eventos_integracion WHERE id_evento_integracion = $1',
+            [idEventoTransporte]
+        );
+        expect(eventoTransporte.rows[0].application_status).toBe('not_applied');
+
+        const reservacionVieja = await crearReservacionModification({
+            nombre_cliente: 'Cliente Modification Fuera Orden',
+        });
+        const bookingViejo = `${externalBookingId}OLD`;
+        await crearLinkModification(bookingViejo, reservacionVieja.id_reservacion);
+        const idEventoViejo = await crearEventoModification({
+            externalBookingId: bookingViejo,
+            suffix: 'old-event',
+            reviewStatus: 'approved',
+            normalizedData: { pax: 3 },
+            sourceReceivedAt: new Date('2026-10-07T10:00:00.000Z'),
+        });
+        await crearEventoModification({
+            externalBookingId: bookingViejo,
+            suffix: 'new-event',
+            reviewStatus: 'approved',
+            applicationStatus: 'applied',
+            normalizedData: { pax: 4 },
+            sourceReceivedAt: new Date('2026-10-08T10:00:00.000Z'),
+        });
+        const applyViejo = await request(app)
+            .post(`/api/eventos-integracion/${idEventoViejo}/aplicar`)
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: {} });
+        expect(applyViejo.status).toBe(409);
+        expect(applyViejo.body.reason).toBe('evento_mas_nuevo_ya_aplicado');
+    });
     const insertarEquivalenciaTourExterno = (client, equivalencia) => client.query(
         `
             INSERT INTO equivalencias_tours_externos (

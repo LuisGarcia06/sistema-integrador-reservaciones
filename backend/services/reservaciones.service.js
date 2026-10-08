@@ -211,7 +211,7 @@ const insertarReservacionConDb = async (db, reservacion) => {
     return result.rows[0];
 };
 
-const actualizarReservacionParcialConDb = async (db, idReservacion, campos) => {
+const actualizarCamposReservacionParcialConDb = async (db, idReservacion, campos) => {
     const nombresCampos = Object.keys(campos);
     const asignaciones = nombresCampos.map((campo, index) => {
         if (!camposActualizables.includes(campo)) {
@@ -849,62 +849,71 @@ const crearReservacionEnTransaccion = async (reservacion, idUsuario) => {
 
 const crearReservacion = async (reservacion, idUsuario) => crearReservacionEnTransaccion(reservacion, idUsuario);
 
+const actualizarReservacionParcialConDb = async (db, idReservacion, campos, idUsuario) => {
+    const reservacionActual = await obtenerReservacionPorIdConDb(db, idReservacion, true);
+
+    if (!reservacionActual) {
+        return null;
+    }
+
+    if (
+        tieneCampo(campos, 'estado') &&
+        campos.estado === ESTADO_CANCELADA &&
+        reservacionActual.estado !== ESTADO_CANCELADA
+    ) {
+        throw crearErrorSolicitudInvalida('Utiliza la acción de cancelación e informa motivo_cancelacion');
+    }
+
+    if (tieneCampo(campos, 'motivo_cancelacion') && reservacionActual.estado !== ESTADO_CANCELADA) {
+        throw crearErrorSolicitudInvalida('Solo se puede registrar motivo_cancelacion cuando la reservación ya está cancelada');
+    }
+
+    const cambios = obtenerCambiosReservacion(reservacionActual, campos);
+
+    if (cambios.length === 0) {
+        return reservacionActual;
+    }
+
+    const camposActualizados = obtenerCamposActualizacionDesdeCambios(cambios);
+    const reservacionFinal = proyectarReservacion(reservacionActual, camposActualizados);
+
+    validarIntegridadNinosPax(reservacionFinal);
+
+    await validarCapacidadPatchAsignado(
+        db,
+        reservacionActual,
+        reservacionFinal,
+        cambios
+    );
+
+    const reservacionActualizada = await actualizarCamposReservacionParcialConDb(
+        db,
+        idReservacion,
+        camposActualizados
+    );
+
+    await bitacoraService.crearEntradaBitacora({
+        idUsuario,
+        idReservacion,
+        accion: ACCIONES_BITACORA.MODIFICAR,
+        descripcion: generarDescripcionCambios(cambios)
+    }, db);
+
+    return reservacionActualizada;
+};
+
 const actualizarReservacionParcial = async (idReservacion, campos, idUsuario) => {
     const client = await pool.connect();
 
     try {
         await client.query('BEGIN');
 
-        const reservacionActual = await obtenerReservacionPorIdConDb(client, idReservacion, true);
-
-        if (!reservacionActual) {
-            await client.query('COMMIT');
-            return null;
-        }
-
-        if (
-            tieneCampo(campos, 'estado') &&
-            campos.estado === ESTADO_CANCELADA &&
-            reservacionActual.estado !== ESTADO_CANCELADA
-        ) {
-            throw crearErrorSolicitudInvalida('Utiliza la acción de cancelación e informa motivo_cancelacion');
-        }
-
-        if (tieneCampo(campos, 'motivo_cancelacion') && reservacionActual.estado !== ESTADO_CANCELADA) {
-            throw crearErrorSolicitudInvalida('Solo se puede registrar motivo_cancelacion cuando la reservación ya está cancelada');
-        }
-
-        const cambios = obtenerCambiosReservacion(reservacionActual, campos);
-
-        if (cambios.length === 0) {
-            await client.query('COMMIT');
-            return reservacionActual;
-        }
-
-        const camposActualizados = obtenerCamposActualizacionDesdeCambios(cambios);
-        const reservacionFinal = proyectarReservacion(reservacionActual, camposActualizados);
-
-        validarIntegridadNinosPax(reservacionFinal);
-
-        await validarCapacidadPatchAsignado(
-            client,
-            reservacionActual,
-            reservacionFinal,
-            cambios
-        );
-
         const reservacionActualizada = await actualizarReservacionParcialConDb(
             client,
             idReservacion,
-            camposActualizados
+            campos,
+            idUsuario
         );
-
-        await bitacoraService.crearEntradaBitacora({
-            idUsuario,
-            idReservacion,
-            accion: ACCIONES_BITACORA.MODIFICAR,
-            descripcion: generarDescripcionCambios(cambios)
-        }, client);
 
         await client.query('COMMIT');
 
@@ -1098,6 +1107,7 @@ module.exports = {
     crearReservacion,
     crearReservacionConDb,
     actualizarReservacionParcial,
+    actualizarReservacionParcialConDb,
     cancelarReservacion,
     cancelarReservacionConDb,
     asignarTransporteReservacion

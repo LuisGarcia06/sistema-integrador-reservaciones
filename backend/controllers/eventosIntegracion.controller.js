@@ -219,6 +219,14 @@ const aplicarEventoIntegracion = async (req, res) => {
             });
         }
 
+        if (resultado.tipo === 'modification_no_aplicable') {
+            return res.status(409).json({
+                mensaje: 'El evento de modificacion no puede aplicarse',
+                reason: resultado.reason,
+                warnings: resultado.warnings || [],
+            });
+        }
+
         if ([
             'provider_no_soportado',
             'event_type_no_soportado',
@@ -237,6 +245,7 @@ const aplicarEventoIntegracion = async (req, res) => {
                 id_reservacion: resultado.reservacion.id_reservacion,
                 codigo: resultado.reservacion.codigo,
                 external_booking_id: resultado.link.external_booking_id,
+                campos_modificados: resultado.camposModificados,
             },
         });
     } catch (error) {
@@ -254,4 +263,3 @@ module.exports = {
     obtenerEventoIntegracion,
     revisarEventoIntegracion,
 };
-

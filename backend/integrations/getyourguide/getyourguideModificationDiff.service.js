@@ -95,11 +95,12 @@ async function obtenerLinkPorExternalBooking(db, provider, externalBookingId) {
     return result.rows[0] || null;
 }
 
-async function obtenerReservacionVinculada(db, idReservacion) {
+async function obtenerReservacionVinculada(db, idReservacion, bloquear = false) {
     const result = await db.query(
         `
             SELECT
                 id_reservacion,
+                codigo,
                 fecha,
                 pax,
                 pickup_place,
@@ -110,7 +111,7 @@ async function obtenerReservacionVinculada(db, idReservacion) {
                 id_transporte_operacion
             FROM reservaciones
             WHERE id_reservacion = $1
-            LIMIT 1
+            ${bloquear ? 'FOR UPDATE' : ''}
         `,
         [idReservacion]
     );
@@ -299,9 +300,7 @@ function obtenerReasonEstadoReservacion(reservacion) {
     return null;
 }
 
-async function obtenerDiffModificationGetYourGuide(idEventoIntegracion, db = pool) {
-    const evento = await obtenerEventoModification(db, idEventoIntegracion);
-
+async function obtenerPreviewModificationGetYourGuideConDb(db, evento, opciones = {}) {
     if (!evento) {
         return crearResultado('no_encontrado');
     }
@@ -346,7 +345,7 @@ async function obtenerDiffModificationGetYourGuide(idEventoIntegracion, db = poo
         });
     }
 
-    const reservacion = await obtenerReservacionVinculada(db, link.id_reservacion);
+    const reservacion = await obtenerReservacionVinculada(db, link.id_reservacion, Boolean(opciones.bloquearReservacion));
 
     if (!reservacion) {
         return crearResultado('preview', {
@@ -374,21 +373,33 @@ async function obtenerDiffModificationGetYourGuide(idEventoIntegracion, db = poo
         ? 'evento_mas_nuevo_ya_aplicado'
         : reasonEstado || propuestos.reason;
 
-    return crearResultado('preview', {
-        preview: {
-            id_evento_integracion: evento.id_evento_integracion,
-            id_reservacion: reservacion.id_reservacion,
-            aplicable: !reason,
-            reason,
-            diff_has_changes: diffTieneCambios(diff),
-            requiere_validacion_operativa: requiereValidacionOperativa(reservacion, diff),
-            diff,
-            warnings,
-        },
-    });
+    const preview = {
+        id_evento_integracion: evento.id_evento_integracion,
+        id_reservacion: reservacion.id_reservacion,
+        aplicable: !reason,
+        reason,
+        diff_has_changes: diffTieneCambios(diff),
+        requiere_validacion_operativa: requiereValidacionOperativa(reservacion, diff),
+        diff,
+        warnings,
+    };
+
+    if (opciones.incluirInternos) {
+        preview.link = link;
+        preview.reservacion = reservacion;
+    }
+
+    return crearResultado('preview', { preview });
+}
+
+async function obtenerDiffModificationGetYourGuide(idEventoIntegracion, db = pool) {
+    const evento = await obtenerEventoModification(db, idEventoIntegracion);
+
+    return obtenerPreviewModificationGetYourGuideConDb(db, evento);
 }
 
 module.exports = {
     EVENT_TYPE_MODIFICATION,
     obtenerDiffModificationGetYourGuide,
+    obtenerPreviewModificationGetYourGuideConDb,
 };

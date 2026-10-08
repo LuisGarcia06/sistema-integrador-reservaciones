@@ -1,4 +1,5 @@
 jest.mock('../services/reservaciones.service', () => ({
+    actualizarReservacionParcialConDb: jest.fn(),
     cancelarReservacionConDb: jest.fn(),
     crearReservacionConDb: jest.fn(),
 }));
@@ -32,6 +33,7 @@ function crearEvento(sobrescrituras = {}) {
             pickup_place: 'Hotel Prueba',
             price: 1000,
         },
+        source_received_at: new Date('2027-01-01T10:00:00Z'),
         ...sobrescrituras,
     };
 }
@@ -48,10 +50,26 @@ function crearEventoConTitulosEquivalencia(sobrescrituras = {}) {
             activity_title: 'Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Kaan',
             option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
         },
+        source_received_at: new Date('2027-01-01T10:00:00Z'),
         ...sobrescrituras,
     });
 }
 
+function crearReservacionVinculada(sobrescrituras = {}) {
+    return {
+        id_reservacion: 45,
+        codigo: 'RSV-20270101-ABCDE12345',
+        fecha: new Date('2027-01-15T00:00:00Z'),
+        pax: 2,
+        pickup_place: 'Hotel Prueba',
+        id_tour: 3,
+        turno: 'Mañana',
+        idioma: 'Español',
+        estado: 'Pendiente',
+        id_transporte_operacion: null,
+        ...sobrescrituras,
+    };
+}
 function crearDbPoolFake({
     evento = crearEvento(),
     plataforma = { id_plataforma: 7, nombre: 'GetYourGuide' },
@@ -61,6 +79,8 @@ function crearDbPoolFake({
     fallaInsertLink = null,
     marcarAplicadoDevuelveFila = true,
     equivalenciaActiva = null,
+    reservacionVinculada = crearReservacionVinculada(),
+    eventosAdicionales = [],
     paisNoEspecificadoRows = [{ id_pais: 99, nombre: 'No especificado' }],
 } = {}) {
     const client = {
@@ -84,6 +104,24 @@ function crearDbPoolFake({
                 return { rows: linkExistente ? [linkExistente] : [] };
             }
 
+
+            if (/FROM reservaciones[\s\S]+WHERE id_reservacion = \$1/i.test(query)) {
+                return { rows: reservacionVinculada ? [reservacionVinculada] : [] };
+            }
+
+            if (/event_type IN \('modification', 'cancellation'\)/i.test(query)) {
+                const [provider, externalBookingId, idEvento, applicationStatus, sourceReceivedAt] = values;
+                return {
+                    rows: eventosAdicionales.filter((fila) => (
+                        fila.provider === provider &&
+                        fila.external_booking_id === externalBookingId &&
+                        Number(fila.id_evento_integracion) !== Number(idEvento) &&
+                        ['modification', 'cancellation'].includes(fila.event_type) &&
+                        fila.application_status === applicationStatus &&
+                        fila.source_received_at > sourceReceivedAt
+                    )),
+                };
+            }
             if (/FROM equivalencias_tours_externos/i.test(query)) {
                 return { rows: equivalenciaActiva ? [equivalenciaActiva] : [] };
             }
@@ -385,6 +423,15 @@ describe('getyourguideReservationApplication.service', () => {
             id_reservacion: 45,
             codigo: 'RSV-20270101-ABCDE12345',
         });
+        reservacionesService.actualizarReservacionParcialConDb.mockResolvedValue({
+            ...crearReservacionVinculada(),
+            fecha: '2027-01-16',
+            pax: 3,
+            pickup_place: 'Lobby Nuevo',
+            id_tour: 74,
+            turno: 'Tarde',
+            idioma: 'Inglés (Guía)',
+        });
         reservacionesService.cancelarReservacionConDb.mockResolvedValue({
             reservacion: {
                 id_reservacion: 45,
@@ -439,10 +486,170 @@ describe('getyourguideReservationApplication.service', () => {
         expect(resultado.tipo).toBe('no_aprobado');
     });
 
-    test('modification no aplica en esta fase', async () => {
-        const modification = crearDbPoolFake({ evento: crearEvento({ event_type: 'modification' }) });
+    test('modification approved con link y cambios seguros actualiza reserva y marca aplicado', async () => {
+        const evento = crearEvento({
+            event_type: 'modification',
+            normalized_data: {
+                date: '2027-01-16',
+                pax: 3,
+                pickup_place: 'Lobby Nuevo',
+                tour_language: 'Inglés (Guía)',
+                activity_title: 'Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Kaan',
+                option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
+            },
+        });
+        const { pool, client } = crearDbPoolFake({
+            evento,
+            linkExistente: { id_reservacion: 45, provider: 'getyourguide', external_booking_id: 'GYGABC123' },
+            equivalenciaActiva: { id_equivalencia_tour_externo: 1, provider: 'getyourguide', id_tour: 74, turno: 'Tarde' },
+        });
 
-        await expect(aplicarNuevaReservaGetYourGuide(1, 9, {}, modification.pool)).resolves.toHaveProperty('tipo', 'event_type_no_soportado');
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {}, pool);
+
+        expect(resultado.tipo).toBe('aplicado');
+        expect(resultado.camposModificados).toEqual(['fecha', 'pax', 'pickup_place', 'id_tour', 'turno', 'idioma']);
+        expect(reservacionesService.actualizarReservacionParcialConDb).toHaveBeenCalledWith(
+            client,
+            45,
+            {
+                fecha: '2027-01-16',
+                pax: 3,
+                pickup_place: 'Lobby Nuevo',
+                id_tour: 74,
+                turno: 'Tarde',
+                idioma: 'Inglés (Guía)',
+            },
+            9
+        );
+        expect(client.queries).toContain('COMMIT');
+    });
+
+    test('modification sin cambios reales reconcilia evento sin actualizar reservacion', async () => {
+        const evento = crearEvento({
+            event_type: 'modification',
+            normalized_data: {
+                date: '2027-01-15',
+                pax: 2,
+                pickup_place: 'Hotel Prueba',
+                tour_language: 'Español',
+                activity_title: 'Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Kaan',
+                option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
+            },
+        });
+        const { pool, client } = crearDbPoolFake({
+            evento,
+            linkExistente: { id_reservacion: 45, provider: 'getyourguide', external_booking_id: 'GYGABC123' },
+            reservacionVinculada: crearReservacionVinculada({ id_tour: 74, turno: 'Tarde', idioma: 'Español' }),
+            equivalenciaActiva: { id_equivalencia_tour_externo: 1, provider: 'getyourguide', id_tour: 74, turno: 'Tarde' },
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {}, pool);
+
+        expect(resultado.tipo).toBe('aplicado');
+        expect(resultado.camposModificados).toEqual([]);
+        expect(reservacionesService.actualizarReservacionParcialConDb).not.toHaveBeenCalled();
+        expect(client.queries).toContain('COMMIT');
+    });
+
+    test('modification sin link bloquea sin actualizar', async () => {
+        const { pool, client } = crearDbPoolFake({
+            evento: crearEvento({ event_type: 'modification' }),
+            linkExistente: null,
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {}, pool);
+
+        expect(resultado.tipo).toBe('reserva_no_vinculada');
+        expect(reservacionesService.actualizarReservacionParcialConDb).not.toHaveBeenCalled();
+        expect(client.queries).toContain('ROLLBACK');
+    });
+
+    test('modification sin equivalencia activa bloquea toda la aplicacion', async () => {
+        const { pool, client } = crearDbPoolFake({
+            evento: crearEvento({
+                event_type: 'modification',
+                normalized_data: {
+                    date: '2027-01-16',
+                    activity_title: 'Actividad sin mapping',
+                    option_title: 'Opcion sin mapping',
+                },
+            }),
+            linkExistente: { id_reservacion: 45, provider: 'getyourguide', external_booking_id: 'GYGABC123' },
+            equivalenciaActiva: null,
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {}, pool);
+
+        expect(resultado.tipo).toBe('modification_no_aplicable');
+        expect(resultado.reason).toBe('equivalencia_tour_no_encontrada');
+        expect(reservacionesService.actualizarReservacionParcialConDb).not.toHaveBeenCalled();
+        expect(client.queries).toContain('ROLLBACK');
+    });
+
+    test('modification de reservacion cancelada o completada se bloquea', async () => {
+        const evento = crearEvento({ event_type: 'modification', normalized_data: { pax: 3 } });
+
+        await expect(aplicarNuevaReservaGetYourGuide(1, 9, {}, crearDbPoolFake({
+            evento,
+            linkExistente: { id_reservacion: 45, provider: 'getyourguide', external_booking_id: 'GYGABC123' },
+            reservacionVinculada: crearReservacionVinculada({ estado: 'Cancelada' }),
+        }).pool)).resolves.toMatchObject({ tipo: 'modification_no_aplicable', reason: 'reservacion_cancelada' });
+
+        await expect(aplicarNuevaReservaGetYourGuide(1, 9, {}, crearDbPoolFake({
+            evento,
+            linkExistente: { id_reservacion: 45, provider: 'getyourguide', external_booking_id: 'GYGABC123' },
+            reservacionVinculada: crearReservacionVinculada({ estado: 'Completada' }),
+        }).pool)).resolves.toMatchObject({ tipo: 'modification_no_aplicable', reason: 'reservacion_completada' });
+    });
+
+    test('modification vieja se bloquea si hay evento mas nuevo applied', async () => {
+        const evento = crearEvento({ event_type: 'modification', normalized_data: { pax: 3 } });
+        const { pool, client } = crearDbPoolFake({
+            evento,
+            linkExistente: { id_reservacion: 45, provider: 'getyourguide', external_booking_id: 'GYGABC123' },
+            eventosAdicionales: [{
+                ...crearEvento({ id_evento_integracion: 2, event_type: 'modification', application_status: 'applied' }),
+                source_received_at: new Date('2027-01-02T10:00:00Z'),
+            }],
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {}, pool);
+
+        expect(resultado.tipo).toBe('modification_no_aplicable');
+        expect(resultado.reason).toBe('evento_mas_nuevo_ya_aplicado');
+        expect(reservacionesService.actualizarReservacionParcialConDb).not.toHaveBeenCalled();
+        expect(client.queries).toContain('ROLLBACK');
+    });
+
+    test('modification con rechazo operativo hace rollback y deja evento no aplicado', async () => {
+        const error = new Error('La reservación y el transporte deben corresponder a la misma fecha');
+        error.statusCode = 400;
+        reservacionesService.actualizarReservacionParcialConDb.mockRejectedValueOnce(error);
+        const { pool, client } = crearDbPoolFake({
+            evento: crearEvento({ event_type: 'modification', normalized_data: { date: '2027-01-16' } }),
+            linkExistente: { id_reservacion: 45, provider: 'getyourguide', external_booking_id: 'GYGABC123' },
+            reservacionVinculada: crearReservacionVinculada({ id_transporte_operacion: 77 }),
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {}, pool);
+
+        expect(resultado.tipo).toBe('datos_invalidos');
+        expect(resultado.errores).toContain('La reservación y el transporte deben corresponder a la misma fecha');
+        expect(client.queries).toContain('ROLLBACK');
+    });
+
+    test('modification si falla marcar evento applied revierte patch', async () => {
+        const { pool, client } = crearDbPoolFake({
+            evento: crearEvento({ event_type: 'modification', normalized_data: { pax: 3 } }),
+            linkExistente: { id_reservacion: 45, provider: 'getyourguide', external_booking_id: 'GYGABC123' },
+            marcarAplicadoDevuelveFila: false,
+        });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {}, pool);
+
+        expect(resultado.tipo).toBe('ya_aplicado');
+        expect(reservacionesService.actualizarReservacionParcialConDb).toHaveBeenCalled();
+        expect(client.queries).toContain('ROLLBACK');
     });
 
     test('cancellation approved con link y motivo cancela reserva y marca evento aplicado', async () => {
@@ -1038,4 +1245,3 @@ describe('getyourguideReservationApplication.service', () => {
         expect(client.queries.some((query) => /gmail|users\.messages/i.test(query))).toBe(false);
     });
 });
-

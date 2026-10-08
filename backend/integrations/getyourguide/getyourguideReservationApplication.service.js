@@ -8,12 +8,14 @@ const {
 const {
     mapGetYourGuideNewBookingToReservation,
 } = require('./getyourguideReservation.mapper');
+const { obtenerPreviewModificationGetYourGuideConDb } = require('./getyourguideModificationDiff.service');
 
 const PROVIDER_GETYOURGUIDE = 'getyourguide';
 const PLATFORM_NAME_GETYOURGUIDE = 'GetYourGuide';
 const PAIS_NO_ESPECIFICADO = 'No especificado';
 const EVENT_TYPE_NEW_BOOKING = 'new_booking';
 const EVENT_TYPE_CANCELLATION = 'cancellation';
+const EVENT_TYPE_MODIFICATION = 'modification';
 const REVIEW_STATUS_APPROVED = 'approved';
 const APPLICATION_STATUS_NOT_APPLIED = 'not_applied';
 const APPLICATION_STATUS_APPLIED = 'applied';
@@ -38,7 +40,8 @@ async function obtenerEventoParaAplicacion(db, idEventoIntegracion) {
                 application_status,
                 applied_at,
                 applied_by,
-                normalized_data
+                normalized_data,
+                source_received_at
             FROM eventos_integracion
             WHERE id_evento_integracion = $1
             FOR UPDATE
@@ -397,6 +400,101 @@ async function aplicarCancellationConDb(client, evento, usuarioId, completar) {
     });
 }
 
+const CAMPOS_APLICABLES_MODIFICATION = [
+    'fecha',
+    'pax',
+    'pickup_place',
+    'id_tour',
+    'turno',
+    'idioma',
+];
+
+function construirPatchDesdeDiff(diff = {}) {
+    return CAMPOS_APLICABLES_MODIFICATION.reduce((patch, campo) => {
+        if (diff[campo]?.cambio === true) {
+            patch[campo] = diff[campo].nuevo;
+        }
+
+        return patch;
+    }, {});
+}
+
+function obtenerCamposModificadosDesdePatch(patch = {}) {
+    return Object.keys(patch);
+}
+
+function mapearPreviewNoAplicable(preview) {
+    if (!preview) {
+        return crearResultado('modification_no_aplicable');
+    }
+
+    if (preview.reason === 'sin_reservacion_vinculada') {
+        return crearResultado('reserva_no_vinculada', { reason: preview.reason });
+    }
+
+    if (preview.reason === 'reservacion_vinculada_no_encontrada') {
+        return crearResultado('reserva_no_encontrada', { reason: preview.reason });
+    }
+
+    return crearResultado('modification_no_aplicable', {
+        reason: preview.reason,
+        warnings: preview.warnings || [],
+    });
+}
+
+async function aplicarModificationConDb(client, evento, usuarioId) {
+    const previewResultado = await obtenerPreviewModificationGetYourGuideConDb(client, evento, {
+        bloquearReservacion: true,
+        incluirInternos: true,
+    });
+
+    if (previewResultado.tipo !== 'preview') {
+        return previewResultado;
+    }
+
+    const { preview } = previewResultado;
+
+    if (!preview.aplicable) {
+        return mapearPreviewNoAplicable(preview);
+    }
+
+    const patch = construirPatchDesdeDiff(preview.diff);
+    const camposModificados = obtenerCamposModificadosDesdePatch(patch);
+    let reservacion = preview.reservacion;
+
+    if (camposModificados.length > 0) {
+        try {
+            reservacion = await reservacionesService.actualizarReservacionParcialConDb(
+                client,
+                preview.id_reservacion,
+                patch,
+                usuarioId
+            );
+        } catch (error) {
+            if (error.statusCode) {
+                return crearResultado('datos_invalidos', { errores: [error.message] });
+            }
+
+            throw error;
+        }
+    }
+
+    const eventoAplicado = await marcarEventoAplicado(client, {
+        idEventoIntegracion: evento.id_evento_integracion,
+        idUsuario: usuarioId,
+    });
+
+    if (!eventoAplicado) {
+        return crearResultado('ya_aplicado');
+    }
+
+    return crearResultado('aplicado', {
+        reservacion,
+        link: preview.link,
+        evento: eventoAplicado,
+        camposModificados,
+    });
+}
 async function aplicarEventoGetYourGuide(eventoId, usuarioId, completar = {}, dbPool = pool) {
     const client = await dbPool.connect();
 
@@ -436,6 +534,8 @@ async function aplicarEventoGetYourGuide(eventoId, usuarioId, completar = {}, db
             resultado = await aplicarNewBookingConDb(client, evento, usuarioId, completar);
         } else if (evento.event_type === EVENT_TYPE_CANCELLATION) {
             resultado = await aplicarCancellationConDb(client, evento, usuarioId, completar);
+        } else if (evento.event_type === EVENT_TYPE_MODIFICATION) {
+            resultado = await aplicarModificationConDb(client, evento, usuarioId);
         } else {
             await client.query('ROLLBACK');
             return crearResultado('event_type_no_soportado');

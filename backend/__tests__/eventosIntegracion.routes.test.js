@@ -337,6 +337,26 @@ describe('eventosIntegracion.routes', () => {
         expect(response.body.mensaje).toBe('El evento de integracion no tiene reservacion vinculada');
     });
 
+    test('modification no aplicable devuelve reason controlado', async () => {
+        aplicarNuevaReservaGetYourGuide.mockResolvedValueOnce({
+            tipo: 'modification_no_aplicable',
+            reason: 'evento_mas_nuevo_ya_aplicado',
+            warnings: [],
+        });
+
+        const response = await request(app)
+            .post('/api/eventos-integracion/1/aplicar')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: {} });
+
+        expect(response.status).toBe(409);
+        expect(response.body).toEqual({
+            mensaje: 'El evento de modificacion no puede aplicarse',
+            reason: 'evento_mas_nuevo_ya_aplicado',
+            warnings: [],
+        });
+    });
+
     test('aplicar con campos faltantes devuelve 422', async () => {
         aplicarNuevaReservaGetYourGuide.mockResolvedValueOnce({
             tipo: 'faltan_datos',
