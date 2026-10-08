@@ -101,16 +101,17 @@ function mapGetYourGuideEmailEvent({
   const status = classification.event_type === 'cancellation'
     ? 'cancelled'
     : parsedData.status;
-
-  return removeEmptyValues({
-    provider: 'getyourguide',
-    event_type: classification.event_type,
-    urgent: Boolean(classification.urgent),
-    external_booking_id: parsedData.external_booking_id,
-    status,
-    email_message_id,
-    email_thread_id,
-    data: {
+  const data = classification.event_type === 'modification'
+    ? {
+      activity_title: parsedData.activity_title,
+      option_title: parsedData.option_title,
+      date: parsedData.date,
+      pax: parsedData.pax,
+      tour_language: parsedData.tour_language,
+      pickup_place: parsedData.pickup_place,
+      changed_fields: parsedData.changed_fields,
+    }
+    : {
       tour: parsedData.tour,
       option: parsedData.option,
       activity_title: parsedData.activity_title,
@@ -128,7 +129,17 @@ function mapGetYourGuideEmailEvent({
       price: parsedData.price,
       currency: parsedData.currency,
       changed_fields: parsedData.changed_fields,
-    },
+    };
+
+  return removeEmptyValues({
+    provider: 'getyourguide',
+    event_type: classification.event_type,
+    urgent: Boolean(classification.urgent),
+    external_booking_id: parsedData.external_booking_id,
+    status,
+    email_message_id,
+    email_thread_id,
+    data,
   });
 }
 

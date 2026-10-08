@@ -13,6 +13,12 @@ router.get(
 );
 
 router.get(
+    '/:id/diff',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA),
+    eventosIntegracionController.obtenerDiffEventoIntegracion
+);
+router.get(
     '/:id',
     autenticarUsuario,
     autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA),

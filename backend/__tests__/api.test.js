@@ -365,6 +365,131 @@ describe('API CP-044', () => {
     test('la suite usa la base de datos de prueba esperada', () => {
         expect(contexto.currentDatabase).toBe('sian_kaan_reservaciones_test');
     });
+
+    test('GET /api/eventos-integracion/:id/diff calcula modification sin escribir reservacion evento ni bitacora', async () => {
+        const createResponse = await request(app)
+            .post('/api/reservaciones')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send(crearPayloadReservacionValida({
+                nombre_cliente: 'Cliente Diff Modification',
+                fecha: '2026-10-08',
+                pax: 2,
+                pickup_place: 'Lobby Actual',
+                turno: 'Mañana',
+                idioma: 'Español',
+            }));
+
+        expect(createResponse.status).toBe(201);
+
+        const idReservacion = createResponse.body.datos.id_reservacion;
+        const externalBookingId = `GYGDIFF${Date.now()}`;
+
+        await pool.query(
+            `
+                INSERT INTO reservas_integracion_link (
+                    provider,
+                    external_booking_id,
+                    id_reservacion
+                )
+                VALUES ($1, $2, $3)
+            `,
+            ['getyourguide', externalBookingId, idReservacion]
+        );
+
+        const eventoResult = await pool.query(
+            `
+                INSERT INTO eventos_integracion (
+                    provider,
+                    external_event_id,
+                    external_thread_id,
+                    external_booking_id,
+                    event_type,
+                    urgent,
+                    review_status,
+                    application_status,
+                    normalized_data,
+                    source_subject,
+                    source_received_at,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    $1, $2, $3, $4, 'modification',
+                    FALSE, 'pending_review', 'not_applied',
+                    $5::jsonb, $6, $7,
+                    CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
+                )
+                RETURNING id_evento_integracion
+            `,
+            [
+                'getyourguide',
+                `${externalBookingId}-event-001`,
+                `${externalBookingId}-thread-001`,
+                externalBookingId,
+                JSON.stringify({
+                    date: '2026-10-09',
+                    pax: 3,
+                    pickup_place: 'Lobby Nuevo',
+                    tour_language: 'Inglés (Guía)',
+                    activity_title: 'Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Kaan',
+                    option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
+                }),
+                `Cambio controlado ${externalBookingId}`,
+                new Date('2026-10-07T10:00:00.000Z'),
+            ]
+        );
+        const idEvento = eventoResult.rows[0].id_evento_integracion;
+        const reservacionAntes = await pool.query(
+            'SELECT fecha, pax, pickup_place, id_tour, turno, idioma, estado FROM reservaciones WHERE id_reservacion = $1',
+            [idReservacion]
+        );
+        const eventoAntes = await pool.query(
+            'SELECT review_status, application_status, applied_at, applied_by FROM eventos_integracion WHERE id_evento_integracion = $1',
+            [idEvento]
+        );
+        const bitacoraAntes = await pool.query(
+            'SELECT COUNT(*)::int AS total FROM bitacora WHERE id_reservacion = $1',
+            [idReservacion]
+        );
+
+        const response = await request(app)
+            .get(`/api/eventos-integracion/${idEvento}/diff`)
+            .set('Authorization', `Bearer ${tokenConsulta}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.datos).toEqual(expect.objectContaining({
+            id_evento_integracion: idEvento,
+            id_reservacion: idReservacion,
+            aplicable: true,
+            diff_has_changes: true,
+            requiere_validacion_operativa: false,
+        }));
+        expect(response.body.datos.diff).toEqual(expect.objectContaining({
+            fecha: { actual: '2026-10-08', nuevo: '2026-10-09', cambio: true },
+            pax: { actual: 2, nuevo: 3, cambio: true },
+            pickup_place: { actual: 'Lobby Actual', nuevo: 'Lobby Nuevo', cambio: true },
+            id_tour: { actual: contexto.catalogos.id_tour, nuevo: 74, cambio: true },
+            turno: { actual: 'Mañana', nuevo: 'Tarde', cambio: true },
+            idioma: { actual: 'Español', nuevo: 'Inglés (Guía)', cambio: true },
+        }));
+
+        const reservacionDespues = await pool.query(
+            'SELECT fecha, pax, pickup_place, id_tour, turno, idioma, estado FROM reservaciones WHERE id_reservacion = $1',
+            [idReservacion]
+        );
+        const eventoDespues = await pool.query(
+            'SELECT review_status, application_status, applied_at, applied_by FROM eventos_integracion WHERE id_evento_integracion = $1',
+            [idEvento]
+        );
+        const bitacoraDespues = await pool.query(
+            'SELECT COUNT(*)::int AS total FROM bitacora WHERE id_reservacion = $1',
+            [idReservacion]
+        );
+
+        expect(reservacionDespues.rows[0]).toEqual(reservacionAntes.rows[0]);
+        expect(eventoDespues.rows[0]).toEqual(eventoAntes.rows[0]);
+        expect(bitacoraDespues.rows[0].total).toBe(bitacoraAntes.rows[0].total);
+    });
     const insertarEquivalenciaTourExterno = (client, equivalencia) => client.query(
         `
             INSERT INTO equivalencias_tours_externos (

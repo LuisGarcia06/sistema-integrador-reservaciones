@@ -21,9 +21,14 @@ jest.mock('../services/eventosIntegracion.service', () => {
 jest.mock('../integrations/getyourguide/getyourguideReservationApplication.service', () => ({
     aplicarNuevaReservaGetYourGuide: jest.fn(),
 }));
+
+jest.mock('../integrations/getyourguide/getyourguideModificationDiff.service', () => ({
+    obtenerDiffModificationGetYourGuide: jest.fn(),
+}));
 const authService = require('../services/auth.service');
 const eventosIntegracionService = require('../services/eventosIntegracion.service');
 const { aplicarNuevaReservaGetYourGuide } = require('../integrations/getyourguide/getyourguideReservationApplication.service');
+const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
 const eventosIntegracionRoutes = require('../routes/eventosIntegracion.routes');
 
 const JWT_SECRET = 'secret-eventos-integracion-test';
@@ -116,6 +121,21 @@ describe('eventosIntegracion.routes', () => {
             reservacion: { id_reservacion: 10, codigo: 'RSV-20270101-ABC123' },
             link: { external_booking_id: 'GYGABC123' },
         });
+        obtenerDiffModificationGetYourGuide.mockResolvedValue({
+            tipo: 'preview',
+            preview: {
+                id_evento_integracion: 1,
+                id_reservacion: 10,
+                aplicable: true,
+                reason: null,
+                diff_has_changes: true,
+                requiere_validacion_operativa: false,
+                diff: {
+                    pax: { actual: 2, nuevo: 3, cambio: true },
+                },
+                warnings: [],
+            },
+        });
         eventosIntegracionService.revisarEventoIntegracion.mockResolvedValue({
             tipo: 'revisado',
             event: crearEvento({
@@ -150,6 +170,33 @@ describe('eventosIntegracion.routes', () => {
 
         expect(response.status).toBe(200);
         expect(response.body.datos).toHaveProperty('normalized_data');
+    });
+
+    test('usuario Consulta puede consultar diff read-only de modification', async () => {
+        const response = await request(app)
+            .get('/api/eventos-integracion/1/diff')
+            .set('Authorization', `Bearer ${tokenConsulta}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.datos).toEqual(expect.objectContaining({
+            id_evento_integracion: 1,
+            id_reservacion: 10,
+            aplicable: true,
+            diff_has_changes: true,
+        }));
+        expect(response.body.datos.diff.pax).toEqual({ actual: 2, nuevo: 3, cambio: true });
+        expect(obtenerDiffModificationGetYourGuide).toHaveBeenCalledWith(1);
+    });
+
+    test('diff de evento no soportado devuelve 409 controlado', async () => {
+        obtenerDiffModificationGetYourGuide.mockResolvedValueOnce({ tipo: 'event_type_no_soportado' });
+
+        const response = await request(app)
+            .get('/api/eventos-integracion/1/diff')
+            .set('Authorization', `Bearer ${tokenConsulta}`);
+
+        expect(response.status).toBe(409);
+        expect(response.body.mensaje).toBe('El diff de integracion no esta soportado para este evento');
     });
 
     test('detalle inexistente devuelve 404', async () => {

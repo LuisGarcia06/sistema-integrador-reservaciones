@@ -1,5 +1,6 @@
 const eventosIntegracionService = require('../services/eventosIntegracion.service');
 const { aplicarNuevaReservaGetYourGuide } = require('../integrations/getyourguide/getyourguideReservationApplication.service');
+const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
 const {
     validarAplicacionEventoIntegracion,
     validarFiltrosEventosIntegracion,
@@ -116,6 +117,43 @@ const revisarEventoIntegracion = async (req, res) => {
 };
 
 
+const obtenerDiffEventoIntegracion = async (req, res) => {
+    const idEventoIntegracion = validarIdEventoIntegracion(req.params.id);
+
+    if (idEventoIntegracion === null) {
+        return res.status(400).json({
+            mensaje: 'El id del evento de integracion debe ser un entero valido',
+        });
+    }
+
+    try {
+        const resultado = await obtenerDiffModificationGetYourGuide(idEventoIntegracion);
+
+        if (resultado.tipo === 'no_encontrado') {
+            return res.status(404).json({
+                mensaje: 'Evento de integracion no encontrado',
+            });
+        }
+
+        if (resultado.tipo === 'provider_no_soportado' || resultado.tipo === 'event_type_no_soportado') {
+            return res.status(409).json({
+                mensaje: 'El diff de integracion no esta soportado para este evento',
+            });
+        }
+
+        return res.status(200).json({
+            mensaje: 'Diff de evento de integracion consultado correctamente',
+            datos: resultado.preview,
+        });
+    } catch (error) {
+        console.error('Error al consultar diff de evento de integracion:', error.message);
+
+        return res.status(500).json({
+            mensaje: 'Error al consultar diff de evento de integracion',
+        });
+    }
+};
+
 const aplicarEventoIntegracion = async (req, res) => {
     const idEventoIntegracion = validarIdEventoIntegracion(req.params.id);
 
@@ -211,9 +249,9 @@ const aplicarEventoIntegracion = async (req, res) => {
 };
 module.exports = {
     aplicarEventoIntegracion,
+    obtenerDiffEventoIntegracion,
     listarEventosIntegracion,
     obtenerEventoIntegracion,
     revisarEventoIntegracion,
 };
-
 

@@ -13,8 +13,8 @@ const FIELD_ALIASES = {
   customer_email: ['Email del cliente', 'Correo del cliente', 'Correo electronico', 'Correo electrónico', 'Email'],
   customer_phone: ['Telefono del cliente', 'Teléfono del cliente', 'Telefono', 'Teléfono'],
   customer_language: ['Idioma del cliente'],
-  tour_language: ['Idioma del tour', 'Idioma de la actividad'],
-  pickup_place: ['Lugar de recogida', 'Pickup', 'Punto de recogida', 'Lugar de recogida especifico', 'Lugar de recogida específico'],
+  tour_language: ['Idioma del tour', 'Idioma de la actividad', 'Idioma del tour Nuevo', 'Idioma de la actividad Nuevo'],
+  pickup_place: ['Lugar de recogida', 'Pickup', 'Punto de recogida', 'Lugar de recogida especifico', 'Lugar de recogida específico', 'Lugar de recogida Nuevo', 'Nuevo lugar de recogida'],
   price: ['Precio', 'Importe total', 'Total', 'Importe'],
   currency: ['Moneda', 'Currency'],
 };

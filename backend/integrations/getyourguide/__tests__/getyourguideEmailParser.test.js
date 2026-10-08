@@ -604,6 +604,105 @@ test('la modificacion persistible conserva solo campos parciales presentes', () 
   expect(persistible.normalized_data).not.toHaveProperty('date');
   expect(persistible.normalized_data).not.toHaveProperty('customer_name');
 });
+
+test('modification extrae Lugar de recogida Nuevo y limpia Google Maps', () => {
+  const event = parseGetYourGuideEmail({
+    email_message_id: 'fixture-gyg-message-modification-pickup-new-001',
+    email_thread_id: 'fixture-gyg-thread-modification-pickup-new-001',
+    subject: 'Cambio en los detalles de la reserva: GYGMODPICKUP001',
+    text: [
+      'Lugar de recogida Nuevo',
+      'Hotel de Prueba, Calle 1, Tulum, Quintana Roo, Mexico Abrir en Google Maps',
+    ].join('\n'),
+  });
+
+  expect(event.event_type).toBe('modification');
+  expect(event.data.pickup_place).toBe('Hotel de Prueba, Calle 1, Tulum, Quintana Roo, Mexico');
+  expect(event.data.pickup_place).not.toContain('Abrir en Google Maps');
+  expect(event.data).not.toHaveProperty('pickup_time');
+});
+
+test('modification conserva pickup nuevo sin sufijo e idioma de tour', () => {
+  const event = parseGetYourGuideEmail({
+    email_message_id: 'fixture-gyg-message-modification-language-001',
+    email_thread_id: 'fixture-gyg-thread-modification-language-001',
+    subject: 'Cambio en los detalles de la reserva: GYGMODLANG001',
+    text: [
+      'Lugar de recogida Nuevo',
+      'Lobby Sanitizado',
+      'Idioma del tour Nuevo',
+      'Inglés (Guía)',
+    ].join('\n'),
+  });
+
+  expect(event.data.pickup_place).toBe('Lobby Sanitizado');
+  expect(event.data.tour_language).toBe('Inglés (Guía)');
+  expect(event.data).not.toHaveProperty('customer_language');
+});
+
+test('modification conserva titulos HTML, fecha, pax y changed_fields', () => {
+  const event = parseGetYourGuideEmail({
+    email_message_id: 'fixture-gyg-message-modification-html-001',
+    email_thread_id: 'fixture-gyg-thread-modification-html-001',
+    subject: 'Cambio en los detalles de la reserva: GYGMODHTML001',
+    html: `
+      <html><body>
+        <div class="activity activity-title">Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Ka'an</div>
+        <div class="activity activity-option-title">Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía</div>
+      </body></html>
+    `,
+    text: [
+      'Fecha: 2026-10-08 -> 2026-10-09',
+      'Participantes: 2 -> 3',
+    ].join('\n'),
+  });
+  const persistible = toGetYourGuideIntegrationEvent(event);
+
+  expect(persistible.normalized_data).toEqual(expect.objectContaining({
+    date: '2026-10-09',
+    pax: 3,
+    activity_title: "Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Ka'an",
+    option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
+    changed_fields: [
+      {
+        field: 'date',
+        previous_value: '2026-10-08',
+        new_value: '2026-10-09',
+      },
+      {
+        field: 'pax',
+        previous_value: '2',
+        new_value: '3',
+      },
+    ],
+  }));
+});
+
+test('modification normalized_data excluye campos no aprobados aunque aparezcan en el correo', () => {
+  const event = parseGetYourGuideEmail({
+    email_message_id: 'fixture-gyg-message-modification-unsafe-fields-001',
+    email_thread_id: 'fixture-gyg-thread-modification-unsafe-fields-001',
+    subject: 'Cambio en los detalles de la reserva: GYGMODSAFE001',
+    text: [
+      'Cliente principal',
+      'Cliente Sanitizado',
+      'Teléfono: +15555550123',
+      'Precio',
+      '999 MXN',
+      'Fecha',
+      '2026-10-09',
+    ].join('\n'),
+  });
+  const persistible = toGetYourGuideIntegrationEvent(event);
+
+  expect(persistible.normalized_data).toEqual({
+    date: '2026-10-09',
+  });
+  expect(persistible.normalized_data).not.toHaveProperty('customer_name');
+  expect(persistible.normalized_data).not.toHaveProperty('customer_phone');
+  expect(persistible.normalized_data).not.toHaveProperty('price');
+  expect(persistible.normalized_data).not.toHaveProperty('currency');
+});
 test('una cancelacion produce status cancelled', () => {
   const event = parseGetYourGuideEmail(cancellationFixture);
 
