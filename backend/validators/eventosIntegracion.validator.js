@@ -13,7 +13,7 @@ const REVIEW_STATUSES_PERMITIDOS = [
 ];
 const ACCIONES_REVISION_PERMITIDAS = [ACCION_APPROVE, ACCION_DISMISS];
 const LIMITES_PAGINACION_EVENTOS = [25, 50, 100];
-const CAMPOS_FILTROS_EVENTOS = ['review_status', 'provider', 'event_type', 'urgent', 'page', 'limit'];
+const CAMPOS_FILTROS_EVENTOS = ['review_status', 'provider', 'event_type', 'urgent', 'operational_only', 'page', 'limit'];
 const CAMPOS_REVISION_EVENTOS = ['accion', 'nota'];
 const CAMPOS_APLICACION_EVENTOS = ['completar'];
 const MAX_TEXTO_FILTRO = 50;
@@ -87,7 +87,7 @@ const validarBooleanoFiltro = (valor) => {
 
     return {
         valido: false,
-        mensaje: 'El filtro urgent debe ser true, false, 1 o 0',
+        mensaje: 'El filtro booleano debe ser true, false, 1 o 0',
     };
 };
 
@@ -132,15 +132,19 @@ const validarFiltrosEventosIntegracion = (query) => {
         filtros[campo] = resultado.valor;
     });
 
-    if (tieneCampo(query, 'urgent')) {
-        const resultado = validarBooleanoFiltro(query.urgent);
+    ['urgent', 'operational_only'].forEach((campo) => {
+        if (!tieneCampo(query, campo)) {
+            return;
+        }
+
+        const resultado = validarBooleanoFiltro(query[campo]);
 
         if (!resultado.valido) {
-            errores.push(resultado.mensaje);
+            errores.push(`El filtro ${campo} debe ser true, false, 1 o 0`);
         } else {
-            filtros.urgent = resultado.valor;
+            filtros[campo] = resultado.valor;
         }
-    }
+    });
 
     if (tieneCampo(query, 'page')) {
         const page = convertirEnteroPositivo(query.page);

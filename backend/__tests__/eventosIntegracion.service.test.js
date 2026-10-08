@@ -373,6 +373,32 @@ describe('eventosIntegracion.service', () => {
         expect(db.query.mock.calls[1][1]).toEqual([REVIEW_STATUS_PENDING, 25, 0]);
     });
 
+    test('lista pendientes operativos aplicando corte configurable de Dashboard', async () => {
+        const originalCutoff = process.env.INTEGRATION_DASHBOARD_CUTOFF_AT;
+        process.env.INTEGRATION_DASHBOARD_CUTOFF_AT = '2026-10-08T00:00:00.000Z';
+        const db = {
+            query: jest.fn()
+                .mockResolvedValueOnce({ rows: [{ total: 0 }] }),
+        };
+
+        try {
+            await listarEventosIntegracion({
+                review_status: REVIEW_STATUS_APPROVED,
+                operational_only: true,
+            }, { page: 1, limit: 25 }, db);
+        } finally {
+            if (originalCutoff === undefined) {
+                delete process.env.INTEGRATION_DASHBOARD_CUTOFF_AT;
+            } else {
+                process.env.INTEGRATION_DASHBOARD_CUTOFF_AT = originalCutoff;
+            }
+        }
+
+        expect(db.query.mock.calls[0][0]).toMatch(/COALESCE\(source_received_at, created_at\) >= \$2/);
+        expect(db.query.mock.calls[0][1][0]).toBe(REVIEW_STATUS_APPROVED);
+        expect(db.query.mock.calls[0][1][1]).toEqual(new Date('2026-10-08T00:00:00.000Z'));
+    });
+
     test('lista aplicando filtros provider, event_type y urgent', async () => {
         const db = {
             query: jest.fn()

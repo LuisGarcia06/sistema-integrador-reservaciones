@@ -260,6 +260,18 @@ async function registrarEventoIntegracion(evento, db = pool) {
     }
 }
 
+function obtenerDashboardCutoffAt(env = process.env) {
+    const raw = String(env.INTEGRATION_DASHBOARD_CUTOFF_AT || '').trim();
+
+    if (!raw) {
+        return null;
+    }
+
+    const fecha = new Date(raw);
+
+    return Number.isNaN(fecha.getTime()) ? null : fecha;
+}
+
 function construirFiltrosEventosIntegracion(filtros = {}) {
     const condiciones = [];
     const values = [];
@@ -282,6 +294,15 @@ function construirFiltrosEventosIntegracion(filtros = {}) {
     if (filtros.urgent !== undefined) {
         values.push(filtros.urgent);
         condiciones.push(`urgent = $${values.length}`);
+    }
+
+    if (filtros.operational_only) {
+        const cutoffAt = obtenerDashboardCutoffAt();
+
+        if (cutoffAt) {
+            values.push(cutoffAt);
+            condiciones.push(`COALESCE(source_received_at, created_at) >= $${values.length}`);
+        }
     }
 
     return {
@@ -442,6 +463,7 @@ module.exports = {
     limpiarSecretos,
     listarEventosIntegracion,
     normalizarEventoIntegracion,
+    obtenerDashboardCutoffAt,
     obtenerEventoIntegracion,
     registrarEventoIntegracion,
     revisarEventoIntegracion,

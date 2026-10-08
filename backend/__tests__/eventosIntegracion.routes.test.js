@@ -20,6 +20,7 @@ jest.mock('../services/eventosIntegracion.service', () => {
 
 jest.mock('../integrations/getyourguide/getyourguideReservationApplication.service', () => ({
     aplicarNuevaReservaGetYourGuide: jest.fn(),
+    obtenerPreviewNuevaReservaGetYourGuideConDb: jest.fn(),
 }));
 
 jest.mock('../integrations/getyourguide/getyourguideModificationDiff.service', () => ({
@@ -27,7 +28,10 @@ jest.mock('../integrations/getyourguide/getyourguideModificationDiff.service', (
 }));
 const authService = require('../services/auth.service');
 const eventosIntegracionService = require('../services/eventosIntegracion.service');
-const { aplicarNuevaReservaGetYourGuide } = require('../integrations/getyourguide/getyourguideReservationApplication.service');
+const {
+    aplicarNuevaReservaGetYourGuide,
+    obtenerPreviewNuevaReservaGetYourGuideConDb,
+} = require('../integrations/getyourguide/getyourguideReservationApplication.service');
 const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
 const eventosIntegracionRoutes = require('../routes/eventosIntegracion.routes');
 
@@ -121,6 +125,16 @@ describe('eventosIntegracion.routes', () => {
             reservacion: { id_reservacion: 10, codigo: 'RSV-20270101-ABC123' },
             link: { external_booking_id: 'GYGABC123' },
         });
+        obtenerPreviewNuevaReservaGetYourGuideConDb.mockResolvedValue({
+            tipo: 'preview',
+            reservationData: { id_pais: 987 },
+            missingFields: ['pickup_time'],
+            warnings: [],
+            referencias: {
+                pais: { id_pais: 987, nombre: 'No especificado' },
+                tour: null,
+            },
+        });
         obtenerDiffModificationGetYourGuide.mockResolvedValue({
             tipo: 'preview',
             preview: {
@@ -163,6 +177,18 @@ describe('eventosIntegracion.routes', () => {
         );
     });
 
+    test('usuario Consulta puede listar pendientes operativos del Dashboard', async () => {
+        const response = await request(app)
+            .get('/api/eventos-integracion?review_status=approved&operational_only=true&limit=50')
+            .set('Authorization', `Bearer ${tokenConsulta}`);
+
+        expect(response.status).toBe(200);
+        expect(eventosIntegracionService.listarEventosIntegracion).toHaveBeenCalledWith(
+            { review_status: 'approved', operational_only: true },
+            { page: 1, limit: 50 }
+        );
+    });
+
     test('usuario Consulta puede consultar detalle', async () => {
         const response = await request(app)
             .get('/api/eventos-integracion/1')
@@ -170,6 +196,14 @@ describe('eventosIntegracion.routes', () => {
 
         expect(response.status).toBe(200);
         expect(response.body.datos).toHaveProperty('normalized_data');
+        expect(response.body.datos.application_preview).toEqual(expect.objectContaining({
+            tipo: 'preview',
+            missingFields: ['pickup_time'],
+        }));
+        expect(obtenerPreviewNuevaReservaGetYourGuideConDb).toHaveBeenCalledWith(undefined, expect.objectContaining({
+            id_evento_integracion: 1,
+            event_type: 'new_booking',
+        }), {});
     });
 
     test('usuario Consulta puede consultar diff read-only de modification', async () => {

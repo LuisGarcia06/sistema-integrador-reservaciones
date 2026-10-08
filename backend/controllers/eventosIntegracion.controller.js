@@ -1,5 +1,8 @@
 const eventosIntegracionService = require('../services/eventosIntegracion.service');
-const { aplicarNuevaReservaGetYourGuide } = require('../integrations/getyourguide/getyourguideReservationApplication.service');
+const {
+    aplicarNuevaReservaGetYourGuide,
+    obtenerPreviewNuevaReservaGetYourGuideConDb,
+} = require('../integrations/getyourguide/getyourguideReservationApplication.service');
 const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
 const {
     validarAplicacionEventoIntegracion,
@@ -52,9 +55,19 @@ const obtenerEventoIntegracion = async (req, res) => {
             });
         }
 
+        let datos = evento;
+
+        if (evento.provider === 'getyourguide' && evento.event_type === 'new_booking') {
+            const preview = await obtenerPreviewNuevaReservaGetYourGuideConDb(undefined, evento, {});
+            datos = {
+                ...evento,
+                application_preview: preview,
+            };
+        }
+
         return res.status(200).json({
             mensaje: 'Evento de integracion consultado correctamente',
-            datos: evento,
+            datos,
         });
     } catch (error) {
         console.error('Error al consultar evento de integracion:', error.message);

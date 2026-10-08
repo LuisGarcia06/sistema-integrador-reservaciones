@@ -199,6 +199,171 @@ body.is-login-page .page-root {
   top: calc(var(--header-height) + var(--space-lg));
 }
 
+.dashboard-integration-card {
+  border-left: 4px solid var(--color-primary);
+}
+
+.dashboard-integration-header {
+  align-items: center;
+}
+
+.dashboard-integration-count {
+  min-width: 34px;
+  justify-content: center;
+}
+
+.dashboard-integration-message:empty,
+.dashboard-integration-modal-message:empty {
+  display: none;
+}
+
+.dashboard-integration-list,
+.dashboard-integration-state,
+.dashboard-integration-block {
+  display: grid;
+  gap: var(--space-sm);
+}
+
+.dashboard-integration-item {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: var(--space-md);
+  align-items: center;
+  min-width: 0;
+  padding: var(--space-md);
+  background: var(--color-surface-low);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-lg);
+}
+
+.dashboard-integration-main,
+.dashboard-integration-meta {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+}
+
+.dashboard-integration-meta {
+  grid-template-columns: repeat(3, minmax(0, max-content));
+  color: var(--color-on-surface-variant);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+
+.dashboard-integration-meta span,
+.dashboard-integration-detail-item strong,
+.dashboard-integration-diff-table td {
+  overflow-wrap: anywhere;
+}
+
+.dashboard-integration-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.dashboard-integration-loading {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  min-height: 84px;
+}
+
+.dashboard-integration-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  padding: var(--space-lg);
+  overflow-y: auto;
+  background: rgba(24, 28, 28, 0.42);
+  place-items: start center;
+}
+
+.dashboard-integration-dialog {
+  display: grid;
+  width: min(100%, 980px);
+  max-height: calc(100vh - 48px);
+  gap: var(--space-md);
+  padding: var(--space-lg);
+  overflow: auto;
+}
+
+.dashboard-integration-dialog-header,
+.dashboard-integration-modal-actions {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-md);
+}
+
+.dashboard-integration-modal-actions {
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  padding-top: var(--space-sm);
+}
+
+.dashboard-integration-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: var(--space-sm);
+}
+
+.dashboard-integration-detail-item {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-sm);
+  background: var(--color-surface-low);
+  border: 1px solid var(--color-outline-variant);
+  border-radius: var(--radius-md);
+}
+
+.dashboard-integration-detail-item span,
+.dashboard-integration-readonly {
+  color: var(--color-on-surface-variant);
+  font-size: var(--font-size-caption);
+  line-height: var(--line-height-caption);
+}
+
+.dashboard-integration-detail-item strong {
+  color: var(--color-on-surface);
+  font-size: var(--font-size-body);
+  font-weight: 600;
+  line-height: var(--line-height-body);
+}
+
+.dashboard-integration-full {
+  max-width: 320px;
+}
+
+.dashboard-integration-textarea {
+  min-height: 96px;
+  padding: var(--space-md);
+  resize: vertical;
+}
+
+.dashboard-integration-warning {
+  display: grid;
+  gap: var(--space-xs);
+  padding: var(--space-sm) var(--space-md);
+  color: var(--color-on-surface-variant);
+  background: var(--color-surface-low);
+  border: 1px solid var(--color-outline-variant);
+  border-left: 4px solid var(--color-warning);
+  border-radius: var(--radius-lg);
+}
+
+.dashboard-integration-table-container {
+  width: 100%;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.dashboard-integration-diff-table {
+  min-width: 720px;
+}
+
 .module-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -1807,7 +1972,8 @@ body.is-login-page .page-root {
 @media (max-width: 760px) {
   .dashboard-today,
   .dashboard-alert,
-  .dashboard-salida {
+  .dashboard-salida,
+  .dashboard-integration-item {
     grid-template-columns: 1fr;
     flex-direction: column;
     align-items: stretch;
@@ -1818,8 +1984,33 @@ body.is-login-page .page-root {
     grid-template-columns: 1fr;
   }
 
-  .dashboard-actions .btn {
+  .dashboard-actions .btn,
+  .dashboard-integration-actions .btn {
     width: 100%;
+  }
+
+  .dashboard-integration-meta,
+  .dashboard-integration-detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .dashboard-integration-dialog-backdrop {
+    padding: var(--space-md);
+  }
+
+  .dashboard-integration-dialog {
+    max-height: calc(100vh - 32px);
+    padding: var(--space-md);
+  }
+
+  .dashboard-integration-dialog-header,
+  .dashboard-integration-modal-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dashboard-integration-full {
+    max-width: none;
   }
 
   .daily-toolbar,

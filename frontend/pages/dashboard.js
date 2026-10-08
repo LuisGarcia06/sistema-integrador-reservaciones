@@ -4,6 +4,37 @@
 
   const EMPTY_VALUE = "--";
   const TURNO_SIN_CLASIFICAR = "Sin clasificar";
+  const INTEGRATION_REFRESH_MS = 60000;
+  const EVENT_TYPE_LABELS = {
+    new_booking: "Nueva reservación",
+    modification: "Modificacion",
+    cancellation: "Cancelacion"
+  };
+  const REVIEW_STATUS_LABELS = {
+    pending_review: "Pendiente de revision",
+    approved: "Aprobado",
+    dismissed: "Descartado"
+  };
+  const APPLICATION_STATUS_LABELS = {
+    not_applied: "No registrado",
+    applied: "Registrado"
+  };
+  const FIELD_LABELS = {
+    fecha: "Fecha",
+    date: "Fecha",
+    pax: "PAX",
+    pickup_place: "Lugar de pickup",
+    pickup_time: "Hora de pickup",
+    id_tour: "Tour",
+    turno: "Turno",
+    idioma: "Idioma",
+    tour_language: "Idioma",
+    customer_name: "Cliente",
+    customer_phone: "Telefono",
+    price: "Precio",
+    id_pais: "Pais",
+    motivo_cancelacion: "Motivo de cancelación"
+  };
   const MONTHS = [
     "enero",
     "febrero",
@@ -21,6 +52,19 @@
 
   let requestId = 0;
   let currentFecha = "";
+  const integrationState = {
+    events: [],
+    loading: false,
+    error: "",
+    message: "",
+    timer: null,
+    hashListenerBound: false,
+    modalEvent: null,
+    modalDiff: null,
+    modalLoading: false,
+    modalError: "",
+    actionLoading: false
+  };
 
   function escapeHtml(value) {
     return App.ui.escapeHtml(value === null || value === undefined || value === "" ? EMPTY_VALUE : value);
@@ -49,6 +93,20 @@
     return [match[3], match[2], match[1]].join("/");
   }
 
+  function formatDateTime(value) {
+    if (!value || typeof value !== "string") {
+      return EMPTY_VALUE;
+    }
+
+    const match = value.match(/^(\d{4})-(\d{2})-(\d{2})[T\s](\d{2}):(\d{2})/);
+
+    if (!match) {
+      return value;
+    }
+
+    return [match[3], match[2], match[1]].join("/") + " " + match[4] + ":" + match[5];
+  }
+
   function formatReadableDate(value) {
     if (!value || typeof value !== "string") {
       return EMPTY_VALUE;
@@ -68,6 +126,10 @@
 
   function getArray(value) {
     return Array.isArray(value) ? value : [];
+  }
+
+  function getObject(value) {
+    return value && typeof value === "object" && !Array.isArray(value) ? value : {};
   }
 
   function getNumber(value) {
@@ -131,6 +193,187 @@
     }
 
     return fallback || "No fue posible cargar el Dashboard.";
+  }
+
+  function getFieldLabel(field) {
+    return FIELD_LABELS[field] || field || "Dato";
+  }
+
+  function getIntegrationErrorMessage(error, fallback) {
+    const data = error && error.data ? error.data : null;
+
+    if (error && error.isNetworkError) {
+      return "No hay conexion con el backend. Revisa que el servidor este activo.";
+    }
+
+    if (error && error.status === 403) {
+      return "No tienes permisos para revisar o aplicar eventos de integración.";
+    }
+
+    if (data && Array.isArray(data.missing_fields) && data.missing_fields.length > 0) {
+      if (data.missing_fields.length === 1 && data.missing_fields[0] === "pickup_time") {
+        return "Falta asignar la hora de pickup.";
+      }
+
+      return "Faltan datos obligatorios: " + data.missing_fields.map(getFieldLabel).join(", ") + ".";
+    }
+
+    if (data && Array.isArray(data.errores) && data.errores.length > 0) {
+      return data.errores.map(function (item) {
+        return typeof item === "string" ? item : (item && item.mensaje ? item.mensaje : JSON.stringify(item));
+      }).join(" ");
+    }
+
+    if (data && data.mensaje) {
+      return data.mensaje;
+    }
+
+    if (error && error.status === 409) {
+      return "El evento ya cambio de estado. Actualiza la lista y vuelve a revisar.";
+    }
+
+    if (error && error.status === 422) {
+      return "El evento requiere informacion adicional antes de registrarse.";
+    }
+
+    if (error && error.status >= 500) {
+      return "El backend no pudo completar la operacion. Intenta nuevamente.";
+    }
+
+    return fallback || "No fue posible completar la operacion.";
+  }
+
+  function getIntegrationId(evento) {
+    return evento && (evento.id_evento_integracion || evento.id_evento || evento.id);
+  }
+
+  function getIntegrationList(response) {
+    if (!response) {
+      return [];
+    }
+
+    return getArray(response.data || response.datos || response.eventos);
+  }
+
+  function getIntegrationDetail(response) {
+    return response && (response.datos || response.data || response.evento || response);
+  }
+
+  function getEventTypeLabel(value) {
+    return EVENT_TYPE_LABELS[value] || value || EMPTY_VALUE;
+  }
+
+  function getReviewStatusLabel(value) {
+    return REVIEW_STATUS_LABELS[value] || value || EMPTY_VALUE;
+  }
+
+  function getApplicationStatusLabel(value) {
+    return APPLICATION_STATUS_LABELS[value] || value || EMPTY_VALUE;
+  }
+
+  function getReviewBadgeClass(value) {
+    if (value === "pending_review") {
+      return "badge badge-warning";
+    }
+
+    if (value === "dismissed") {
+      return "badge badge-danger";
+    }
+
+    return "badge";
+  }
+
+  function getApplicationBadgeClass(value) {
+    return value === "not_applied" ? "badge badge-warning" : "badge badge-neutral";
+  }
+
+  function isDashboardActive() {
+    return window.location.hash === "#/dashboard";
+  }
+
+  function resetIntegrationState() {
+    integrationState.events = [];
+    integrationState.loading = false;
+    integrationState.error = "";
+    integrationState.message = "";
+    integrationState.modalEvent = null;
+    integrationState.modalDiff = null;
+    integrationState.modalLoading = false;
+    integrationState.modalError = "";
+    integrationState.actionLoading = false;
+  }
+
+  function handleDashboardHashChange() {
+    if (!isDashboardActive()) {
+      stopIntegrationRefresh();
+      closeIntegrationDialog();
+    }
+  }
+
+  function startIntegrationRefresh() {
+    stopIntegrationRefresh();
+
+    integrationState.timer = window.setInterval(function () {
+      if (!isDashboardActive()) {
+        stopIntegrationRefresh();
+        return;
+      }
+
+      loadIntegrationPendientes({ silent: true });
+    }, INTEGRATION_REFRESH_MS);
+
+    if (!integrationState.hashListenerBound) {
+      window.addEventListener("hashchange", handleDashboardHashChange);
+      integrationState.hashListenerBound = true;
+    }
+  }
+
+  function stopIntegrationRefresh() {
+    if (integrationState.timer) {
+      window.clearInterval(integrationState.timer);
+      integrationState.timer = null;
+    }
+  }
+
+  function getNewBookingPreview(evento) {
+    return getObject(evento && evento.application_preview);
+  }
+
+  function getPreviewReservationData(evento) {
+    return getObject(getNewBookingPreview(evento).reservationData);
+  }
+
+  function getPreviewReferences(evento) {
+    return getObject(getNewBookingPreview(evento).referencias);
+  }
+
+  function getOperationalListPath(reviewStatus) {
+    return "/api/eventos-integracion?review_status=" + encodeURIComponent(reviewStatus) + "&limit=50&operational_only=true";
+  }
+
+  function buildPendingIntegrationEvents(pendingResponse, approvedResponse) {
+    const pending = getIntegrationList(pendingResponse);
+    const approved = getIntegrationList(approvedResponse).filter(function (evento) {
+      return evento && evento.application_status === "not_applied";
+    });
+    const byId = {};
+
+    pending.concat(approved).forEach(function (evento) {
+      const id = getIntegrationId(evento);
+
+      if (id !== null && id !== undefined) {
+        byId[String(id)] = evento;
+      }
+    });
+
+    return Object.keys(byId).map(function (key) {
+      return byId[key];
+    }).sort(function (a, b) {
+      const left = Date.parse(a.source_received_at || a.received_at || a.created_at || "") || 0;
+      const right = Date.parse(b.source_received_at || b.received_at || b.created_at || "") || 0;
+
+      return right - left;
+    });
   }
 
   function renderLoading() {
@@ -224,6 +467,70 @@
     return alerts.length
       ? '<section class="dashboard-alerts">' + alerts.join("") + "</section>"
       : "";
+  }
+
+  function renderIntegrationEvent(evento) {
+    const id = getIntegrationId(evento);
+    const receivedAt = evento && (evento.source_received_at || evento.received_at || evento.created_at);
+
+    return [
+      '<article class="dashboard-integration-item">',
+      '<div class="dashboard-integration-main">',
+      '<strong class="dashboard-primary-text">' + escapeHtml(evento && evento.external_booking_id) + "</strong>",
+      '<div class="dashboard-integration-meta">',
+      '<span>' + escapeHtml(evento && evento.provider) + "</span>",
+      '<span>' + escapeHtml(getEventTypeLabel(evento && evento.event_type)) + "</span>",
+      '<span>' + escapeHtml(formatDateTime(receivedAt)) + "</span>",
+      "</div>",
+      '<div class="daily-badges">',
+      '<span class="' + getReviewBadgeClass(evento && evento.review_status) + '">' + escapeHtml(getReviewStatusLabel(evento && evento.review_status)) + "</span>",
+      '<span class="' + getApplicationBadgeClass(evento && evento.application_status) + '">' + escapeHtml(getApplicationStatusLabel(evento && evento.application_status)) + "</span>",
+      "</div>",
+      "</div>",
+      '<div class="dashboard-integration-actions">',
+      '<button class="btn btn-ghost" type="button" data-integration-action="review" data-integration-id="' + App.ui.escapeHtml(id) + '">Revisar</button>',
+      "</div>",
+      "</article>"
+    ].join("");
+  }
+
+  function renderIntegrationPanel() {
+    const count = integrationState.events.length;
+    let body = "";
+
+    if (integrationState.loading && count === 0) {
+      body = [
+        '<div class="dashboard-integration-loading">',
+        '<span class="daily-spinner" aria-hidden="true"></span>',
+        '<p class="card-text">Buscando eventos pendientes.</p>',
+        "</div>"
+      ].join("");
+    } else if (integrationState.error) {
+      body = [
+        '<div class="dashboard-integration-state">',
+        '<p class="form-message is-error">' + App.ui.escapeHtml(integrationState.error) + "</p>",
+        '<button class="btn btn-ghost" type="button" id="dashboard-integration-retry">Reintentar</button>',
+        "</div>"
+      ].join("");
+    } else if (count === 0) {
+      body = App.ui.emptyState("No hay pendientes de integración", "Los eventos por revisar o registrar aparecerán aquí.");
+    } else {
+      body = '<div class="dashboard-integration-list">' + integrationState.events.map(renderIntegrationEvent).join("") + "</div>";
+    }
+
+    return [
+      '<section class="card stack dashboard-section dashboard-integration-card" id="dashboard-integration-section">',
+      '<div class="card-header dashboard-integration-header">',
+      "<div>",
+      "<h2>Pendientes de integración</h2>",
+      '<p class="card-text">Eventos externos que requieren revision o registro.</p>',
+      "</div>",
+      '<span class="badge badge-neutral dashboard-integration-count">' + App.ui.escapeHtml(count) + "</span>",
+      "</div>",
+      '<div class="form-message is-info dashboard-integration-message">' + App.ui.escapeHtml(integrationState.message) + "</div>",
+      body,
+      "</section>"
+    ].join("");
   }
 
   function renderRecentRow(reservacion) {
@@ -357,12 +664,340 @@
       renderEmptyToday(data && data.metricas),
       '<div class="dashboard-grid">',
       '<div class="stack">',
+      renderIntegrationPanel(),
       renderRecentReservations(data && data.reservaciones_recientes),
       renderSalidas(data && data.salidas_hoy),
       "</div>",
       renderQuickActions(),
       "</div>"
     ].join("");
+  }
+
+  function renderDetailItem(label, value) {
+    return [
+      '<div class="dashboard-integration-detail-item">',
+      "<span>" + App.ui.escapeHtml(label) + "</span>",
+      "<strong>" + escapeHtml(value) + "</strong>",
+      "</div>"
+    ].join("");
+  }
+
+  function renderCommonIntegrationDetails(evento) {
+    const receivedAt = evento && (evento.source_received_at || evento.received_at || evento.created_at);
+
+    return [
+      '<div class="dashboard-integration-detail-grid">',
+      renderDetailItem("Proveedor", evento && evento.provider),
+      renderDetailItem("Booking externo", evento && evento.external_booking_id),
+      renderDetailItem("Tipo", getEventTypeLabel(evento && evento.event_type)),
+      renderDetailItem("Recibido", formatDateTime(receivedAt)),
+      renderDetailItem("Revisión", getReviewStatusLabel(evento && evento.review_status)),
+      renderDetailItem("Registro", getApplicationStatusLabel(evento && evento.application_status)),
+      "</div>"
+    ].join("");
+  }
+
+  function getDisplayValueFromPreview(evento, fieldName) {
+    const normalized = getObject(evento && evento.normalized_data);
+    const reservationData = getPreviewReservationData(evento);
+    const references = getPreviewReferences(evento);
+
+    if (fieldName === "date") {
+      return reservationData.fecha || normalized.date;
+    }
+
+    if (fieldName === "turno") {
+      return reservationData.turno || normalized.turno;
+    }
+
+    if (fieldName === "id_tour") {
+      const tour = getObject(references.tour);
+      return tour.nombre || reservationData.id_tour || normalized.id_tour;
+    }
+
+    if (fieldName === "id_pais") {
+      const pais = getObject(references.pais);
+      return pais.nombre || reservationData.id_pais || normalized.id_pais;
+    }
+
+    if (fieldName === "price") {
+      return reservationData.precio_total || normalized.price;
+    }
+
+    return reservationData[fieldName] || normalized[fieldName];
+  }
+
+  function renderNewBookingPreviewMessage(evento) {
+    const preview = getNewBookingPreview(evento);
+    const missingFields = getArray(preview.missingFields || preview.missing_fields);
+    const nonManualMissingFields = missingFields.filter(function (field) {
+      return field !== "pickup_time";
+    });
+
+    if (missingFields.length === 0) {
+      return "";
+    }
+
+    if (nonManualMissingFields.length === 0 && missingFields.indexOf("pickup_time") !== -1) {
+      return '<p class="form-message is-info">Falta asignar la hora de pickup.</p>';
+    }
+
+    return '<p class="form-message is-error">Faltan datos obligatorios: ' + nonManualMissingFields.map(getFieldLabel).join(", ") + ".</p>";
+  }
+
+  function renderNormalizedData(evento) {
+    const fields = [
+      ["customer_name", "Cliente"],
+      ["customer_phone", "Telefono"],
+      ["date", "Fecha"],
+      ["pickup_time", "Hora de pickup"],
+      ["pickup_place", "Lugar de pickup"],
+      ["pax", "PAX"],
+      ["tour_language", "Idioma"],
+      ["turno", "Turno"],
+      ["id_tour", "Tour interno"],
+      ["id_pais", "Pais interno"],
+      ["price", "Precio"]
+    ];
+
+    return [
+      renderNewBookingPreviewMessage(evento),
+      '<div class="dashboard-integration-detail-grid">',
+      fields.map(function (field) {
+        return renderDetailItem(field[1], getDisplayValueFromPreview(evento, field[0]));
+      }).join(""),
+      "</div>"
+    ].join("");
+  }
+
+  function hasPickupTime(evento) {
+    const normalized = getObject(evento && evento.normalized_data);
+    return Boolean(String(normalized.pickup_time || "").trim());
+  }
+
+  function renderNewBookingReview(evento) {
+    const needsPickupTime = !hasPickupTime(evento);
+
+    return [
+      '<section class="dashboard-integration-block">',
+      "<h3>Información normalizada</h3>",
+      renderNormalizedData(evento),
+      needsPickupTime
+        ? [
+            '<label class="field dashboard-integration-full">',
+            '<span>Hora de pickup</span>',
+            '<input id="integration-pickup-time" type="time" required>',
+            '<small class="card-text">La hora de pickup es asignada por Community Tours.</small>',
+            "</label>"
+          ].join("")
+        : "",
+      "</section>"
+    ].join("");
+  }
+
+  function normalizeDiffRows(diff) {
+    const data = getObject(diff);
+    const raw = data.diff || data.cambios || [];
+
+    if (Array.isArray(raw)) {
+      return raw.filter(function (row) {
+        return row && row.cambio === true;
+      });
+    }
+
+    return Object.keys(getObject(raw)).map(function (field) {
+      const row = getObject(raw[field]);
+
+      return {
+        campo: field,
+        actual: row.actual || row.valor_actual || row.from || row.anterior,
+        nuevo: row.nuevo || row.valor_nuevo || row.to || row.propuesto,
+        cambio: row.cambio !== false
+      };
+    }).filter(function (row) {
+      return row.cambio;
+    });
+  }
+
+  function getDiffValue(row, keys) {
+    let index;
+
+    for (index = 0; index < keys.length; index += 1) {
+      if (row && row[keys[index]] !== undefined && row[keys[index]] !== null) {
+        return row[keys[index]];
+      }
+    }
+
+    return EMPTY_VALUE;
+  }
+
+  function renderModificationDiff(evento, diff) {
+    const preview = getObject(diff);
+    const rows = normalizeDiffRows(preview);
+    const warnings = getArray(preview.warnings);
+    const notApplicable = preview.aplicable === false;
+    const requiereValidacion = preview.requiere_validacion_operativa === true;
+
+    return [
+      '<section class="dashboard-integration-block">',
+      "<h3>Cambios detectados</h3>",
+      notApplicable
+        ? '<p class="form-message is-error">' + App.ui.escapeHtml(preview.reason || "La modificación no puede aplicarse automáticamente.") + "</p>"
+        : "",
+      requiereValidacion
+        ? '<p class="dashboard-integration-warning">La modificación requiere validación operativa antes de aplicarse.</p>'
+        : "",
+      warnings.length
+        ? '<div class="dashboard-integration-warning">' + warnings.map(function (warning) {
+            return "<p>" + App.ui.escapeHtml(warning) + "</p>";
+          }).join("") + "</div>"
+        : "",
+      rows.length
+        ? [
+            '<div class="table-container dashboard-integration-table-container">',
+            '<table class="data-table dashboard-integration-diff-table">',
+            "<thead><tr><th>Campo</th><th>Actual</th><th>Nuevo</th></tr></thead>",
+            "<tbody>",
+            rows.map(function (row) {
+              const field = row.campo || row.field || row.nombre || "";
+
+              return [
+                "<tr>",
+                "<td>" + escapeHtml(getFieldLabel(field)) + "</td>",
+                "<td>" + escapeHtml(getDiffValue(row, ["actual", "valor_actual", "from", "anterior"])) + "</td>",
+                "<td>" + escapeHtml(getDiffValue(row, ["nuevo", "valor_nuevo", "to", "propuesto"])) + "</td>",
+                "</tr>"
+              ].join("");
+            }).join(""),
+            "</tbody>",
+            "</table>",
+            "</div>"
+          ].join("")
+        : App.ui.emptyState("No hay cambios aplicables", "El preview no reporto campos modificados."),
+      "</section>"
+    ].join("");
+  }
+
+  function renderCancellationReview(evento) {
+    return [
+      '<section class="dashboard-integration-block">',
+      "<h3>Cancelacion</h3>",
+      renderNormalizedData(evento),
+      App.auth && App.auth.esAdministrador()
+        ? [
+            '<label class="field dashboard-integration-full">',
+            '<span>Motivo de cancelación</span>',
+            '<textarea id="integration-cancel-reason" class="dashboard-integration-textarea" required></textarea>',
+            "</label>"
+          ].join("")
+        : "",
+      "</section>"
+    ].join("");
+  }
+
+  function canApplyModification(diff) {
+    const preview = getObject(diff);
+    return preview.aplicable !== false;
+  }
+
+  function renderDialogActions(evento, diff) {
+    const isAdmin = App.auth && App.auth.esAdministrador();
+    const reviewStatus = evento && evento.review_status;
+    const applicationStatus = evento && evento.application_status;
+    const type = evento && evento.event_type;
+    const disabled = integrationState.actionLoading ? " disabled" : "";
+    const actions = ['<button class="btn" type="button" data-dialog-action="close">Cerrar</button>'];
+
+    if (!isAdmin) {
+      actions.unshift('<span class="card-text dashboard-integration-readonly">Modo consulta: solo lectura.</span>');
+      return actions.join("");
+    }
+
+    if (reviewStatus === "pending_review") {
+      actions.unshift('<button class="btn btn-ghost" type="button" data-dialog-action="dismiss"' + disabled + ">Rechazar</button>");
+    }
+
+    if (type === "new_booking" && (reviewStatus === "pending_review" || (reviewStatus === "approved" && applicationStatus === "not_applied"))) {
+      actions.push('<button class="btn btn-primary" type="button" data-dialog-action="apply-new-booking"' + disabled + ">" + (reviewStatus === "pending_review" ? "Aprobar y registrar" : "Registrar reservación") + "</button>");
+    }
+
+    if (type === "modification") {
+      if (reviewStatus === "pending_review") {
+        actions.push('<button class="btn btn-primary" type="button" data-dialog-action="approve-modification"' + disabled + ">Aprobar modificación</button>");
+      } else if (reviewStatus === "approved" && applicationStatus === "not_applied") {
+        actions.push('<button class="btn btn-primary" type="button" data-dialog-action="apply-modification"' + disabled + (canApplyModification(diff) ? "" : " disabled") + ">Aplicar modificación</button>");
+      }
+    }
+
+    if (type === "cancellation" && (reviewStatus === "pending_review" || (reviewStatus === "approved" && applicationStatus === "not_applied"))) {
+      actions.push('<button class="btn btn-primary" type="button" data-dialog-action="apply-cancellation"' + disabled + ">" + (reviewStatus === "pending_review" ? "Aprobar y aplicar cancelación" : "Aplicar cancelación") + "</button>");
+    }
+
+    return actions.join("");
+  }
+
+  function renderIntegrationDialog() {
+    const host = document.getElementById("dashboard-integration-dialog-host");
+    const evento = integrationState.modalEvent;
+    const diff = integrationState.modalDiff;
+    let content = "";
+
+    if (!host) {
+      return;
+    }
+
+    if (!integrationState.modalLoading && !evento) {
+      host.innerHTML = "";
+      return;
+    }
+
+    if (integrationState.modalLoading) {
+      content = [
+        '<div class="dashboard-integration-loading">',
+        '<span class="daily-spinner" aria-hidden="true"></span>',
+        '<p class="card-text">Cargando evento de integración.</p>',
+        "</div>"
+      ].join("");
+    } else {
+      content = [
+        renderCommonIntegrationDetails(evento),
+        evento.event_type === "new_booking" ? renderNewBookingReview(evento) : "",
+        evento.event_type === "modification" ? renderModificationDiff(evento, diff) : "",
+        evento.event_type === "cancellation" ? renderCancellationReview(evento) : ""
+      ].join("");
+    }
+
+    host.innerHTML = [
+      '<div class="dashboard-integration-dialog-backdrop" role="dialog" aria-modal="true" aria-labelledby="dashboard-integration-dialog-title">',
+      '<section class="card dashboard-integration-dialog">',
+      '<div class="dashboard-integration-dialog-header">',
+      "<div>",
+      '<p class="field-label">Revisión funcional</p>',
+      '<h2 id="dashboard-integration-dialog-title">Pendiente de integración</h2>',
+      "</div>",
+      '<button class="btn btn-ghost" type="button" data-dialog-action="close" aria-label="Cerrar">Cerrar</button>',
+      "</div>",
+      '<div class="form-message is-error dashboard-integration-modal-message">' + App.ui.escapeHtml(integrationState.modalError) + "</div>",
+      content,
+      '<div class="dashboard-integration-modal-actions">',
+      integrationState.modalLoading ? "" : renderDialogActions(evento, diff),
+      "</div>",
+      "</section>",
+      "</div>"
+    ].join("");
+
+    bindIntegrationDialogEvents();
+  }
+
+  function renderIntegrationSection() {
+    const section = document.getElementById("dashboard-integration-section");
+
+    if (!section) {
+      return;
+    }
+
+    section.outerHTML = renderIntegrationPanel();
+    bindIntegrationPanelEvents();
   }
 
   function bindRetry() {
@@ -372,6 +1007,352 @@
       retry.addEventListener("click", function () {
         loadDashboard(currentFecha || getLocalDateValue());
       });
+    }
+  }
+
+  function bindIntegrationPanelEvents() {
+    const retry = document.getElementById("dashboard-integration-retry");
+    const buttons = document.querySelectorAll("[data-integration-action='review']");
+
+    if (retry) {
+      retry.addEventListener("click", function () {
+        loadIntegrationPendientes({ silent: false });
+      });
+    }
+
+    buttons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        openIntegrationDialog(button.getAttribute("data-integration-id"));
+      });
+    });
+  }
+
+  function bindIntegrationDialogEvents() {
+    const host = document.getElementById("dashboard-integration-dialog-host");
+
+    if (!host) {
+      return;
+    }
+
+    host.querySelectorAll("[data-dialog-action]").forEach(function (button) {
+      button.addEventListener("click", function () {
+        handleIntegrationDialogAction(button.getAttribute("data-dialog-action"));
+      });
+    });
+  }
+
+  async function loadIntegrationPendientes(options) {
+    const config = options || {};
+
+    if (!isDashboardActive()) {
+      return;
+    }
+
+    integrationState.loading = !config.silent;
+    integrationState.error = "";
+    renderIntegrationSection();
+
+    try {
+      const pendingResponse = await App.api.apiFetch(getOperationalListPath("pending_review"));
+      const approvedResponse = await App.api.apiFetch(getOperationalListPath("approved"));
+
+      if (!isDashboardActive()) {
+        return;
+      }
+
+      integrationState.events = buildPendingIntegrationEvents(pendingResponse, approvedResponse);
+    } catch (error) {
+      if (!isDashboardActive()) {
+        return;
+      }
+
+      integrationState.error = getIntegrationErrorMessage(error, "No fue posible cargar los pendientes de integración.");
+    } finally {
+      if (isDashboardActive()) {
+        integrationState.loading = false;
+        renderIntegrationSection();
+      }
+    }
+  }
+
+  async function openIntegrationDialog(id) {
+    integrationState.modalEvent = null;
+    integrationState.modalDiff = null;
+    integrationState.modalError = "";
+    integrationState.modalLoading = true;
+    renderIntegrationDialog();
+
+    try {
+      const detailResponse = await App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id));
+      const evento = getIntegrationDetail(detailResponse);
+      let diff = null;
+
+      if (evento && evento.event_type === "modification") {
+        const diffResponse = await App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/diff");
+        diff = getIntegrationDetail(diffResponse);
+      }
+
+      integrationState.modalEvent = evento;
+      integrationState.modalDiff = diff;
+    } catch (error) {
+      integrationState.modalError = getIntegrationErrorMessage(error, "No fue posible cargar el evento.");
+    } finally {
+      integrationState.modalLoading = false;
+      renderIntegrationDialog();
+    }
+  }
+
+  function closeIntegrationDialog() {
+    const host = document.getElementById("dashboard-integration-dialog-host");
+
+    integrationState.modalEvent = null;
+    integrationState.modalDiff = null;
+    integrationState.modalLoading = false;
+    integrationState.modalError = "";
+    integrationState.actionLoading = false;
+
+    if (host) {
+      host.innerHTML = "";
+    }
+  }
+
+  async function approveIntegrationEvent(id) {
+    return App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/revision", {
+      method: "PATCH",
+      body: {
+        accion: "approve",
+        nota: null
+      }
+    });
+  }
+
+  async function dismissIntegrationEvent(id) {
+    return App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/revision", {
+      method: "PATCH",
+      body: {
+        accion: "dismiss",
+        nota: null
+      }
+    });
+  }
+
+  async function applyIntegrationEvent(id, completar) {
+    return App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/aplicar", {
+      method: "POST",
+      body: {
+        completar: completar || {}
+      }
+    });
+  }
+
+  function setModalError(message) {
+    integrationState.modalError = message;
+    integrationState.actionLoading = false;
+    renderIntegrationDialog();
+  }
+
+  function getCurrentIntegrationId() {
+    return getIntegrationId(integrationState.modalEvent);
+  }
+
+  function getPickupTimeInputValue() {
+    const input = document.getElementById("integration-pickup-time");
+
+    return input ? String(input.value || "").trim() : "";
+  }
+
+  function getCancelReasonValue() {
+    const input = document.getElementById("integration-cancel-reason");
+
+    return input ? String(input.value || "").trim() : "";
+  }
+
+  async function refreshAfterIntegrationAction(message) {
+    closeIntegrationDialog();
+    integrationState.message = message || "";
+    await loadIntegrationPendientes({ silent: true });
+    loadDashboard(currentFecha || getLocalDateValue());
+  }
+
+  function getApplySuccessMessage(response, fallback) {
+    const datos = response && (response.datos || response.data);
+
+    if (datos && datos.codigo) {
+      return "Reservación " + datos.codigo + " registrada correctamente.";
+    }
+
+    return fallback || "Reservación registrada correctamente.";
+  }
+
+  async function applyNewBooking() {
+    const evento = integrationState.modalEvent;
+    const id = getCurrentIntegrationId();
+    const completar = {};
+    let approvedInThisAction = false;
+    let response;
+
+    if (!hasPickupTime(evento)) {
+      const pickupTime = getPickupTimeInputValue();
+
+      if (!pickupTime) {
+        setModalError("La hora de pickup es obligatoria.");
+        return;
+      }
+
+      completar.pickup_time = pickupTime;
+    }
+
+    integrationState.actionLoading = true;
+    integrationState.modalError = "";
+    renderIntegrationDialog();
+
+    try {
+      if (evento.review_status === "pending_review") {
+        await approveIntegrationEvent(id);
+        approvedInThisAction = true;
+      }
+
+      response = await applyIntegrationEvent(id, completar);
+      await refreshAfterIntegrationAction(getApplySuccessMessage(response, "Reservación registrada correctamente."));
+    } catch (error) {
+      if (approvedInThisAction) {
+        integrationState.modalError = "El evento fue aprobado, pero todavía no pudo registrarse.";
+        integrationState.actionLoading = false;
+        await loadIntegrationPendientes({ silent: true });
+        renderIntegrationDialog();
+        return;
+      }
+
+      setModalError(getIntegrationErrorMessage(error, "No fue posible registrar la reservación."));
+    }
+  }
+
+  async function approveModification() {
+    const id = getCurrentIntegrationId();
+
+    integrationState.actionLoading = true;
+    integrationState.modalError = "";
+    renderIntegrationDialog();
+
+    try {
+      await approveIntegrationEvent(id);
+      integrationState.message = "Modificacion aprobada. Aun falta aplicarla.";
+      await loadIntegrationPendientes({ silent: true });
+      await openIntegrationDialog(id);
+    } catch (error) {
+      setModalError(getIntegrationErrorMessage(error, "No fue posible aprobar la modificación."));
+    }
+  }
+
+  async function applyModification() {
+    const id = getCurrentIntegrationId();
+
+    if (!canApplyModification(integrationState.modalDiff)) {
+      setModalError("La modificación no puede aplicarse automáticamente.");
+      return;
+    }
+
+    integrationState.actionLoading = true;
+    integrationState.modalError = "";
+    renderIntegrationDialog();
+
+    try {
+      await applyIntegrationEvent(id, {});
+      await refreshAfterIntegrationAction("Modificacion aplicada correctamente.");
+    } catch (error) {
+      setModalError(getIntegrationErrorMessage(error, "No fue posible aplicar la modificación."));
+    }
+  }
+
+  async function applyCancellation() {
+    const evento = integrationState.modalEvent;
+    const id = getCurrentIntegrationId();
+    const motivo = getCancelReasonValue();
+    let approvedInThisAction = false;
+
+    if (!motivo) {
+      setModalError("El motivo de cancelación es obligatorio.");
+      return;
+    }
+
+    integrationState.actionLoading = true;
+    integrationState.modalError = "";
+    renderIntegrationDialog();
+
+    try {
+      if (evento.review_status === "pending_review") {
+        await approveIntegrationEvent(id);
+        approvedInThisAction = true;
+      }
+
+      await applyIntegrationEvent(id, {
+        motivo_cancelacion: motivo
+      });
+      await refreshAfterIntegrationAction("Cancelacion aplicada correctamente.");
+    } catch (error) {
+      if (approvedInThisAction) {
+        integrationState.modalError = "El evento fue aprobado, pero todavía no pudo registrarse.";
+        integrationState.actionLoading = false;
+        await loadIntegrationPendientes({ silent: true });
+        renderIntegrationDialog();
+        return;
+      }
+
+      setModalError(getIntegrationErrorMessage(error, "No fue posible aplicar la cancelación."));
+    }
+  }
+
+  async function dismissCurrentEvent() {
+    const id = getCurrentIntegrationId();
+
+    if (!window.confirm("¿Deseas rechazar este evento de integración?")) {
+      return;
+    }
+
+    integrationState.actionLoading = true;
+    integrationState.modalError = "";
+    renderIntegrationDialog();
+
+    try {
+      await dismissIntegrationEvent(id);
+      await refreshAfterIntegrationAction("Evento descartado.");
+    } catch (error) {
+      setModalError(getIntegrationErrorMessage(error, "No fue posible rechazar el evento."));
+    }
+  }
+
+  function handleIntegrationDialogAction(action) {
+    if (integrationState.actionLoading) {
+      return;
+    }
+
+    if (action === "close") {
+      closeIntegrationDialog();
+      return;
+    }
+
+    if (action === "dismiss") {
+      dismissCurrentEvent();
+      return;
+    }
+
+    if (action === "apply-new-booking") {
+      applyNewBooking();
+      return;
+    }
+
+    if (action === "approve-modification") {
+      approveModification();
+      return;
+    }
+
+    if (action === "apply-modification") {
+      applyModification();
+      return;
+    }
+
+    if (action === "apply-cancellation") {
+      applyCancellation();
     }
   }
 
@@ -396,6 +1377,7 @@
       }
 
       content.innerHTML = renderDashboard(response || { fecha: fecha });
+      bindIntegrationPanelEvents();
     } catch (error) {
       if (activeRequestId !== requestId || window.location.hash !== "#/dashboard") {
         return;
@@ -419,13 +1401,17 @@
         '<section id="dashboard-content" class="dashboard-content" aria-live="polite">',
         renderLoading(),
         "</section>",
+        '<div id="dashboard-integration-dialog-host"></div>',
         "</section>"
       ].join("");
     },
     afterRender: function () {
       requestId += 1;
       currentFecha = getLocalDateValue();
+      resetIntegrationState();
       loadDashboard(currentFecha);
+      loadIntegrationPendientes({ silent: false });
+      startIntegrationRefresh();
     }
   };
 })();

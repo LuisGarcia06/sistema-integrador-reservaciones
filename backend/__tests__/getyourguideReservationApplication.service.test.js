@@ -8,12 +8,14 @@ const reservacionesService = require('../services/reservaciones.service');
 const {
     aplicarNuevaReservaGetYourGuide,
     LINK_UNIQUE_CONSTRAINT,
+    obtenerPreviewNuevaReservaGetYourGuideConDb,
     prepararNuevaReservaGetYourGuideConDb,
 } = require('../integrations/getyourguide/getyourguideReservationApplication.service');
 const {
     mapGetYourGuideNewBookingToReservation,
     normalizarFechaEspanol,
     normalizarFechaGetYourGuide,
+    normalizarFechaIngles,
 } = require('../integrations/getyourguide/getyourguideReservation.mapper');
 const { ESTADO_INICIAL_RESERVACION } = require('../validators/reservaciones.validator');
 
@@ -130,8 +132,16 @@ function crearDbPoolFake({
                 return { rows: paisNoEspecificadoRows };
             }
 
+            if (/SELECT\s+id_tour,\s*nombre[\s\S]+FROM tours/i.test(query)) {
+                return { rows: tourExiste ? [{ id_tour: values[0], nombre: 'Ancient Canal' }] : [] };
+            }
+
             if (/SELECT id_tour FROM tours/i.test(query)) {
                 return { rows: tourExiste ? [{ id_tour: values[0] }] : [] };
+            }
+
+            if (/SELECT\s+id_pais,\s*nombre[\s\S]+FROM paises[\s\S]+WHERE id_pais/i.test(query)) {
+                return { rows: paisExiste ? [{ id_pais: values[0], nombre: 'No especificado' }] : [] };
             }
 
             if (/SELECT id_pais FROM paises/i.test(query)) {
@@ -211,8 +221,44 @@ describe('getyourguideReservation.mapper', () => {
         expect(normalizarFechaEspanol('7 febrero 2027')).toBeNull();
     });
 
+    test('normaliza fechas inglesas deterministas de GetYourGuide a ISO', () => {
+        expect(normalizarFechaIngles('August 11, 2026')).toBe('2026-08-11');
+        expect(normalizarFechaIngles('January 2, 2027')).toBe('2027-01-02');
+        expect(normalizarFechaIngles('December 31, 2026')).toBe('2026-12-31');
+    });
+
+    test('rechaza fechas inglesas invalidas o con mes desconocido', () => {
+        expect(normalizarFechaIngles('February 30, 2026')).toBeNull();
+        expect(normalizarFechaIngles('Foo 10, 2026')).toBeNull();
+        expect(normalizarFechaIngles('11 August 2026')).toBeNull();
+    });
+
     test('mantiene compatibilidad con formato ISO seguro existente', () => {
         expect(normalizarFechaGetYourGuide('2027-01-15')).toBe('2027-01-15');
+    });
+
+    test('caso real con fecha inglesa no queda como missing ni warning', () => {
+        const resultado = mapGetYourGuideNewBookingToReservation({
+            normalized_data: {
+                date: 'August 11, 2026',
+                pax: 2,
+                customer_name: 'Cliente Prueba',
+                pickup_place: 'Hotel Prueba',
+                price: 1000,
+            },
+        }, {
+            idPlataforma: 7,
+            completar: {
+                id_tour: 74,
+                id_pais: 5,
+                pickup_time: '08:30',
+                turno: 'Tarde',
+            },
+        });
+
+        expect(resultado.reservationData.fecha).toBe('2026-08-11');
+        expect(resultado.missingFields).not.toContain('fecha');
+        expect(resultado.warnings).not.toContain('date_no_tiene_formato_seguro');
     });
 
     test('caso real con fecha española no queda como missing ni warning', () => {
@@ -1026,6 +1072,110 @@ describe('getyourguideReservationApplication.service', () => {
         expect(resultado.missingFields).toContain('pickup_time');
         expect(resultado.missingFields).not.toContain('id_pais');
         expect(reservacionesService.crearReservacionConDb).not.toHaveBeenCalled();
+    });
+
+    test('preparacion con fecha inglesa y equivalencia exacta deja solo pickup_time como dato manual', async () => {
+        const evento = crearEvento({
+            normalized_data: {
+                date: 'August 11, 2026',
+                pax: 4,
+                customer_name: 'Cliente Prueba',
+                pickup_place: 'Hotel Prueba',
+                price: 13.52,
+                currency: 'MXN',
+                tour_language: 'Inglés (Live tour guide)',
+                activity_title: "Riviera Maya: Sian Ka'an Reserve Ancient Maya Canals Tour",
+                option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour a mediodía',
+            },
+        });
+        const { client } = crearDbPoolFake({
+            evento,
+            equivalenciaActiva: {
+                id_equivalencia_tour_externo: 2,
+                provider: 'getyourguide',
+                id_tour: 74,
+                turno: 'Tarde',
+            },
+            paisNoEspecificadoRows: [{ id_pais: 987, nombre: 'No especificado' }],
+        });
+
+        const resultado = await prepararNuevaReservaGetYourGuideConDb(client, evento, {});
+
+        expect(resultado.tipo).toBe('preparado');
+        expect(resultado.reservationData).toEqual(expect.objectContaining({
+            fecha: '2026-08-11',
+            id_tour: 74,
+            turno: 'Tarde',
+            id_pais: 987,
+        }));
+        expect(resultado.missingFields).toEqual(['pickup_time']);
+        expect(resultado.warnings).toEqual([]);
+    });
+
+    test('sin equivalencia exacta no hace fuzzy matching y mantiene tour/turno faltantes', async () => {
+        const evento = crearEvento({
+            normalized_data: {
+                date: 'August 11, 2026',
+                pax: 4,
+                customer_name: 'Cliente Prueba',
+                pickup_place: 'Hotel Prueba',
+                price: 13.52,
+                activity_title: "Riviera Maya: Sian Ka'an Reserve Ancient Maya Canals Tour",
+                option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour a mediodía',
+            },
+        });
+        const { client } = crearDbPoolFake({
+            evento,
+            equivalenciaActiva: null,
+            paisNoEspecificadoRows: [{ id_pais: 987, nombre: 'No especificado' }],
+        });
+
+        const resultado = await prepararNuevaReservaGetYourGuideConDb(client, evento, {});
+
+        expect(resultado.tipo).toBe('preparado');
+        expect(resultado.reservationData).toHaveProperty('fecha', '2026-08-11');
+        expect(resultado.reservationData).not.toHaveProperty('id_tour');
+        expect(resultado.reservationData).not.toHaveProperty('turno');
+        expect(resultado.missingFields).toEqual(expect.arrayContaining(['id_tour', 'turno', 'pickup_time']));
+    });
+
+    test('preview new_booking expone pais derivado y referencias internas para el Dashboard', async () => {
+        const evento = crearEventoConTitulosEquivalencia({
+            normalized_data: {
+                date: 'August 11, 2026',
+                pax: 2,
+                customer_name: 'Cliente Prueba',
+                pickup_place: 'Hotel Prueba',
+                price: 1000,
+                activity_title: 'Riviera Maya: tour por los antiguos canales mayas de la reserva de Sian Kaan',
+                option_title: 'Desde Playa del Carmen, Riviera Maya o Tulum: tour al mediodía',
+            },
+        });
+        const { client } = crearDbPoolFake({
+            evento,
+            equivalenciaActiva: {
+                id_equivalencia_tour_externo: 1,
+                provider: 'getyourguide',
+                id_tour: 74,
+                turno: 'Tarde',
+            },
+            paisNoEspecificadoRows: [{ id_pais: 987, nombre: 'No especificado' }],
+        });
+
+        const resultado = await obtenerPreviewNuevaReservaGetYourGuideConDb(client, evento, {});
+
+        expect(resultado.tipo).toBe('preview');
+        expect(resultado.reservationData).toEqual(expect.objectContaining({
+            fecha: '2026-08-11',
+            id_tour: 74,
+            turno: 'Tarde',
+            id_pais: 987,
+        }));
+        expect(resultado.referencias).toEqual({
+            tour: { id_tour: 74, nombre: 'Ancient Canal' },
+            pais: { id_pais: 987, nombre: 'No especificado' },
+        });
+        expect(resultado.missingFields).toEqual(['pickup_time']);
     });
 
     test('preparacion GetYourGuide conserva Ancient Canal y Tarde con pais generico', async () => {

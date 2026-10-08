@@ -231,6 +231,66 @@ async function prepararNuevaReservaGetYourGuideConDb(db, evento, completar = {})
     return crearResultado('preparado', preparacion);
 }
 
+async function obtenerTourResumen(db, idTour) {
+    if (!idTour) {
+        return null;
+    }
+
+    const result = await db.query(
+        `
+            SELECT id_tour, nombre
+            FROM tours
+            WHERE id_tour = $1
+            LIMIT 1
+        `,
+        [idTour]
+    );
+
+    return result.rows[0] || null;
+}
+
+async function obtenerPaisResumen(db, idPais) {
+    if (!idPais) {
+        return null;
+    }
+
+    const result = await db.query(
+        `
+            SELECT id_pais, nombre
+            FROM paises
+            WHERE id_pais = $1
+            LIMIT 1
+        `,
+        [idPais]
+    );
+
+    return result.rows[0] || null;
+}
+
+async function obtenerPreviewNuevaReservaGetYourGuideConDb(db = pool, evento, completar = {}) {
+    const preparacion = await prepararNuevaReservaGetYourGuideConDb(db, evento, completar);
+    const reservationData = preparacion.reservationData || {};
+
+    if (preparacion.tipo !== 'preparado') {
+        return preparacion;
+    }
+
+    const [tour, pais] = await Promise.all([
+        obtenerTourResumen(db, reservationData.id_tour),
+        obtenerPaisResumen(db, reservationData.id_pais),
+    ]);
+
+    return crearResultado('preview', {
+        reservationData,
+        missingFields: preparacion.missingFields || [],
+        warnings: preparacion.warnings || [],
+        referencias: {
+            tour,
+            pais,
+        },
+    });
+}
+
 async function validarReferenciasInternas(db, reservationData) {
     if (reservationData.id_tour && !(await existeTour(db, reservationData.id_tour))) {
         return 'id_tour';
@@ -564,5 +624,6 @@ module.exports = {
     LINK_UNIQUE_CONSTRAINT,
     aplicarEventoGetYourGuide,
     aplicarNuevaReservaGetYourGuide,
+    obtenerPreviewNuevaReservaGetYourGuideConDb,
     prepararNuevaReservaGetYourGuideConDb,
 };

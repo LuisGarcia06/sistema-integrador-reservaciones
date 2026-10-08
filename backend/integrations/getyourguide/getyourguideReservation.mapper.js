@@ -53,6 +53,21 @@ const MESES_ESPANOL = {
     diciembre: 12,
 };
 
+const MESES_INGLES = {
+    january: 1,
+    february: 2,
+    march: 3,
+    april: 4,
+    may: 5,
+    june: 6,
+    july: 7,
+    august: 8,
+    september: 9,
+    october: 10,
+    november: 11,
+    december: 12,
+};
+
 function tieneValor(valor) {
     return valor !== undefined && valor !== null && !(typeof valor === 'string' && valor.trim() === '');
 }
@@ -109,12 +124,34 @@ function normalizarFechaEspanol(valor) {
     return construirFechaIso(year, month, day);
 }
 
+function normalizarFechaIngles(valor) {
+    if (typeof valor !== 'string') {
+        return null;
+    }
+
+    const match = valor.trim().replace(/\s+/g, ' ').match(/^([A-Za-z]+) (\d{1,2}), (\d{4})$/);
+
+    if (!match) {
+        return null;
+    }
+
+    const month = MESES_INGLES[match[1].toLowerCase()];
+    const day = Number(match[2]);
+    const year = Number(match[3]);
+
+    if (!month || day < 1 || day > 31) {
+        return null;
+    }
+
+    return construirFechaIso(year, month, day);
+}
+
 function normalizarFechaGetYourGuide(valor) {
     if (esFechaSegura(valor)) {
         return valor;
     }
 
-    return normalizarFechaEspanol(valor);
+    return normalizarFechaEspanol(valor) || normalizarFechaIngles(valor);
 }
 
 function esHoraSegura(valor) {
@@ -239,4 +276,5 @@ module.exports = {
     mapGetYourGuideNewBookingToReservation,
     normalizarFechaEspanol,
     normalizarFechaGetYourGuide,
+    normalizarFechaIngles,
 };
