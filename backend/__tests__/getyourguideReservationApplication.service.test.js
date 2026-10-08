@@ -514,6 +514,41 @@ describe('getyourguideReservationApplication.service', () => {
         expect(client.queries.some((query) => /INSERT INTO reservas_integracion_link/i.test(query))).toBe(true);
     });
 
+    test('new_booking sin equivalencia aplica con tour y turno manuales sin crear equivalencia', async () => {
+        const evento = crearEvento({
+            normalized_data: {
+                date: 'August 11, 2026',
+                pax: 2,
+                customer_name: 'Cliente Manual',
+                pickup_place: 'Hotel Manual',
+                price: 1500,
+                activity_title: 'Actividad sin equivalencia',
+                option_title: 'Opcion sin equivalencia',
+            },
+        });
+        const { pool, client } = crearDbPoolFake({ evento, equivalenciaActiva: null });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            id_tour: 74,
+            id_pais: 5,
+            turno: 'Tarde',
+            pickup_time: '10:00',
+        }, pool);
+
+        expect(resultado.tipo).toBe('aplicado');
+        expect(reservacionesService.crearReservacionConDb).toHaveBeenCalledWith(
+            client,
+            expect.objectContaining({
+                fecha: '2026-08-11',
+                id_tour: 74,
+                turno: 'Tarde',
+                pickup_time: '10:00',
+            }),
+            9
+        );
+        expect(client.queries.some((query) => /INSERT INTO equivalencias_tours_externos/i.test(query))).toBe(false);
+    });
+
     test('pending_review no aplica', async () => {
         const { pool, client } = crearDbPoolFake({ evento: crearEvento({ review_status: 'pending_review' }) });
 
@@ -1176,6 +1211,40 @@ describe('getyourguideReservationApplication.service', () => {
             pais: { id_pais: 987, nombre: 'No especificado' },
         });
         expect(resultado.missingFields).toEqual(['pickup_time']);
+    });
+
+    test('preparacion GetYourGuide sin equivalencia expone fallback manual de tour y turno', async () => {
+        const evento = crearEvento({
+            normalized_data: {
+                date: 'August 11, 2026',
+                pax: 2,
+                customer_name: 'Cliente Prueba',
+                pickup_place: 'Hotel Prueba',
+                price: 1000,
+                activity_title: 'Actividad sin equivalencia',
+                option_title: 'Opcion sin equivalencia',
+            },
+        });
+        const { client } = crearDbPoolFake({
+            evento,
+            equivalenciaActiva: null,
+            paisNoEspecificadoRows: [{ id_pais: 987, nombre: 'No especificado' }],
+        });
+
+        const resultado = await obtenerPreviewNuevaReservaGetYourGuideConDb(client, evento, {});
+
+        expect(resultado.tipo).toBe('preview');
+        expect(resultado.reservationData).toEqual(expect.objectContaining({
+            fecha: '2026-08-11',
+            id_pais: 987,
+            pax: 2,
+        }));
+        expect(resultado.reservationData.id_tour).toBeUndefined();
+        expect(resultado.reservationData.turno).toBeUndefined();
+        expect(resultado.missingFields).toEqual(expect.arrayContaining(['id_tour', 'turno', 'pickup_time']));
+        expect(resultado.missingFields).not.toContain('fecha');
+        expect(resultado.referencias.tour).toBeNull();
+        expect(resultado.referencias.pais).toEqual({ id_pais: 987, nombre: 'No especificado' });
     });
 
     test('preparacion GetYourGuide conserva Ancient Canal y Tarde con pais generico', async () => {

@@ -5,6 +5,8 @@
   const EMPTY_VALUE = "--";
   const TURNO_SIN_CLASIFICAR = "Sin clasificar";
   const INTEGRATION_REFRESH_MS = 60000;
+  const MANUAL_NEW_BOOKING_FIELDS = ["id_tour", "turno", "pickup_time"];
+  const TURNOS_VALIDOS = ["Mañana", "Tarde"];
   const EVENT_TYPE_LABELS = {
     new_booking: "Nueva reservación",
     modification: "Modificacion",
@@ -63,7 +65,11 @@
     modalDiff: null,
     modalLoading: false,
     modalError: "",
-    actionLoading: false
+    actionLoading: false,
+    tours: [],
+    toursLoaded: false,
+    toursLoading: false,
+    toursError: ""
   };
 
   function escapeHtml(value) {
@@ -259,6 +265,28 @@
     return response && (response.datos || response.data || response.evento || response);
   }
 
+  function getCatalogList(response) {
+    return getArray(response && (response.datos || response.data || response.items || response));
+  }
+
+  function getTourId(tour) {
+    return tour && (tour.id_tour || tour.id || tour.idTour);
+  }
+
+  function getTourName(tour) {
+    return tour && (tour.nombre || tour.name || tour.tour_nombre || tour.tour);
+  }
+
+  function isActiveTour(tour) {
+    return !tour || tour.activo !== false;
+  }
+
+  function getSelectableTours() {
+    return getArray(integrationState.tours).filter(function (tour) {
+      return getTourId(tour) && getTourName(tour) && isActiveTour(tour);
+    });
+  }
+
   function getEventTypeLabel(value) {
     return EVENT_TYPE_LABELS[value] || value || EMPTY_VALUE;
   }
@@ -337,6 +365,26 @@
 
   function getNewBookingPreview(evento) {
     return getObject(evento && evento.application_preview);
+  }
+
+  function getNewBookingMissingFields(evento) {
+    const preview = getNewBookingPreview(evento);
+
+    return getArray(preview.missingFields || preview.missing_fields);
+  }
+
+  function isManualNewBookingField(field) {
+    return MANUAL_NEW_BOOKING_FIELDS.indexOf(field) !== -1;
+  }
+
+  function getNonManualNewBookingMissingFields(evento) {
+    return getNewBookingMissingFields(evento).filter(function (field) {
+      return !isManualNewBookingField(field);
+    });
+  }
+
+  function needsManualField(evento, field) {
+    return getNewBookingMissingFields(evento).indexOf(field) !== -1;
   }
 
   function getPreviewReservationData(evento) {
@@ -728,18 +776,19 @@
   }
 
   function renderNewBookingPreviewMessage(evento) {
-    const preview = getNewBookingPreview(evento);
-    const missingFields = getArray(preview.missingFields || preview.missing_fields);
-    const nonManualMissingFields = missingFields.filter(function (field) {
-      return field !== "pickup_time";
-    });
+    const missingFields = getNewBookingMissingFields(evento);
+    const nonManualMissingFields = getNonManualNewBookingMissingFields(evento);
 
     if (missingFields.length === 0) {
       return "";
     }
 
-    if (nonManualMissingFields.length === 0 && missingFields.indexOf("pickup_time") !== -1) {
+    if (nonManualMissingFields.length === 0 && missingFields.indexOf("pickup_time") !== -1 && missingFields.length === 1) {
       return '<p class="form-message is-info">Falta asignar la hora de pickup.</p>';
+    }
+
+    if (nonManualMissingFields.length === 0) {
+      return '<p class="form-message is-info">Completa los datos operativos requeridos para registrar la reservación.</p>';
     }
 
     return '<p class="form-message is-error">Faltan datos obligatorios: ' + nonManualMissingFields.map(getFieldLabel).join(", ") + ".</p>";
@@ -775,6 +824,101 @@
     return Boolean(String(normalized.pickup_time || "").trim());
   }
 
+  function renderTourSelect(evento) {
+    const needsTour = needsManualField(evento, "id_tour");
+    const tours = getSelectableTours();
+
+    if (!needsTour) {
+      return "";
+    }
+
+    if (integrationState.toursError) {
+      return '<p class="form-message is-error dashboard-integration-full">' + App.ui.escapeHtml(integrationState.toursError) + "</p>";
+    }
+
+    return [
+      '<label class="field dashboard-integration-full">',
+      '<span>Tour interno *</span>',
+      '<select id="integration-tour-id" required' + (integrationState.toursLoading ? " disabled" : "") + ">",
+      '<option value="">' + (integrationState.toursLoading ? "Cargando tours..." : "Selecciona un tour") + "</option>",
+      tours.map(function (tour) {
+        return '<option value="' + App.ui.escapeHtml(getTourId(tour)) + '">' + App.ui.escapeHtml(getTourName(tour)) + "</option>";
+      }).join(""),
+      "</select>",
+      "</label>"
+    ].join("");
+  }
+
+  function renderTurnoSelect(evento) {
+    const needsTurno = needsManualField(evento, "turno");
+
+    if (!needsTurno) {
+      return "";
+    }
+
+    return [
+      '<label class="field dashboard-integration-full">',
+      '<span>Turno *</span>',
+      '<select id="integration-turno" required>',
+      '<option value="">Selecciona turno</option>',
+      TURNOS_VALIDOS.map(function (turno) {
+        return '<option value="' + App.ui.escapeHtml(turno) + '">' + App.ui.escapeHtml(turno) + "</option>";
+      }).join(""),
+      "</select>",
+      "</label>"
+    ].join("");
+  }
+
+  function getManualTourValue() {
+    const input = document.getElementById("integration-tour-id");
+
+    return input ? String(input.value || "").trim() : "";
+  }
+
+  function getManualTurnoValue() {
+    const input = document.getElementById("integration-turno");
+
+    return input ? String(input.value || "").trim() : "";
+  }
+
+  function hasBlockingNewBookingMissingFields(evento) {
+    return getNonManualNewBookingMissingFields(evento).length > 0;
+  }
+
+  function isNewBookingReadyForApply(evento) {
+    if (!evento || evento.event_type !== "new_booking") {
+      return false;
+    }
+
+    if (integrationState.actionLoading || integrationState.toursLoading || hasBlockingNewBookingMissingFields(evento)) {
+      return false;
+    }
+
+    if (needsManualField(evento, "id_tour") && !getManualTourValue()) {
+      return false;
+    }
+
+    if (needsManualField(evento, "turno") && TURNOS_VALIDOS.indexOf(getManualTurnoValue()) === -1) {
+      return false;
+    }
+
+    if (!hasPickupTime(evento) && !getPickupTimeInputValue()) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function updateNewBookingApplyButtonState() {
+    const button = document.querySelector('[data-dialog-action="apply-new-booking"]');
+
+    if (!button || !integrationState.modalEvent || integrationState.actionLoading) {
+      return;
+    }
+
+    button.disabled = !isNewBookingReadyForApply(integrationState.modalEvent);
+  }
+
   function renderNewBookingReview(evento) {
     const needsPickupTime = !hasPickupTime(evento);
 
@@ -782,6 +926,8 @@
       '<section class="dashboard-integration-block">',
       "<h3>Información normalizada</h3>",
       renderNormalizedData(evento),
+      renderTourSelect(evento),
+      renderTurnoSelect(evento),
       needsPickupTime
         ? [
             '<label class="field dashboard-integration-full">',
@@ -918,7 +1064,8 @@
     }
 
     if (type === "new_booking" && (reviewStatus === "pending_review" || (reviewStatus === "approved" && applicationStatus === "not_applied"))) {
-      actions.push('<button class="btn btn-primary" type="button" data-dialog-action="apply-new-booking"' + disabled + ">" + (reviewStatus === "pending_review" ? "Aprobar y registrar" : "Registrar reservación") + "</button>");
+      const readyDisabled = disabled || (isNewBookingReadyForApply(evento) ? "" : " disabled");
+      actions.push('<button class="btn btn-primary" type="button" data-dialog-action="apply-new-booking"' + readyDisabled + ">" + (reviewStatus === "pending_review" ? "Aprobar y registrar" : "Registrar reservación") + "</button>");
     }
 
     if (type === "modification") {
@@ -1039,6 +1186,17 @@
         handleIntegrationDialogAction(button.getAttribute("data-dialog-action"));
       });
     });
+
+    ["integration-tour-id", "integration-turno", "integration-pickup-time"].forEach(function (id) {
+      const input = document.getElementById(id);
+
+      if (input) {
+        input.addEventListener("input", updateNewBookingApplyButtonState);
+        input.addEventListener("change", updateNewBookingApplyButtonState);
+      }
+    });
+
+    updateNewBookingApplyButtonState();
   }
 
   async function loadIntegrationPendientes(options) {
@@ -1075,6 +1233,25 @@
     }
   }
 
+  async function loadIntegrationToursIfNeeded() {
+    if (integrationState.toursLoaded || integrationState.toursLoading) {
+      return;
+    }
+
+    integrationState.toursLoading = true;
+    integrationState.toursError = "";
+
+    try {
+      const response = await App.api.apiFetch("/api/tours");
+      integrationState.tours = getCatalogList(response);
+      integrationState.toursLoaded = true;
+    } catch (error) {
+      integrationState.toursError = getBackendMessage(error, "No fue posible cargar el catálogo de tours.");
+    } finally {
+      integrationState.toursLoading = false;
+    }
+  }
+
   async function openIntegrationDialog(id) {
     integrationState.modalEvent = null;
     integrationState.modalDiff = null;
@@ -1090,6 +1267,10 @@
       if (evento && evento.event_type === "modification") {
         const diffResponse = await App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/diff");
         diff = getIntegrationDetail(diffResponse);
+      }
+
+      if (evento && evento.event_type === "new_booking" && needsManualField(evento, "id_tour")) {
+        await loadIntegrationToursIfNeeded();
       }
 
       integrationState.modalEvent = evento;
@@ -1190,6 +1371,33 @@
     const completar = {};
     let approvedInThisAction = false;
     let response;
+
+    if (hasBlockingNewBookingMissingFields(evento)) {
+      setModalError("El evento todavía tiene datos obligatorios que no se pueden completar manualmente desde este modal.");
+      return;
+    }
+
+    if (needsManualField(evento, "id_tour")) {
+      const idTour = getManualTourValue();
+
+      if (!idTour) {
+        setModalError("Selecciona el tour interno.");
+        return;
+      }
+
+      completar.id_tour = Number(idTour);
+    }
+
+    if (needsManualField(evento, "turno")) {
+      const turno = getManualTurnoValue();
+
+      if (TURNOS_VALIDOS.indexOf(turno) === -1) {
+        setModalError("Selecciona un turno válido.");
+        return;
+      }
+
+      completar.turno = turno;
+    }
 
     if (!hasPickupTime(evento)) {
       const pickupTime = getPickupTimeInputValue();

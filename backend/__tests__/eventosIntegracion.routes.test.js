@@ -337,6 +337,28 @@ describe('eventosIntegracion.routes', () => {
         });
     });
 
+    test('id_tour invalido en completar devuelve 400', async () => {
+        const response = await request(app)
+            .post('/api/eventos-integracion/1/aplicar')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: { id_tour: 'abc', pickup_time: '08:30', turno: 'Mañana' } });
+
+        expect(response.status).toBe(400);
+        expect(response.body.errores).toContain('El campo completar.id_tour debe ser un entero positivo');
+        expect(aplicarNuevaReservaGetYourGuide).not.toHaveBeenCalled();
+    });
+
+    test('turno invalido en completar devuelve 400', async () => {
+        const response = await request(app)
+            .post('/api/eventos-integracion/1/aplicar')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: { id_tour: 74, pickup_time: '08:30', turno: 'Noche' } });
+
+        expect(response.status).toBe(400);
+        expect(response.body.errores).toContain('El campo completar.turno debe ser Mañana o Tarde');
+        expect(aplicarNuevaReservaGetYourGuide).not.toHaveBeenCalled();
+    });
+
     test('usuario Administrador puede enviar motivo_cancelacion para cancellation', async () => {
         const response = await request(app)
             .post('/api/eventos-integracion/1/aplicar')
