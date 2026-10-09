@@ -3,14 +3,62 @@ const {
     normalizarPayloadWebhookFareHarbor
 } = require('./fareharbor.mapper');
 
+const obtenerWebhookSecret = (env = process.env) => {
+    const secret = env.FAREHARBOR_WEBHOOK_SECRET;
+
+    return typeof secret === 'string' ? secret.trim() : '';
+};
+
 const validarWebhookKey = (queryKey, env = process.env) => {
-    const expectedKey = env.FAREHARBOR_WEBHOOK_KEY;
+    const expectedKey = obtenerWebhookSecret(env);
 
     if (!expectedKey) {
-        return true;
+        return {
+            valid: false,
+            status: 500,
+            message: 'Webhook FareHarbor no configurado'
+        };
     }
 
-    return queryKey === expectedKey;
+    if (!queryKey) {
+        return {
+            valid: false,
+            status: 401,
+            message: 'Webhook FareHarbor no autorizado'
+        };
+    }
+
+    if (queryKey !== expectedKey) {
+        return {
+            valid: false,
+            status: 403,
+            message: 'Webhook FareHarbor no autorizado'
+        };
+    }
+
+    return {
+        valid: true,
+        status: 200,
+        message: 'Webhook FareHarbor autorizado'
+    };
+};
+
+const esPayloadObjeto = (payload) => Boolean(
+    payload
+    && typeof payload === 'object'
+    && !Array.isArray(payload)
+);
+
+const registrarWebhookRecibido = (payload, {
+    env = process.env,
+    logger = console
+} = {}) => {
+    if (String(env.FAREHARBOR_WEBHOOK_DEBUG || '').toLowerCase() === 'true') {
+        logger.log('Webhook FareHarbor recibido:', payload);
+        return;
+    }
+
+    logger.log('Webhook FareHarbor recibido');
 };
 
 const extraerBookingUuid = (payload = {}) => payload.booking?.uuid || null;
@@ -44,8 +92,10 @@ const procesarPayloadWebhookFareHarbor = (payload = {}) => {
 };
 
 module.exports = {
+    esPayloadObjeto,
     extraerBookingUuid,
     obtenerBookingActualizado,
     procesarPayloadWebhookFareHarbor,
+    registrarWebhookRecibido,
     validarWebhookKey
 };

@@ -1,18 +1,24 @@
 const fareharborWebhookService = require('../integrations/fareharbor/fareharborWebhook.service');
 
 const recibirWebhook = (req, res) => {
-    if (!fareharborWebhookService.validarWebhookKey(req.query.key)) {
-        return res.sendStatus(403);
+    const validacion = fareharborWebhookService.validarWebhookKey(req.query.key);
+
+    if (!validacion.valid) {
+        return res.status(validacion.status).json({
+            mensaje: validacion.message
+        });
     }
 
-    res.sendStatus(200);
+    if (!fareharborWebhookService.esPayloadObjeto(req.body)) {
+        return res.status(400).json({
+            mensaje: 'El webhook FareHarbor debe enviar un objeto JSON'
+        });
+    }
 
-    setImmediate(() => {
-        try {
-            fareharborWebhookService.procesarPayloadWebhookFareHarbor(req.body || {});
-        } catch (error) {
-            console.error('Error al procesar webhook de FareHarbor:', error);
-        }
+    fareharborWebhookService.registrarWebhookRecibido(req.body);
+
+    return res.status(200).json({
+        mensaje: 'Webhook FareHarbor recibido'
     });
 };
 

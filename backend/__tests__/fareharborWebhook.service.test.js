@@ -9,14 +9,42 @@ const {
 } = require('./fixtures/fareharbor.booking.fixture');
 
 describe('fareharborWebhook.service', () => {
-    test('validarWebhookKey permite payloads de prueba si no hay key configurada', () => {
-        expect(validarWebhookKey(undefined, {})).toBe(true);
+    test('validarWebhookKey rechaza si el secreto no esta configurado', () => {
+        expect(validarWebhookKey(undefined, {})).toEqual({
+            valid: false,
+            status: 500,
+            message: 'Webhook FareHarbor no configurado'
+        });
     });
 
-    test('validarWebhookKey rechaza key incorrecta cuando FAREHARBOR_WEBHOOK_KEY esta configurada', () => {
+    test('validarWebhookKey rechaza key faltante cuando el secreto esta configurado', () => {
+        expect(validarWebhookKey(undefined, {
+            FAREHARBOR_WEBHOOK_SECRET: 'KEY_CORRECTA'
+        })).toEqual({
+            valid: false,
+            status: 401,
+            message: 'Webhook FareHarbor no autorizado'
+        });
+    });
+
+    test('validarWebhookKey rechaza key incorrecta cuando FAREHARBOR_WEBHOOK_SECRET esta configurado', () => {
         expect(validarWebhookKey('KEY_INCORRECTA', {
-            FAREHARBOR_WEBHOOK_KEY: 'KEY_CORRECTA'
-        })).toBe(false);
+            FAREHARBOR_WEBHOOK_SECRET: 'KEY_CORRECTA'
+        })).toEqual({
+            valid: false,
+            status: 403,
+            message: 'Webhook FareHarbor no autorizado'
+        });
+    });
+
+    test('validarWebhookKey acepta key correcta', () => {
+        expect(validarWebhookKey('KEY_CORRECTA', {
+            FAREHARBOR_WEBHOOK_SECRET: 'KEY_CORRECTA'
+        })).toEqual({
+            valid: true,
+            status: 200,
+            message: 'Webhook FareHarbor autorizado'
+        });
     });
 
     test('procesarPayloadWebhookFareHarbor normaliza sin persistir en PostgreSQL', () => {

@@ -79,6 +79,7 @@ app.use('/api/transportes', transportesRoutes);
 app.use('/api/tours', toursRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/vehiculos', vehiculosRoutes);
+app.use('/api/integraciones/fareharbor/webhook', fareharborWebhookRoutes);
 app.use('/api/webhooks/fareharbor', fareharborWebhookRoutes);
 app.use('/api/webhooks/whatsapp', whatsappRoutes);
 
