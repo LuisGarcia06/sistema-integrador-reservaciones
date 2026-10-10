@@ -32,7 +32,9 @@
     idioma: "Idioma",
     tour_language: "Idioma",
     customer_name: "Cliente",
+    nombre_cliente: "Nombre",
     customer_phone: "Telefono",
+    ninos: "Niños",
     price: "Precio",
     id_pais: "Pais",
     motivo_cancelacion: "Motivo de cancelación"
@@ -451,7 +453,7 @@
   }
 
   function getNewBookingPreview(evento) {
-    return getObject(evento && evento.application_preview);
+    return getObject(evento && (evento.application_preview || evento.fareharbor_application_preview));
   }
 
   function getNewBookingMissingFields(evento) {
@@ -479,7 +481,8 @@
   }
 
   function getPreviewReservationData(evento) {
-    return getObject(getNewBookingPreview(evento).reservationData);
+    const preview = getNewBookingPreview(evento);
+    return getObject(preview.reservationData || preview.reservation_candidate);
   }
 
   function getPreviewReferences(evento) {
@@ -953,7 +956,8 @@
 
   function hasPickupTime(evento) {
     const normalized = getObject(evento && evento.normalized_data);
-    return Boolean(String(normalized.pickup_time || "").trim());
+    const reservationData = getPreviewReservationData(evento);
+    return Boolean(String(reservationData.pickup_time || normalized.pickup_time || "").trim());
   }
 
   function renderTourSelect(evento) {
@@ -1180,7 +1184,212 @@
     ].join("");
   }
 
+  function getFareHarborApplicationPreview(evento) {
+    return getObject(evento && evento.fareharbor_application_preview);
+  }
+
+  function getFareHarborReservationCandidate(evento) {
+    return getObject(getFareHarborApplicationPreview(evento).reservation_candidate);
+  }
+
+  function formatFareHarborPreviewCategories(categories) {
+    const data = getArray(categories).filter(function (category) {
+      return category && category.count !== null && category.count !== undefined;
+    });
+
+    if (!data.length) {
+      return EMPTY_VALUE;
+    }
+
+    return data.map(function (category) {
+      const label = category.plural || category.singular || "Categoria";
+      return String(category.count) + " " + label;
+    }).join(", ");
+  }
+
+  function getFareHarborManualMissingFields(evento) {
+    const missing = getNewBookingMissingFields(evento).slice();
+
+    return missing.filter(function (field) {
+      if (field === "id_tour") {
+        return !getManualTourValue();
+      }
+
+      if (field === "turno") {
+        return TURNOS_VALIDOS.indexOf(getManualTurnoValue()) === -1;
+      }
+
+      if (field === "pickup_place") {
+        return !getManualPickupPlaceValue();
+      }
+
+      if (field === "pickup_time") {
+        return !getPickupTimeInputValue();
+      }
+
+      if (field === "nombre_cliente") {
+        const input = document.getElementById("fareharbor-customer-name");
+        return !input || !String(input.value || "").trim();
+      }
+
+      if (field === "ninos") {
+        const input = document.getElementById("fareharbor-ninos");
+        return !input || String(input.value || "").trim() === "";
+      }
+
+      return true;
+    });
+  }
+
+  function updateFareHarborPreviewStatus() {
+    const status = document.getElementById("fareharbor-preview-status");
+    const evento = integrationState.modalEvent;
+
+    if (!status || !evento || !isFareHarborEvent(evento)) {
+      return;
+    }
+
+    const missing = getFareHarborManualMissingFields(evento);
+
+    if (missing.length === 0) {
+      status.className = "form-message is-info";
+      status.textContent = "Datos completos para aplicación. Todavía no se guardan.";
+      return;
+    }
+
+    status.className = "form-message is-info";
+    status.textContent = "Faltan datos: " + missing.map(getFieldLabel).join(", ") + ".";
+  }
+
+  function renderFareHarborReadonlyCandidate(label, value) {
+    return renderDetailItem(label, value === null || value === undefined || value === "" ? EMPTY_VALUE : value);
+  }
+
+  function renderFareHarborManualName(evento) {
+    if (!needsManualField(evento, "nombre_cliente") || !canEditIntegrationManually()) {
+      return "";
+    }
+
+    return [
+      '<label class="field dashboard-integration-full">',
+      '<span>Nombre *</span>',
+      '<input id="fareharbor-customer-name" type="text" maxlength="120" required>',
+      "</label>"
+    ].join("");
+  }
+
+  function renderFareHarborManualChildren(evento) {
+    if (!needsManualField(evento, "ninos") || !canEditIntegrationManually()) {
+      return "";
+    }
+
+    return [
+      '<label class="field dashboard-integration-full">',
+      '<span>Niños *</span>',
+      '<input id="fareharbor-ninos" type="number" min="0" step="1" required>',
+      "</label>"
+    ].join("");
+  }
+
+  function renderFareHarborPickupTimeInput(evento) {
+    if (!needsManualField(evento, "pickup_time") || !canEditIntegrationManually()) {
+      return "";
+    }
+
+    return [
+      '<label class="field dashboard-integration-full">',
+      '<span>Hora de pickup *</span>',
+      '<input id="integration-pickup-time" type="time" required>',
+      "</label>"
+    ].join("");
+  }
+
+  function renderFareHarborApplicationPreview(evento) {
+    const preview = getFareHarborApplicationPreview(evento);
+    const external = getObject(preview.external);
+    const candidate = getObject(preview.reservation_candidate);
+    const sources = getObject(preview.sources);
+    const tourSource = getObject(sources.tour);
+    const pickupSource = getObject(sources.pickup);
+    const moneySource = getObject(sources.money);
+    const issues = getArray(preview.issues);
+    const missingFields = getNewBookingMissingFields(evento);
+
+    return [
+      '<section class="dashboard-integration-block">',
+      "<h3>Datos externos FareHarbor</h3>",
+      '<p class="form-message is-info">Reserva FareHarbor recibida. La aplicación de esta integración aún no está habilitada.</p>',
+      '<div class="dashboard-integration-detail-grid">',
+      renderDetailItem("Actividad externa", external.activity_title),
+      renderDetailItem("Opción externa", external.option_title),
+      renderDetailItem("Status", external.booking_status),
+      renderDetailItem("Inicio", formatDateTime(external.start_at)),
+      renderDetailItem("Fin", formatDateTime(external.end_at)),
+      renderDetailItem("PAX", candidate.pax),
+      renderDetailItem("Categorías", formatFareHarborPreviewCategories(external.categories)),
+      "</div>",
+      "</section>",
+      '<section class="dashboard-integration-block">',
+      "<h3>Datos para reservación</h3>",
+      missingFields.length
+        ? '<p id="fareharbor-preview-status" class="form-message is-info">Faltan datos: ' + missingFields.map(getFieldLabel).join(", ") + ".</p>"
+        : '<p id="fareharbor-preview-status" class="form-message is-info">Datos completos para aplicación. Todavía no se guardan.</p>',
+      issues.length
+        ? '<div class="dashboard-integration-warning">' + issues.map(function (issue) {
+            return "<p>" + App.ui.escapeHtml(issue) + "</p>";
+          }).join("") + "</div>"
+        : "",
+      '<div class="dashboard-integration-detail-grid">',
+      renderFareHarborReadonlyCandidate("Fecha", candidate.fecha),
+      tourSource.source === "equivalence"
+        ? renderFareHarborReadonlyCandidate("Tour", candidate.tour || candidate.id_tour)
+        : "",
+      tourSource.source === "equivalence"
+        ? renderFareHarborReadonlyCandidate("Turno", candidate.turno)
+        : "",
+      renderFareHarborReadonlyCandidate("Nombre", candidate.nombre_cliente),
+      renderFareHarborReadonlyCandidate("Teléfono", candidate.telefono_cliente || "Opcional sin capturar"),
+      renderFareHarborReadonlyCandidate("PAX", candidate.pax),
+      getObject(sources.children).source === "derived"
+        ? renderFareHarborReadonlyCandidate("Niños", candidate.ninos)
+        : "",
+      pickupSource.pickup_place !== "manual"
+        ? renderFareHarborReadonlyCandidate("Pickup place", candidate.pickup_place)
+        : "",
+      pickupSource.pickup_time !== "manual"
+        ? renderFareHarborReadonlyCandidate("Pickup time", candidate.pickup_time)
+        : "",
+      renderFareHarborReadonlyCandidate("Precio total", candidate.precio_total),
+      renderFareHarborReadonlyCandidate("Depósito", candidate.deposito),
+      renderFareHarborReadonlyCandidate("Balance pendiente", candidate.saldo),
+      renderFareHarborReadonlyCandidate("País", candidate.pais),
+      renderFareHarborReadonlyCandidate("Plataforma", candidate.plataforma),
+      renderFareHarborReadonlyCandidate("Estado", candidate.estado),
+      renderFareHarborReadonlyCandidate("Idioma", candidate.idioma || "Sin definir"),
+      renderFareHarborReadonlyCandidate("Pickup recibido", pickupSource.pickup_place !== "manual" ? "Sí" : "No recibido"),
+      renderFareHarborReadonlyCandidate("Lodging", pickupSource.lodging_present ? "Presente" : "No recibido"),
+      renderFareHarborReadonlyCandidate("Arrival", pickupSource.arrival_present ? "Presente" : "No recibido"),
+      renderFareHarborReadonlyCandidate("Referencia receipt total", moneySource.receipt_total_display),
+      renderFareHarborReadonlyCandidate("Referencia amount paid", moneySource.amount_paid_display),
+      renderFareHarborReadonlyCandidate("Referencia invoice price", moneySource.invoice_price_display),
+      "</div>",
+      renderTourSelect(evento),
+      renderTurnoSelect(evento),
+      renderFareHarborManualName(evento),
+      renderFareHarborManualChildren(evento),
+      renderPickupPlaceInput(evento),
+      renderFareHarborPickupTimeInput(evento),
+      '<p class="card-text dashboard-integration-full">Los datos todavía no se guardan. La aplicación de FareHarbor se habilitará en la siguiente fase.</p>',
+      "</section>"
+    ].join("");
+  }
   function renderFareHarborReadOnly(evento) {
+    const preview = getFareHarborApplicationPreview(evento);
+
+    if (preview.tipo === "preview") {
+      return renderFareHarborApplicationPreview(evento);
+    }
+
     const booking = getFareHarborBooking(evento);
     const availability = getFareHarborAvailability(evento);
     const item = getFareHarborItem(evento);
@@ -1237,7 +1446,13 @@
 
   function renderDialogActions(evento, diff) {
     if (isFareHarborEvent(evento)) {
-      return '<button class="btn" type="button" data-dialog-action="close">Cerrar</button>';
+      const isAdmin = App.auth && App.auth.esAdministrador();
+      const preview = getFareHarborApplicationPreview(evento);
+      const disabledApply = isAdmin && preview.tipo === "preview"
+        ? '<button class="btn btn-primary" type="button" disabled>Aplicar reservación</button>'
+        : "";
+
+      return disabledApply + '<button class="btn" type="button" data-dialog-action="close">Cerrar</button>';
     }
 
     const isAdmin = App.auth && App.auth.esAdministrador();
@@ -1385,16 +1600,23 @@
       });
     });
 
-    ["integration-tour-id", "integration-turno", "integration-pickup-place", "integration-pickup-time"].forEach(function (id) {
+    ["integration-tour-id", "integration-turno", "integration-pickup-place", "integration-pickup-time", "fareharbor-customer-name", "fareharbor-ninos"].forEach(function (id) {
       const input = document.getElementById(id);
 
       if (input) {
-        input.addEventListener("input", updateNewBookingApplyButtonState);
-        input.addEventListener("change", updateNewBookingApplyButtonState);
+        input.addEventListener("input", function () {
+          updateNewBookingApplyButtonState();
+          updateFareHarborPreviewStatus();
+        });
+        input.addEventListener("change", function () {
+          updateNewBookingApplyButtonState();
+          updateFareHarborPreviewStatus();
+        });
       }
     });
 
     updateNewBookingApplyButtonState();
+    updateFareHarborPreviewStatus();
   }
 
   async function loadIntegrationPendientes(options) {
@@ -1467,7 +1689,7 @@
         diff = getIntegrationDetail(diffResponse);
       }
 
-      if (evento && evento.event_type === "new_booking" && !isFareHarborEvent(evento) && needsManualField(evento, "id_tour")) {
+      if (evento && evento.event_type === "new_booking" && needsManualField(evento, "id_tour")) {
         await loadIntegrationToursIfNeeded();
       }
 

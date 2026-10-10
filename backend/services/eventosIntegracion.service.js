@@ -531,6 +531,21 @@ async function obtenerEventoIntegracion(idEventoIntegracion, db = pool) {
     return prepararEventoDetalleIntegracion(result.rows[0] || null);
 }
 
+async function obtenerEventoIntegracionCompleto(idEventoIntegracion, db = pool) {
+    const result = await db.query(
+        `
+            SELECT
+                ${columnasEventoIntegracion}
+            FROM eventos_integracion
+            WHERE id_evento_integracion = $1
+            LIMIT 1
+        `,
+        [idEventoIntegracion]
+    );
+
+    return result.rows[0] || null;
+}
+
 function obtenerReviewStatusDesdeAccion(accion) {
     if (accion === ACCION_APPROVE) {
         return REVIEW_STATUS_APPROVED;
@@ -606,6 +621,7 @@ module.exports = {
     listarEventosIntegracion,
     normalizarEventoIntegracion,
     obtenerDashboardCutoffAt,
+    obtenerEventoIntegracionCompleto,
     obtenerEventoIntegracion,
     prepararEventoDetalleIntegracion,
     prepararEventoListadoIntegracion,

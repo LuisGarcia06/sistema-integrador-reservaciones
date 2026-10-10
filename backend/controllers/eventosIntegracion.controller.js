@@ -3,11 +3,16 @@ const {
     aplicarNuevaReservaGetYourGuide,
     obtenerPreviewNuevaReservaGetYourGuideConDb,
 } = require('../integrations/getyourguide/getyourguideReservationApplication.service');
+const {
+    construirPreviewNuevaReservaFareHarborConDb,
+} = require('../integrations/fareharbor/fareharborApplication.service');
 const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
+const { ROLES } = require('../constants/roles');
 const FAREHARBOR_PROVIDER = 'fareharbor';
 const FAREHARBOR_READONLY_MESSAGE = 'La aplicacion de eventos FareHarbor aun no esta habilitada.';
 
 const esEventoFareHarbor = (evento) => evento?.provider === FAREHARBOR_PROVIDER;
+const puedeRecibirPreviewFareHarbor = (req) => req.usuario?.rol === ROLES.ADMINISTRADOR;
 
 const responderFareHarborNoHabilitado = (res) => res.status(409).json({
     mensaje: FAREHARBOR_READONLY_MESSAGE,
@@ -71,6 +76,20 @@ const obtenerEventoIntegracion = async (req, res) => {
             datos = {
                 ...evento,
                 application_preview: preview,
+            };
+        }
+
+        if (
+            esEventoFareHarbor(evento)
+            && evento.event_type === 'new_booking'
+            && puedeRecibirPreviewFareHarbor(req)
+        ) {
+            const eventoCompleto = await eventosIntegracionService.obtenerEventoIntegracionCompleto(idEventoIntegracion);
+            const preview = await construirPreviewNuevaReservaFareHarborConDb(undefined, eventoCompleto);
+
+            datos = {
+                ...evento,
+                fareharbor_application_preview: preview,
             };
         }
 

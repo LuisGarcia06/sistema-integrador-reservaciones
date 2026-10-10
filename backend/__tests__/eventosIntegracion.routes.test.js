@@ -13,6 +13,7 @@ jest.mock('../services/eventosIntegracion.service', () => {
         ...actual,
         listarEventosIntegracion: jest.fn(),
         obtenerEventoIntegracion: jest.fn(),
+        obtenerEventoIntegracionCompleto: jest.fn(),
         revisarEventoIntegracion: jest.fn(),
     };
 });
@@ -26,6 +27,10 @@ jest.mock('../integrations/getyourguide/getyourguideReservationApplication.servi
 jest.mock('../integrations/getyourguide/getyourguideModificationDiff.service', () => ({
     obtenerDiffModificationGetYourGuide: jest.fn(),
 }));
+
+jest.mock('../integrations/fareharbor/fareharborApplication.service', () => ({
+    construirPreviewNuevaReservaFareHarborConDb: jest.fn(),
+}));
 const authService = require('../services/auth.service');
 const eventosIntegracionService = require('../services/eventosIntegracion.service');
 const {
@@ -33,6 +38,7 @@ const {
     obtenerPreviewNuevaReservaGetYourGuideConDb,
 } = require('../integrations/getyourguide/getyourguideReservationApplication.service');
 const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
+const { construirPreviewNuevaReservaFareHarborConDb } = require('../integrations/fareharbor/fareharborApplication.service');
 const eventosIntegracionRoutes = require('../routes/eventosIntegracion.routes');
 
 const JWT_SECRET = 'secret-eventos-integracion-test';
@@ -120,6 +126,7 @@ describe('eventosIntegracion.routes', () => {
             },
         });
         eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValue(crearEvento());
+        eventosIntegracionService.obtenerEventoIntegracionCompleto.mockResolvedValue(crearEvento());
         aplicarNuevaReservaGetYourGuide.mockResolvedValue({
             tipo: 'aplicado',
             reservacion: { id_reservacion: 10, codigo: 'RSV-20270101-ABC123' },
@@ -134,6 +141,12 @@ describe('eventosIntegracion.routes', () => {
                 pais: { id_pais: 987, nombre: 'No especificado' },
                 tour: null,
             },
+        });
+        construirPreviewNuevaReservaFareHarborConDb.mockResolvedValue({
+            tipo: 'preview',
+            reservation_candidate: { id_tour: null, turno: null },
+            missing_fields: ['id_tour', 'turno'],
+            ready_to_apply: false,
         });
         obtenerDiffModificationGetYourGuide.mockResolvedValue({
             tipo: 'preview',
@@ -440,6 +453,37 @@ describe('eventosIntegracion.routes', () => {
         expect(response.status).toBe(409);
     });
 
+    test('detalle FareHarbor admin incluye preview FH-3A sin exponer normalized_data', async () => {
+        const eventoSeguro = crearEvento({
+            provider: 'fareharbor',
+            event_type: 'new_booking',
+            normalized_data: undefined,
+            fareharbor_summary: {
+                booking: { display_id: 'FH-SYN-001', status: 'booked' },
+            },
+        });
+        const eventoCompleto = crearEvento({
+            provider: 'fareharbor',
+            event_type: 'new_booking',
+            normalized_data: { external_booking_id: 'fh-booking-sintetico' },
+        });
+        eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(eventoSeguro);
+        eventosIntegracionService.obtenerEventoIntegracionCompleto.mockResolvedValueOnce(eventoCompleto);
+
+        const response = await request(app)
+            .get('/api/eventos-integracion/1')
+            .set('Authorization', `Bearer ${tokenAdministrador}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.datos).not.toHaveProperty('normalized_data');
+        expect(response.body.datos.fareharbor_application_preview).toEqual(expect.objectContaining({
+            tipo: 'preview',
+            missing_fields: ['id_tour', 'turno'],
+        }));
+        expect(construirPreviewNuevaReservaFareHarborConDb).toHaveBeenCalledWith(undefined, eventoCompleto);
+        expect(obtenerPreviewNuevaReservaGetYourGuideConDb).not.toHaveBeenCalled();
+    });
+
     test('detalle FareHarbor es read-only y no genera preview GetYourGuide', async () => {
         eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
             provider: 'fareharbor',
@@ -457,7 +501,9 @@ describe('eventosIntegracion.routes', () => {
         expect(response.body.datos.provider).toBe('fareharbor');
         expect(response.body.datos).toHaveProperty('fareharbor_summary');
         expect(response.body.datos).not.toHaveProperty('application_preview');
+        expect(response.body.datos).not.toHaveProperty('fareharbor_application_preview');
         expect(obtenerPreviewNuevaReservaGetYourGuideConDb).not.toHaveBeenCalled();
+        expect(construirPreviewNuevaReservaFareHarborConDb).not.toHaveBeenCalled();
     });
 
     test('diff FareHarbor devuelve 409 sin llamar servicio GetYourGuide', async () => {
