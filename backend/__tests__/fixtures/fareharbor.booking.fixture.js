@@ -45,8 +45,11 @@ const crearBookingFareHarborSanitizado = (sobrescrituras = {}) => ({
     lodging: null,
     arrival: null,
     invoice_price: '100.00',
+    invoice_price_display: '$100.00 MXN',
     receipt_total: '100.00',
+    receipt_total_display: '$100.00 MXN',
     amount_paid: '100.00',
+    amount_paid_display: '$100.00 MXN',
     company: {
         currency: 'mxn'
     },

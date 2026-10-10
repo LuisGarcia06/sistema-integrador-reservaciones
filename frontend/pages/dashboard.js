@@ -113,6 +113,22 @@
     return [match[3], match[2], match[1]].join("/") + " " + match[4] + ":" + match[5];
   }
 
+  function formatDateTimeLocal(value) {
+    const date = value ? new Date(value) : null;
+
+    if (!date || Number.isNaN(date.getTime())) {
+      return formatDateTime(value);
+    }
+
+    const day = String(date.getDate()).padStart(2, "0");
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const year = String(date.getFullYear());
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+
+    return [day, month, year].join("/") + " " + hours + ":" + minutes;
+  }
+
   function formatReadableDate(value) {
     if (!value || typeof value !== "string") {
       return EMPTY_VALUE;
@@ -313,6 +329,77 @@
 
   function getApplicationBadgeClass(value) {
     return value === "not_applied" ? "badge badge-warning" : "badge badge-neutral";
+  }
+
+  function isFareHarborEvent(evento) {
+    return Boolean(evento && evento.provider === "fareharbor");
+  }
+
+  function getFareHarborSummary(evento) {
+    return getObject(evento && evento.fareharbor_summary);
+  }
+
+  function getFareHarborBooking(evento) {
+    return getObject(getFareHarborSummary(evento).booking);
+  }
+
+  function getFareHarborAvailability(evento) {
+    return getObject(getFareHarborSummary(evento).availability);
+  }
+
+  function getFareHarborItem(evento) {
+    return getObject(getFareHarborAvailability(evento).item);
+  }
+
+  function getFareHarborCustomers(evento) {
+    return getObject(getFareHarborSummary(evento).customers);
+  }
+
+  function getFareHarborMoney(evento) {
+    return getObject(getFareHarborSummary(evento).money);
+  }
+
+  function getFareHarborPickup(evento) {
+    return getObject(getFareHarborSummary(evento).pickup);
+  }
+
+  function getFareHarborDisplayId(evento) {
+    const booking = getFareHarborBooking(evento);
+    return booking.display_id || (evento && evento.external_booking_id) || EMPTY_VALUE;
+  }
+
+  function formatFareHarborPresence(value) {
+    return value ? "Presente" : "No recibido";
+  }
+
+  function formatFareHarborMoneyValue(displayValue, rawValue, currency) {
+    const display = String(displayValue || "").trim();
+
+    if (display) {
+      return display;
+    }
+
+    if (rawValue === null || rawValue === undefined || rawValue === "") {
+      return EMPTY_VALUE;
+    }
+
+    return String(rawValue) + (currency ? " " + String(currency).toUpperCase() : "");
+  }
+
+  function formatFareHarborCategories(evento) {
+    const customers = getFareHarborCustomers(evento);
+    const categories = getArray(customers.by_category).filter(function (category) {
+      return category && category.count !== null && category.count !== undefined;
+    });
+
+    if (!categories.length) {
+      return EMPTY_VALUE;
+    }
+
+    return categories.map(function (category) {
+      const label = category.plural || category.singular || "Categoria";
+      return String(category.count) + " " + label;
+    }).join(", ");
   }
 
   function isDashboardActive() {
@@ -521,9 +608,50 @@
       : "";
   }
 
+  function renderFareHarborIntegrationEvent(evento) {
+    const id = getIntegrationId(evento);
+    const receivedAt = evento && (evento.source_received_at || evento.received_at || evento.created_at);
+    const booking = getFareHarborBooking(evento);
+    const availability = getFareHarborAvailability(evento);
+    const item = getFareHarborItem(evento);
+    const customers = getFareHarborCustomers(evento);
+    const money = getFareHarborMoney(evento);
+
+    return [
+      '<article class="dashboard-integration-item">',
+      '<div class="dashboard-integration-main">',
+      '<strong class="dashboard-primary-text">' + escapeHtml(getFareHarborDisplayId(evento)) + "</strong>",
+      '<div class="dashboard-integration-meta">',
+      '<span>FareHarbor</span>',
+      '<span>' + escapeHtml(getEventTypeLabel(evento && evento.event_type)) + "</span>",
+      '<span>' + escapeHtml(formatDateTimeLocal(receivedAt)) + "</span>",
+      "</div>",
+      '<div class="dashboard-integration-meta">',
+      '<span>' + escapeHtml(item.name || item.headline || "Actividad no determinada") + "</span>",
+      '<span>' + escapeHtml(formatDateTime(availability.start_at)) + "</span>",
+      '<span>' + escapeHtml((customers.total !== null && customers.total !== undefined ? customers.total : EMPTY_VALUE) + " PAX") + "</span>",
+      '<span>' + escapeHtml((booking.status || "Estado no determinado")) + "</span>",
+      money.currency ? '<span>' + escapeHtml(String(money.currency).toUpperCase()) + "</span>" : "",
+      "</div>",
+      '<div class="daily-badges">',
+      '<span class="' + getReviewBadgeClass(evento && evento.review_status) + '">' + escapeHtml(getReviewStatusLabel(evento && evento.review_status)) + "</span>",
+      '<span class="' + getApplicationBadgeClass(evento && evento.application_status) + '">' + escapeHtml(getApplicationStatusLabel(evento && evento.application_status)) + "</span>",
+      "</div>",
+      "</div>",
+      '<div class="dashboard-integration-actions">',
+      '<button class="btn btn-ghost" type="button" data-integration-action="review" data-integration-id="' + App.ui.escapeHtml(id) + '">Ver</button>',
+      "</div>",
+      "</article>"
+    ].join("");
+  }
+
   function renderIntegrationEvent(evento) {
     const id = getIntegrationId(evento);
     const receivedAt = evento && (evento.source_received_at || evento.received_at || evento.created_at);
+
+    if (isFareHarborEvent(evento)) {
+      return renderFareHarborIntegrationEvent(evento);
+    }
 
     return [
       '<article class="dashboard-integration-item">',
@@ -742,7 +870,7 @@
       renderDetailItem("Proveedor", evento && evento.provider),
       renderDetailItem("Booking externo", evento && evento.external_booking_id),
       renderDetailItem("Tipo", getEventTypeLabel(evento && evento.event_type)),
-      renderDetailItem("Recibido", formatDateTime(receivedAt)),
+      renderDetailItem("Recibido", isFareHarborEvent(evento) ? formatDateTimeLocal(receivedAt) : formatDateTime(receivedAt)),
       renderDetailItem("Revisión", getReviewStatusLabel(evento && evento.review_status)),
       renderDetailItem("Registro", getApplicationStatusLabel(evento && evento.application_status)),
       "</div>"
@@ -909,7 +1037,7 @@
   }
 
   function isNewBookingReadyForApply(evento) {
-    if (!evento || evento.event_type !== "new_booking") {
+    if (!evento || isFareHarborEvent(evento) || evento.event_type !== "new_booking") {
       return false;
     }
 
@@ -1052,6 +1180,39 @@
     ].join("");
   }
 
+  function renderFareHarborReadOnly(evento) {
+    const booking = getFareHarborBooking(evento);
+    const availability = getFareHarborAvailability(evento);
+    const item = getFareHarborItem(evento);
+    const customers = getFareHarborCustomers(evento);
+    const money = getFareHarborMoney(evento);
+    const pickup = getFareHarborPickup(evento);
+    const currency = money.currency || null;
+
+    return [
+      '<section class="dashboard-integration-block">',
+      "<h3>Reserva FareHarbor</h3>",
+      '<p class="form-message is-info">Reserva FareHarbor recibida. La aplicación de esta integración aún no está habilitada.</p>',
+      '<div class="dashboard-integration-detail-grid">',
+      renderDetailItem("Display ID", booking.display_id),
+      renderDetailItem("Estado externo", booking.status),
+      renderDetailItem("Actividad", item.name || item.headline),
+      renderDetailItem("Inicio", formatDateTime(availability.start_at)),
+      renderDetailItem("Fin", formatDateTime(availability.end_at)),
+      renderDetailItem("PAX", customers.total),
+      renderDetailItem("Categorias", formatFareHarborCategories(evento)),
+      renderDetailItem("Moneda", currency ? String(currency).toUpperCase() : EMPTY_VALUE),
+      renderDetailItem("Invoice price", formatFareHarborMoneyValue(money.invoice_price_display, money.invoice_price, currency)),
+      renderDetailItem("Receipt total", formatFareHarborMoneyValue(money.receipt_total_display, money.receipt_total, currency)),
+      renderDetailItem("Amount paid", formatFareHarborMoneyValue(money.amount_paid_display, money.amount_paid, currency)),
+      renderDetailItem("Pickup", formatFareHarborPresence(pickup.pickup_present)),
+      renderDetailItem("Lodging", formatFareHarborPresence(pickup.lodging_present)),
+      renderDetailItem("Arrival", formatFareHarborPresence(pickup.arrival_present)),
+      "</div>",
+      "</section>"
+    ].join("");
+  }
+
   function renderCancellationReview(evento) {
     return [
       '<section class="dashboard-integration-block">',
@@ -1075,6 +1236,10 @@
   }
 
   function renderDialogActions(evento, diff) {
+    if (isFareHarborEvent(evento)) {
+      return '<button class="btn" type="button" data-dialog-action="close">Cerrar</button>';
+    }
+
     const isAdmin = App.auth && App.auth.esAdministrador();
     const reviewStatus = evento && evento.review_status;
     const applicationStatus = evento && evento.application_status;
@@ -1132,6 +1297,11 @@
         '<span class="daily-spinner" aria-hidden="true"></span>',
         '<p class="card-text">Cargando evento de integración.</p>',
         "</div>"
+      ].join("");
+    } else if (isFareHarborEvent(evento)) {
+      content = [
+        renderCommonIntegrationDetails(evento),
+        renderFareHarborReadOnly(evento)
       ].join("");
     } else {
       content = [
@@ -1292,12 +1462,12 @@
       const evento = getIntegrationDetail(detailResponse);
       let diff = null;
 
-      if (evento && evento.event_type === "modification") {
+      if (evento && evento.event_type === "modification" && !isFareHarborEvent(evento)) {
         const diffResponse = await App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/diff");
         diff = getIntegrationDetail(diffResponse);
       }
 
-      if (evento && evento.event_type === "new_booking" && needsManualField(evento, "id_tour")) {
+      if (evento && evento.event_type === "new_booking" && !isFareHarborEvent(evento) && needsManualField(evento, "id_tour")) {
         await loadIntegrationToursIfNeeded();
       }
 

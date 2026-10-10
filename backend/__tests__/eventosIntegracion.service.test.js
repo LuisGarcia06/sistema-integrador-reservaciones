@@ -5,11 +5,15 @@ const {
     REVIEW_STATUS_DISMISSED,
     REVIEW_STATUS_PENDING,
     UNIQUE_EVENT_CONSTRAINT,
+    construirFuenteEventosIntegracion,
     construirValoresInsertEventoIntegracion,
+    crearResumenFareHarborSeguro,
     limpiarSecretos,
     normalizarEventoIntegracion,
     listarEventosIntegracion,
     obtenerEventoIntegracion,
+    prepararEventoDetalleIntegracion,
+    prepararEventoListadoIntegracion,
     registrarEventoIntegracion,
     revisarEventoIntegracion
 } = require('../services/eventosIntegracion.service');
@@ -30,6 +34,52 @@ const crearEventoBase = (sobrescrituras = {}) => ({
     ...sobrescrituras,
 });
 
+const crearNormalizedDataFareHarbor = (sobrescrituras = {}) => ({
+    booking: {
+        display_id: 'FH-SYN-001',
+        status: 'booked',
+    },
+    availability: {
+        start_at: '2027-03-10T08:00:00-05:00',
+        end_at: '2027-03-10T12:00:00-05:00',
+        item: {
+            pk: 12345,
+            name: 'Kayak sintetico',
+            headline: 'Actividad sintetica',
+        },
+    },
+    customers: {
+        total: 3,
+        by_category: [
+            { singular: 'Adult', plural: 'Adults', count: 2 },
+            { singular: 'Child', plural: 'Children', count: 1 },
+        ],
+    },
+    money: {
+        invoice_price: '3000.00',
+        invoice_price_display: '$3,000.00 MXN',
+        receipt_total: '3000.00',
+        receipt_total_display: '$3,000.00 MXN',
+        amount_paid: '1500.00',
+        amount_paid_display: '$1,500.00 MXN',
+        currency: 'mxn',
+    },
+    pickup: {
+        pickup: { present: true, value: 'NO EXPONER' },
+        lodging: null,
+        arrival: { present: true, value: 'NO EXPONER' },
+    },
+    fingerprint: 'fingerprint-sintetico',
+    contact: {
+        name: 'Persona Sintetica',
+        email: 'persona@example.test',
+        phone: '5550000000',
+    },
+    notes: 'Nota privada sintetica',
+    payments: [{ id: 'payment-sintetico' }],
+    ...sobrescrituras,
+});
+
 function crearFilaEvento(evento, id = 1) {
     return {
         id_evento_integracion: id,
@@ -40,6 +90,7 @@ function crearFilaEvento(evento, id = 1) {
         event_type: evento.event_type,
         urgent: evento.urgent,
         review_status: evento.review_status,
+        application_status: evento.application_status || 'not_applied',
         normalized_data: evento.normalized_data,
         source_subject: evento.source_subject,
         source_received_at: evento.source_received_at,
@@ -48,6 +99,67 @@ function crearFilaEvento(evento, id = 1) {
     };
 }
 
+function obtenerFechaOperativaEvento(fila) {
+    return new Date(fila.source_received_at || fila.created_at || 0).getTime() || 0;
+}
+
+function agruparFilasOperativas(filas) {
+    const ordenadas = [...filas].sort((a, b) => {
+        const fecha = obtenerFechaOperativaEvento(b) - obtenerFechaOperativaEvento(a);
+
+        if (fecha !== 0) {
+            return fecha;
+        }
+
+        return Number(b.id_evento_integracion || 0) - Number(a.id_evento_integracion || 0);
+    });
+    const fareHarborVistos = new Set();
+    const resultado = [];
+
+    ordenadas.forEach((fila) => {
+        if (fila.provider !== 'fareharbor') {
+            resultado.push(fila);
+            return;
+        }
+
+        const key = `${fila.provider}:${fila.external_booking_id}`;
+
+        if (!fareHarborVistos.has(key)) {
+            fareHarborVistos.add(key);
+            resultado.push(fila);
+        }
+    });
+
+    return resultado;
+}
+
+function crearDbListadoOperativo(filas) {
+    return {
+        query: jest.fn(async (query, values) => {
+            const reviewStatus = values[0];
+            const cutoffAt = values.find((value) => value instanceof Date);
+            let filtradas = filas.filter((fila) => !reviewStatus || fila.review_status === reviewStatus);
+
+            if (cutoffAt) {
+                filtradas = filtradas.filter((fila) => (
+                    fila.provider === 'fareharbor'
+                    || obtenerFechaOperativaEvento(fila) >= cutoffAt.getTime()
+                ));
+            }
+
+            const operativas = agruparFilasOperativas(filtradas);
+
+            if (/COUNT\(\*\)::int AS total/i.test(query)) {
+                return { rows: [{ total: operativas.length }] };
+            }
+
+            const limit = Number(values[values.length - 2]);
+            const offset = Number(values[values.length - 1]);
+
+            return { rows: operativas.slice(offset, offset + limit) };
+        }),
+    };
+}
 function crearDbMemoria({ simularCarreraUnique = false, ocultarExistenteEnPrimerSelect = false } = {}) {
     const filas = [];
     let consultasSelectIdentidad = 0;
@@ -367,10 +479,138 @@ describe('eventosIntegracion.service', () => {
 
         const resultado = await listarEventosIntegracion({ review_status: REVIEW_STATUS_PENDING }, { page: 1, limit: 25 }, db);
 
-        expect(resultado.data).toEqual([fila]);
+        expect(resultado.data).toEqual([prepararEventoListadoIntegracion(fila)]);
         expect(resultado.pagination).toEqual({ page: 1, limit: 25, total: 1, totalPages: 1 });
         expect(db.query.mock.calls[0][1]).toEqual([REVIEW_STATUS_PENDING]);
         expect(db.query.mock.calls[1][1]).toEqual([REVIEW_STATUS_PENDING, 25, 0]);
+    });
+
+    test('prepara resumen FareHarbor seguro sin exponer normalized_data sensible', () => {
+        const normalizedData = crearNormalizedDataFareHarbor();
+        const fila = crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+            provider: 'fareharbor',
+            external_event_id: 'fh:evento-sintetico',
+            external_booking_id: 'fh-booking-sintetico',
+            normalized_data: normalizedData,
+        })), 10);
+
+        const listado = prepararEventoListadoIntegracion(fila);
+        const detalle = prepararEventoDetalleIntegracion(fila);
+        const serialized = JSON.stringify(listado);
+
+        expect(listado).not.toHaveProperty('normalized_data');
+        expect(listado).not.toHaveProperty('external_event_id');
+        expect(detalle).not.toHaveProperty('normalized_data');
+        expect(listado.fareharbor_summary).toEqual(expect.objectContaining({
+            booking: { display_id: 'FH-SYN-001', status: 'booked' },
+            fingerprint_present: true,
+        }));
+        expect(listado.fareharbor_summary.customers.by_category).toEqual([
+            { singular: 'Adult', plural: 'Adults', count: 2 },
+            { singular: 'Child', plural: 'Children', count: 1 },
+        ]);
+        expect(listado.fareharbor_summary.pickup).toEqual({
+            pickup_present: true,
+            lodging_present: false,
+            arrival_present: true,
+        });
+        expect(listado.fareharbor_summary.money).toEqual(expect.objectContaining({
+            invoice_price: '3000.00',
+            invoice_price_display: '$3,000.00 MXN',
+            receipt_total: '3000.00',
+            receipt_total_display: '$3,000.00 MXN',
+            amount_paid: '1500.00',
+            amount_paid_display: '$1,500.00 MXN',
+            currency: 'mxn',
+        }));
+        expect(serialized).not.toMatch(/persona@example\.test|5550000000|Persona Sintetica|NO EXPONER|Nota privada|payment-sintetico/);
+    });
+
+    test('construye fuente operativa agrupando FareHarbor por booking y dejando GYG sin cambios', () => {
+        const originalCutoff = process.env.INTEGRATION_DASHBOARD_CUTOFF_AT;
+        process.env.INTEGRATION_DASHBOARD_CUTOFF_AT = '2026-10-08T00:00:00.000Z';
+
+        try {
+            const fuente = construirFuenteEventosIntegracion({
+                review_status: REVIEW_STATUS_PENDING,
+                operational_only: true,
+            });
+
+            expect(fuente.prefix).toMatch(/ROW_NUMBER\(\) OVER/i);
+            expect(fuente.prefix).toMatch(/PARTITION BY provider, external_booking_id/i);
+            expect(fuente.prefix).toMatch(/operational_row_number = 1/i);
+            expect(fuente.orderBy).toBe('COALESCE(source_received_at, created_at) DESC, id_evento_integracion DESC');
+            expect(fuente.values[0]).toBe(REVIEW_STATUS_PENDING);
+            expect(fuente.values[1]).toEqual(new Date('2026-10-08T00:00:00.000Z'));
+        } finally {
+            if (originalCutoff === undefined) {
+                delete process.env.INTEGRATION_DASHBOARD_CUTOFF_AT;
+            } else {
+                process.env.INTEGRATION_DASHBOARD_CUTOFF_AT = originalCutoff;
+            }
+        }
+    });
+
+    test('fuente no operativa conserva consulta historica sin agrupacion FareHarbor', () => {
+        const fuente = construirFuenteEventosIntegracion({ review_status: REVIEW_STATUS_PENDING });
+
+        expect(fuente.prefix).toBe('');
+        expect(fuente.from).toMatch(/^eventos_integracion/);
+        expect(fuente.orderBy).toBe('created_at DESC, id_evento_integracion DESC');
+    });
+
+    test('lista operativa usa la misma fuente agrupada para count y pagina y devuelve summary FareHarbor', async () => {
+        const fila = crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+            provider: 'fareharbor',
+            external_event_id: 'fh:evento-sintetico',
+            external_booking_id: 'fh-booking-sintetico',
+            normalized_data: crearNormalizedDataFareHarbor(),
+        })), 22);
+        const db = {
+            query: jest.fn()
+                .mockResolvedValueOnce({ rows: [{ total: 1 }] })
+                .mockResolvedValueOnce({ rows: [fila] }),
+        };
+
+        const resultado = await listarEventosIntegracion({
+            review_status: REVIEW_STATUS_PENDING,
+            operational_only: true,
+        }, { page: 1, limit: 50 }, db);
+
+        expect(db.query.mock.calls[0][0]).toMatch(/eventos_operational/i);
+        expect(db.query.mock.calls[1][0]).toMatch(/eventos_operational/i);
+        expect(resultado.pagination.total).toBe(1);
+        expect(resultado.data).toHaveLength(1);
+        expect(resultado.data[0]).toHaveProperty('fareharbor_summary');
+        expect(resultado.data[0]).not.toHaveProperty('normalized_data');
+        expect(resultado.data[0]).not.toHaveProperty('external_event_id');
+    });
+
+    test('crearResumenFareHarborSeguro tolera datos ausentes', () => {
+        expect(crearResumenFareHarborSeguro({})).toEqual({
+            booking: { display_id: null, status: null },
+            availability: {
+                start_at: null,
+                end_at: null,
+                item: { pk: null, name: null, headline: null },
+            },
+            customers: { total: null, by_category: [] },
+            money: {
+                invoice_price: null,
+                invoice_price_display: null,
+                receipt_total: null,
+                receipt_total_display: null,
+                amount_paid: null,
+                amount_paid_display: null,
+                currency: null,
+            },
+            pickup: {
+                pickup_present: false,
+                lodging_present: false,
+                arrival_present: false,
+            },
+            fingerprint_present: false,
+        });
     });
 
     test('lista pendientes operativos aplicando corte configurable de Dashboard', async () => {
@@ -394,9 +634,158 @@ describe('eventosIntegracion.service', () => {
             }
         }
 
-        expect(db.query.mock.calls[0][0]).toMatch(/COALESCE\(source_received_at, created_at\) >= \$2/);
+        expect(db.query.mock.calls[0][0]).toMatch(/provider = 'fareharbor' OR COALESCE\(source_received_at, created_at\) >= \$2/);
         expect(db.query.mock.calls[0][1][0]).toBe(REVIEW_STATUS_APPROVED);
         expect(db.query.mock.calls[0][1][1]).toEqual(new Date('2026-10-08T00:00:00.000Z'));
+    });
+
+    test('operational devuelve un pendiente FareHarbor por booking usando snapshot mas reciente', async () => {
+        const filas = [
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:booking-a:old',
+                external_booking_id: 'fh-booking-a',
+                source_received_at: new Date('2027-03-10T10:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ fingerprint: 'old' }),
+            })), 1),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:booking-a:new',
+                external_booking_id: 'fh-booking-a',
+                source_received_at: new Date('2027-03-10T11:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({
+                    fingerprint: 'new',
+                    customers: { total: 4, by_category: [{ singular: 'Adult', plural: 'Adults', count: 4 }] },
+                }),
+            })), 2),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:booking-b:new',
+                external_booking_id: 'fh-booking-b',
+                source_received_at: new Date('2027-03-10T09:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ booking: { display_id: 'FH-SYN-002', status: 'booked' } }),
+            })), 3),
+        ];
+        const db = crearDbListadoOperativo(filas);
+
+        const resultado = await listarEventosIntegracion({
+            review_status: REVIEW_STATUS_PENDING,
+            operational_only: true,
+        }, { page: 1, limit: 50 }, db);
+
+        expect(resultado.pagination.total).toBe(2);
+        expect(resultado.data.map((evento) => evento.external_booking_id)).toEqual(['fh-booking-a', 'fh-booking-b']);
+        expect(resultado.data[0].id_evento_integracion).toBe(2);
+        expect(resultado.data[0].fareharbor_summary.customers.total).toBe(4);
+    });
+
+    test('operational FareHarbor empata por source_received_at usando mayor id_evento_integracion', async () => {
+        const sourceReceivedAt = new Date('2027-03-10T10:00:00.000Z');
+        const filas = [
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:tie:low',
+                external_booking_id: 'fh-booking-tie',
+                source_received_at: sourceReceivedAt,
+                normalized_data: crearNormalizedDataFareHarbor({ fingerprint: 'low' }),
+            })), 10),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:tie:high',
+                external_booking_id: 'fh-booking-tie',
+                source_received_at: sourceReceivedAt,
+                normalized_data: crearNormalizedDataFareHarbor({ fingerprint: 'high' }),
+            })), 11),
+        ];
+        const db = crearDbListadoOperativo(filas);
+
+        const resultado = await listarEventosIntegracion({
+            review_status: REVIEW_STATUS_PENDING,
+            operational_only: true,
+        }, { page: 1, limit: 50 }, db);
+
+        expect(resultado.pagination.total).toBe(1);
+        expect(resultado.data[0].id_evento_integracion).toBe(11);
+    });
+
+    test('operational aplica cutoff a GetYourGuide pero no oculta FareHarbor anterior', async () => {
+        const originalCutoff = process.env.INTEGRATION_DASHBOARD_CUTOFF_AT;
+        process.env.INTEGRATION_DASHBOARD_CUTOFF_AT = '2027-03-10T10:00:00.000Z';
+        const filas = [
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:old',
+                external_booking_id: 'fh-booking-old',
+                source_received_at: new Date('2027-03-09T09:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor(),
+            })), 1),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'getyourguide',
+                external_event_id: 'gyg-old',
+                external_booking_id: 'gyg-old',
+                source_received_at: new Date('2027-03-09T09:00:00.000Z'),
+            })), 2),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'getyourguide',
+                external_event_id: 'gyg-new',
+                external_booking_id: 'gyg-new',
+                source_received_at: new Date('2027-03-10T11:00:00.000Z'),
+            })), 3),
+        ];
+        const db = crearDbListadoOperativo(filas);
+
+        try {
+            const resultado = await listarEventosIntegracion({
+                review_status: REVIEW_STATUS_PENDING,
+                operational_only: true,
+            }, { page: 1, limit: 50 }, db);
+
+            expect(resultado.pagination.total).toBe(2);
+            expect(resultado.data.map((evento) => evento.external_booking_id)).toEqual(['gyg-new', 'fh-booking-old']);
+        } finally {
+            if (originalCutoff === undefined) {
+                delete process.env.INTEGRATION_DASHBOARD_CUTOFF_AT;
+            } else {
+                process.env.INTEGRATION_DASHBOARD_CUTOFF_AT = originalCutoff;
+            }
+        }
+    });
+
+    test('operational agrupa antes de paginar y conserva pagination.total agrupado', async () => {
+        const filas = [
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:a:old',
+                external_booking_id: 'fh-booking-a',
+                source_received_at: new Date('2027-03-10T09:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ fingerprint: 'old' }),
+            })), 1),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:a:new',
+                external_booking_id: 'fh-booking-a',
+                source_received_at: new Date('2027-03-10T12:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ fingerprint: 'new' }),
+            })), 2),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:b:new',
+                external_booking_id: 'fh-booking-b',
+                source_received_at: new Date('2027-03-10T11:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ booking: { display_id: 'FH-SYN-002', status: 'booked' } }),
+            })), 3),
+        ];
+        const db = crearDbListadoOperativo(filas);
+
+        const resultado = await listarEventosIntegracion({
+            review_status: REVIEW_STATUS_PENDING,
+            operational_only: true,
+        }, { page: 1, limit: 1 }, db);
+
+        expect(resultado.pagination).toEqual({ page: 1, limit: 1, total: 2, totalPages: 2 });
+        expect(resultado.data).toHaveLength(1);
+        expect(resultado.data[0].external_booking_id).toBe('fh-booking-a');
+        expect(resultado.data[0].id_evento_integracion).toBe(2);
     });
 
     test('lista aplicando filtros provider, event_type y urgent', async () => {
@@ -432,6 +821,26 @@ describe('eventosIntegracion.service', () => {
 
         expect(resultado.pagination).toEqual({ page: 2, limit: 50, total: 75, totalPages: 2 });
         expect(db.query.mock.calls[1][1]).toEqual([REVIEW_STATUS_PENDING, 50, 50]);
+    });
+
+    test('listado y detalle de Dashboard no emiten escrituras PostgreSQL', async () => {
+        const fila = crearFilaEvento(normalizarEventoIntegracion(crearEventoBase()), 1);
+        const db = {
+            query: jest.fn()
+                .mockResolvedValueOnce({ rows: [{ total: 1 }] })
+                .mockResolvedValueOnce({ rows: [fila] })
+                .mockResolvedValueOnce({ rows: [fila] }),
+        };
+
+        await listarEventosIntegracion({
+            review_status: REVIEW_STATUS_PENDING,
+            operational_only: true,
+        }, { page: 1, limit: 25 }, db);
+        await obtenerEventoIntegracion(1, db);
+
+        const consultas = db.query.mock.calls.map(([query]) => query);
+        expect(consultas.every((query) => /^\s*(WITH|SELECT)\b/i.test(query))).toBe(true);
+        expect(consultas.some((query) => /\b(INSERT|UPDATE|DELETE|TRUNCATE)\b/i.test(query))).toBe(false);
     });
 
     test('obtiene detalle existente e inexistente', async () => {

@@ -35,6 +35,7 @@ const columnasEventoIntegracion = `
 const columnasListadoEventoIntegracion = `
     id_evento_integracion,
     provider,
+    external_event_id,
     external_booking_id,
     event_type,
     urgent,
@@ -45,6 +46,7 @@ const columnasListadoEventoIntegracion = `
     reviewed_by,
     reviewed_at,
     review_note,
+    normalized_data,
     source_subject,
     source_received_at,
     created_at,
@@ -272,6 +274,102 @@ function obtenerDashboardCutoffAt(env = process.env) {
     return Number.isNaN(fecha.getTime()) ? null : fecha;
 }
 
+function tieneValorOperativo(value) {
+    if (value === undefined || value === null) {
+        return false;
+    }
+
+    if (Array.isArray(value)) {
+        return value.length > 0;
+    }
+
+    if (typeof value === 'object') {
+        return Object.keys(value).length > 0;
+    }
+
+    return String(value).trim() !== '';
+}
+
+function crearResumenFareHarborSeguro(normalizedData = {}) {
+    const booking = normalizedData.booking || {};
+    const availability = normalizedData.availability || {};
+    const item = availability.item || {};
+    const customers = normalizedData.customers || {};
+    const money = normalizedData.money || {};
+    const pickup = normalizedData.pickup || {};
+
+    return {
+        booking: {
+            display_id: booking.display_id || null,
+            status: booking.status || null,
+        },
+        availability: {
+            start_at: availability.start_at || null,
+            end_at: availability.end_at || null,
+            item: {
+                pk: item.pk || null,
+                name: item.name || null,
+                headline: item.headline || null,
+            },
+        },
+        customers: {
+            total: customers.total ?? null,
+            by_category: Array.isArray(customers.by_category)
+                ? customers.by_category.map((category) => ({
+                    singular: category?.singular || null,
+                    plural: category?.plural || null,
+                    count: category?.count ?? null,
+                }))
+                : [],
+        },
+        money: {
+            invoice_price: money.invoice_price ?? null,
+            invoice_price_display: money.invoice_price_display || null,
+            receipt_total: money.receipt_total ?? null,
+            receipt_total_display: money.receipt_total_display || null,
+            amount_paid: money.amount_paid ?? null,
+            amount_paid_display: money.amount_paid_display || null,
+            currency: money.currency || null,
+        },
+        pickup: {
+            pickup_present: tieneValorOperativo(pickup.pickup),
+            lodging_present: tieneValorOperativo(pickup.lodging),
+            arrival_present: tieneValorOperativo(pickup.arrival),
+        },
+        fingerprint_present: Boolean(normalizedData.fingerprint),
+    };
+}
+
+function prepararEventoListadoIntegracion(evento = {}) {
+    const {
+        normalized_data: normalizedData,
+        external_event_id: _externalEventId,
+        ...eventoSeguro
+    } = evento;
+
+    if (evento.provider === 'fareharbor') {
+        return {
+            ...eventoSeguro,
+            fareharbor_summary: crearResumenFareHarborSeguro(normalizedData || {}),
+        };
+    }
+
+    return eventoSeguro;
+}
+
+function prepararEventoDetalleIntegracion(evento = {}) {
+    if (!evento || evento.provider !== 'fareharbor') {
+        return evento;
+    }
+
+    const { normalized_data: normalizedData, ...eventoSeguro } = evento;
+
+    return {
+        ...eventoSeguro,
+        fareharbor_summary: crearResumenFareHarborSeguro(normalizedData || {}),
+    };
+}
+
 function construirFiltrosEventosIntegracion(filtros = {}) {
     const condiciones = [];
     const values = [];
@@ -301,13 +399,55 @@ function construirFiltrosEventosIntegracion(filtros = {}) {
 
         if (cutoffAt) {
             values.push(cutoffAt);
-            condiciones.push(`COALESCE(source_received_at, created_at) >= $${values.length}`);
+            condiciones.push(`(provider = 'fareharbor' OR COALESCE(source_received_at, created_at) >= $${values.length})`);
         }
     }
 
     return {
         where: condiciones.length > 0 ? `WHERE ${condiciones.join('\n            AND ')}` : '',
         values,
+    };
+}
+
+function construirFuenteEventosIntegracion(filtros = {}) {
+    const { where, values } = construirFiltrosEventosIntegracion(filtros);
+
+    if (!filtros.operational_only) {
+        return {
+            prefix: '',
+            from: `eventos_integracion ${where}`,
+            values,
+            orderBy: 'created_at DESC, id_evento_integracion DESC',
+        };
+    }
+
+    return {
+        prefix: `
+            WITH eventos_filtrados AS (
+                SELECT
+                    ${columnasEventoIntegracion},
+                    CASE
+                        WHEN provider = 'fareharbor' THEN ROW_NUMBER() OVER (
+                            PARTITION BY provider, external_booking_id
+                            ORDER BY
+                                COALESCE(source_received_at, created_at) DESC,
+                                id_evento_integracion DESC
+                        )
+                        ELSE 1
+                    END AS operational_row_number
+                FROM eventos_integracion
+                ${where}
+            ),
+            eventos_operational AS (
+                SELECT *
+                FROM eventos_filtrados
+                WHERE provider <> 'fareharbor'
+                   OR operational_row_number = 1
+            )
+        `,
+        from: 'eventos_operational',
+        values,
+        orderBy: 'COALESCE(source_received_at, created_at) DESC, id_evento_integracion DESC',
     };
 }
 
@@ -324,14 +464,14 @@ function construirRespuestaPaginadaEventosIntegracion({ data, page, limit, total
 }
 
 async function contarEventosIntegracion(filtros = {}, db = pool) {
-    const { where, values } = construirFiltrosEventosIntegracion(filtros);
+    const fuente = construirFuenteEventosIntegracion(filtros);
     const result = await db.query(
         `
+            ${fuente.prefix}
             SELECT COUNT(*)::int AS total
-            FROM eventos_integracion
-            ${where}
+            FROM ${fuente.from}
         `,
-        values
+        fuente.values
     );
 
     return Number(result.rows[0]?.total) || 0;
@@ -351,17 +491,17 @@ async function listarEventosIntegracion(filtros = {}, paginacion = {}, db = pool
         });
     }
 
-    const { where, values } = construirFiltrosEventosIntegracion(filtros);
-    const queryValues = [...values, limit, (page - 1) * limit];
+    const fuente = construirFuenteEventosIntegracion(filtros);
+    const queryValues = [...fuente.values, limit, (page - 1) * limit];
     const limitParam = queryValues.length - 1;
     const offsetParam = queryValues.length;
     const result = await db.query(
         `
+            ${fuente.prefix}
             SELECT
                 ${columnasListadoEventoIntegracion}
-            FROM eventos_integracion
-            ${where}
-            ORDER BY created_at DESC, id_evento_integracion DESC
+            FROM ${fuente.from}
+            ORDER BY ${fuente.orderBy}
             LIMIT $${limitParam}
             OFFSET $${offsetParam}
         `,
@@ -369,7 +509,7 @@ async function listarEventosIntegracion(filtros = {}, paginacion = {}, db = pool
     );
 
     return construirRespuestaPaginadaEventosIntegracion({
-        data: result.rows,
+        data: result.rows.map(prepararEventoListadoIntegracion),
         page,
         limit,
         total,
@@ -388,7 +528,7 @@ async function obtenerEventoIntegracion(idEventoIntegracion, db = pool) {
         [idEventoIntegracion]
     );
 
-    return result.rows[0] || null;
+    return prepararEventoDetalleIntegracion(result.rows[0] || null);
 }
 
 function obtenerReviewStatusDesdeAccion(accion) {
@@ -458,13 +598,17 @@ module.exports = {
     REVIEW_STATUS_DISMISSED,
     REVIEW_STATUS_PENDING,
     UNIQUE_EVENT_CONSTRAINT,
+    construirFuenteEventosIntegracion,
     construirValoresInsertEventoIntegracion,
+    crearResumenFareHarborSeguro,
     esDuplicadoEventoIntegracion,
     limpiarSecretos,
     listarEventosIntegracion,
     normalizarEventoIntegracion,
     obtenerDashboardCutoffAt,
     obtenerEventoIntegracion,
+    prepararEventoDetalleIntegracion,
+    prepararEventoListadoIntegracion,
     registrarEventoIntegracion,
     revisarEventoIntegracion,
 };

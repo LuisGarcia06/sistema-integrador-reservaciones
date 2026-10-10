@@ -1,6 +1,7 @@
 const {
     FareHarborPayloadInvalidoError,
     crearPayloadFingerprint,
+    crearSnapshotFingerprintFareHarbor,
     normalizarBooking,
     normalizarPayloadWebhookFareHarbor
 } = require('../integrations/fareharbor/fareharbor.mapper');
@@ -74,8 +75,11 @@ describe('fareharbor.mapper', () => {
                 },
                 money: {
                     invoice_price: '100.00',
+                    invoice_price_display: '$100.00 MXN',
                     receipt_total: '100.00',
+                    receipt_total_display: '$100.00 MXN',
                     amount_paid: '100.00',
+                    amount_paid_display: '$100.00 MXN',
                     currency: 'mxn'
                 },
                 fingerprint: expect.any(String)
@@ -263,6 +267,67 @@ describe('fareharbor.mapper', () => {
         }));
 
         expect(base.payload_fingerprint).toBe(cambiado.payload_fingerprint);
+    });
+
+    test('campos display de dinero no cambian fingerprint si montos canonicos son iguales', () => {
+        const base = normalizarPayloadWebhookFareHarbor(crearPayloadWebhookFareHarborSanitizado({
+            invoice_price: '376000',
+            invoice_price_display: '$3,760.00 MXN',
+            receipt_total: '376000',
+            receipt_total_display: '$3,760.00 MXN',
+            amount_paid: '376000',
+            amount_paid_display: '$3,760.00 MXN'
+        }));
+        const cambiado = normalizarPayloadWebhookFareHarbor(crearPayloadWebhookFareHarborSanitizado({
+            invoice_price: '376000',
+            invoice_price_display: 'MXN 3,760.00',
+            receipt_total: '376000',
+            receipt_total_display: 'MXN 3,760.00',
+            amount_paid: '376000',
+            amount_paid_display: 'MXN 3,760.00'
+        }));
+
+        expect(base.normalized_data.money).toEqual(expect.objectContaining({
+            invoice_price_display: '$3,760.00 MXN',
+            receipt_total_display: '$3,760.00 MXN',
+            amount_paid_display: '$3,760.00 MXN'
+        }));
+        expect(base.payload_fingerprint).toBe(cambiado.payload_fingerprint);
+        expect(base.external_event_id).toBe(cambiado.external_event_id);
+    });
+
+    test('cambio real en receipt_total numerico cambia fingerprint', () => {
+        const base = normalizarPayloadWebhookFareHarbor(crearPayloadWebhookFareHarborSanitizado({
+            receipt_total: '376000',
+            receipt_total_display: '$3,760.00 MXN'
+        }));
+        const cambiado = normalizarPayloadWebhookFareHarbor(crearPayloadWebhookFareHarborSanitizado({
+            receipt_total: '377000',
+            receipt_total_display: '$3,760.00 MXN'
+        }));
+
+        expect(base.payload_fingerprint).not.toBe(cambiado.payload_fingerprint);
+        expect(base.external_event_id).not.toBe(cambiado.external_event_id);
+    });
+
+    test('snapshot canonico para fingerprint excluye solamente display de dinero', () => {
+        const snapshot = normalizarBooking(crearPayloadWebhookFareHarborSanitizado({
+            invoice_price_display: '$100.00 MXN',
+            receipt_total_display: '$100.00 MXN',
+            amount_paid_display: '$100.00 MXN'
+        }).booking);
+        const canonico = crearSnapshotFingerprintFareHarbor(snapshot);
+
+        expect(snapshot.money.invoice_price_display).toBe('$100.00 MXN');
+        expect(canonico.money).not.toHaveProperty('invoice_price_display');
+        expect(canonico.money).not.toHaveProperty('receipt_total_display');
+        expect(canonico.money).not.toHaveProperty('amount_paid_display');
+        expect(canonico.money).toEqual({
+            invoice_price: '100.00',
+            receipt_total: '100.00',
+            amount_paid: '100.00',
+            currency: 'mxn'
+        });
     });
 
     test('payments irrelevantes no cambian fingerprint', () => {

@@ -439,6 +439,74 @@ describe('eventosIntegracion.routes', () => {
 
         expect(response.status).toBe(409);
     });
+
+    test('detalle FareHarbor es read-only y no genera preview GetYourGuide', async () => {
+        eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
+            provider: 'fareharbor',
+            normalized_data: undefined,
+            fareharbor_summary: {
+                booking: { display_id: 'FH-SYN-001', status: 'booked' },
+            },
+        }));
+
+        const response = await request(app)
+            .get('/api/eventos-integracion/1')
+            .set('Authorization', `Bearer ${tokenConsulta}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.datos.provider).toBe('fareharbor');
+        expect(response.body.datos).toHaveProperty('fareharbor_summary');
+        expect(response.body.datos).not.toHaveProperty('application_preview');
+        expect(obtenerPreviewNuevaReservaGetYourGuideConDb).not.toHaveBeenCalled();
+    });
+
+    test('diff FareHarbor devuelve 409 sin llamar servicio GetYourGuide', async () => {
+        eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
+            provider: 'fareharbor',
+            event_type: 'modification',
+            fareharbor_summary: {},
+        }));
+
+        const response = await request(app)
+            .get('/api/eventos-integracion/1/diff')
+            .set('Authorization', `Bearer ${tokenConsulta}`);
+
+        expect(response.status).toBe(409);
+        expect(response.body.mensaje).toBe('La aplicacion de eventos FareHarbor aun no esta habilitada.');
+        expect(obtenerDiffModificationGetYourGuide).not.toHaveBeenCalled();
+    });
+
+    test('revision FareHarbor devuelve 409 sin modificar review_status', async () => {
+        eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
+            provider: 'fareharbor',
+            fareharbor_summary: {},
+        }));
+
+        const response = await request(app)
+            .patch('/api/eventos-integracion/1/revision')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ accion: 'approve' });
+
+        expect(response.status).toBe(409);
+        expect(response.body.mensaje).toBe('La aplicacion de eventos FareHarbor aun no esta habilitada.');
+        expect(eventosIntegracionService.revisarEventoIntegracion).not.toHaveBeenCalled();
+    });
+
+    test('aplicar FareHarbor devuelve 409 sin crear reservacion', async () => {
+        eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
+            provider: 'fareharbor',
+            fareharbor_summary: {},
+        }));
+
+        const response = await request(app)
+            .post('/api/eventos-integracion/1/aplicar')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: { pickup_time: '08:30' } });
+
+        expect(response.status).toBe(409);
+        expect(response.body.mensaje).toBe('La aplicacion de eventos FareHarbor aun no esta habilitada.');
+        expect(aplicarNuevaReservaGetYourGuide).not.toHaveBeenCalled();
+    });
 });
 
 

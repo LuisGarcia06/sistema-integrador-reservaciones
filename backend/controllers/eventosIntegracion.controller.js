@@ -4,6 +4,15 @@ const {
     obtenerPreviewNuevaReservaGetYourGuideConDb,
 } = require('../integrations/getyourguide/getyourguideReservationApplication.service');
 const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
+const FAREHARBOR_PROVIDER = 'fareharbor';
+const FAREHARBOR_READONLY_MESSAGE = 'La aplicacion de eventos FareHarbor aun no esta habilitada.';
+
+const esEventoFareHarbor = (evento) => evento?.provider === FAREHARBOR_PROVIDER;
+
+const responderFareHarborNoHabilitado = (res) => res.status(409).json({
+    mensaje: FAREHARBOR_READONLY_MESSAGE,
+});
+
 const {
     validarAplicacionEventoIntegracion,
     validarFiltrosEventosIntegracion,
@@ -87,16 +96,28 @@ const revisarEventoIntegracion = async (req, res) => {
         });
     }
 
-    const { errores, revision } = validarRevisionEventoIntegracion(req.body || {});
-
-    if (errores.length > 0) {
-        return res.status(400).json({
-            mensaje: 'Datos invalidos',
-            errores,
-        });
-    }
-
     try {
+        const evento = await eventosIntegracionService.obtenerEventoIntegracion(idEventoIntegracion);
+
+        if (!evento) {
+            return res.status(404).json({
+                mensaje: 'Evento de integracion no encontrado',
+            });
+        }
+
+        if (esEventoFareHarbor(evento)) {
+            return responderFareHarborNoHabilitado(res);
+        }
+
+        const { errores, revision } = validarRevisionEventoIntegracion(req.body || {});
+
+        if (errores.length > 0) {
+            return res.status(400).json({
+                mensaje: 'Datos invalidos',
+                errores,
+            });
+        }
+
         const resultado = await eventosIntegracionService.revisarEventoIntegracion({
             idEventoIntegracion,
             accion: revision.accion,
@@ -140,6 +161,18 @@ const obtenerDiffEventoIntegracion = async (req, res) => {
     }
 
     try {
+        const evento = await eventosIntegracionService.obtenerEventoIntegracion(idEventoIntegracion);
+
+        if (!evento) {
+            return res.status(404).json({
+                mensaje: 'Evento de integracion no encontrado',
+            });
+        }
+
+        if (esEventoFareHarbor(evento)) {
+            return responderFareHarborNoHabilitado(res);
+        }
+
         const resultado = await obtenerDiffModificationGetYourGuide(idEventoIntegracion);
 
         if (resultado.tipo === 'no_encontrado') {
@@ -176,16 +209,28 @@ const aplicarEventoIntegracion = async (req, res) => {
         });
     }
 
-    const { errores, aplicacion } = validarAplicacionEventoIntegracion(req.body || {});
-
-    if (errores.length > 0) {
-        return res.status(400).json({
-            mensaje: 'Datos invalidos',
-            errores,
-        });
-    }
-
     try {
+        const evento = await eventosIntegracionService.obtenerEventoIntegracion(idEventoIntegracion);
+
+        if (!evento) {
+            return res.status(404).json({
+                mensaje: 'Evento de integracion no encontrado',
+            });
+        }
+
+        if (esEventoFareHarbor(evento)) {
+            return responderFareHarborNoHabilitado(res);
+        }
+
+        const { errores, aplicacion } = validarAplicacionEventoIntegracion(req.body || {});
+
+        if (errores.length > 0) {
+            return res.status(400).json({
+                mensaje: 'Datos invalidos',
+                errores,
+            });
+        }
+
         const resultado = await aplicarNuevaReservaGetYourGuide(
             idEventoIntegracion,
             req.usuario.id_usuario,

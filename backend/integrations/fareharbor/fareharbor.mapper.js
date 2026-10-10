@@ -185,16 +185,34 @@ const normalizarBooking = (booking = {}) => {
         },
         money: {
             invoice_price: normalizarTexto(booking.invoice_price),
+            invoice_price_display: normalizarTexto(booking.invoice_price_display),
             receipt_total: normalizarTexto(booking.receipt_total),
+            receipt_total_display: normalizarTexto(booking.receipt_total_display),
             amount_paid: normalizarTexto(booking.amount_paid),
+            amount_paid_display: normalizarTexto(booking.amount_paid_display),
             currency: normalizarTexto(company.currency)
         }
     };
 };
 
+const crearSnapshotFingerprintFareHarbor = (snapshot = {}) => {
+    const money = esObjetoPlano(snapshot.money) ? snapshot.money : {};
+    const {
+        invoice_price_display: _invoicePriceDisplay,
+        receipt_total_display: _receiptTotalDisplay,
+        amount_paid_display: _amountPaidDisplay,
+        ...moneyCanonico
+    } = money;
+
+    return {
+        ...snapshot,
+        money: moneyCanonico
+    };
+};
+
 const crearNormalizedDataFareHarbor = (booking = {}) => {
     const snapshot = normalizarBooking(booking);
-    const fingerprint = crearPayloadFingerprint(snapshot);
+    const fingerprint = crearPayloadFingerprint(crearSnapshotFingerprintFareHarbor(snapshot));
 
     return {
         ...snapshot,
@@ -235,6 +253,7 @@ module.exports = {
     crearExternalEventIdFareHarbor,
     crearNormalizedDataFareHarbor,
     crearPayloadFingerprint,
+    crearSnapshotFingerprintFareHarbor,
     normalizarBooking,
     normalizarPayloadWebhookFareHarbor,
     ordenarObjeto
