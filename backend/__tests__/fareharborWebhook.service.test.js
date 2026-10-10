@@ -1,7 +1,10 @@
 const {
+    EVENT_TYPE_MODIFICATION,
+    EVENT_TYPE_NEW_BOOKING,
     crearResumenWebhookFareHarborSanitizado,
     extraerBookingUuid,
     obtenerBookingActualizado,
+    persistirWebhookFareHarbor,
     procesarPayloadWebhookFareHarbor,
     registrarWebhookRecibido,
     validarWebhookKey
@@ -87,6 +90,91 @@ const crearPayloadFareHarborConPii = () => ({
         internal_secret: 'super_secret_test_value'
     }
 });
+
+function crearDbMemoria({ conLink = false } = {}) {
+    const state = {
+        eventos: [],
+        links: conLink
+            ? [{
+                id_reserva_integracion_link: 1,
+                provider: 'fareharbor',
+                external_booking_id: '11111111-2222-4333-8444-555555555555'
+            }]
+            : []
+    };
+    const db = {
+        state,
+        query: jest.fn(async (query, values = []) => {
+            if (/FROM\s+reservas_integracion_link/i.test(query)) {
+                const [provider, externalBookingId] = values;
+
+                return {
+                    rows: state.links.filter((link) => (
+                        link.provider === provider
+                        && link.external_booking_id === externalBookingId
+                    ))
+                };
+            }
+
+            if (/SELECT[\s\S]+FROM eventos_integracion[\s\S]+WHERE provider = \$1[\s\S]+external_event_id = \$2/i.test(query)) {
+                const [provider, externalEventId] = values;
+
+                return {
+                    rows: state.eventos.filter((evento) => (
+                        evento.provider === provider
+                        && evento.external_event_id === externalEventId
+                    ))
+                };
+            }
+
+            if (/INSERT INTO eventos_integracion/i.test(query)) {
+                const [
+                    provider,
+                    externalEventId,
+                    externalThreadId,
+                    externalBookingId,
+                    eventType,
+                    urgent,
+                    reviewStatus,
+                    normalizedData,
+                    sourceSubject,
+                    sourceReceivedAt
+                ] = values;
+                const existente = state.eventos.find((evento) => (
+                    evento.provider === provider
+                    && evento.external_event_id === externalEventId
+                ));
+
+                if (existente) {
+                    return { rows: [] };
+                }
+
+                const evento = {
+                    id_evento_integracion: state.eventos.length + 1,
+                    provider,
+                    external_event_id: externalEventId,
+                    external_thread_id: externalThreadId,
+                    external_booking_id: externalBookingId,
+                    event_type: eventType,
+                    urgent,
+                    review_status: reviewStatus,
+                    application_status: 'not_applied',
+                    normalized_data: JSON.parse(normalizedData),
+                    source_subject: sourceSubject,
+                    source_received_at: sourceReceivedAt
+                };
+
+                state.eventos.push(evento);
+
+                return { rows: [evento] };
+            }
+
+            throw new Error(`Query no soportado: ${query}`);
+        })
+    };
+
+    return db;
+}
 
 describe('fareharborWebhook.service', () => {
     test('validarWebhookKey rechaza si el secreto no esta configurado', () => {
@@ -234,6 +322,60 @@ describe('fareharborWebhook.service', () => {
         expect(creado.status).toBe('booked');
         expect(cancelado.status).toBe('cancelled');
         expect(creado.payload_fingerprint).not.toBe(cancelado.payload_fingerprint);
+    });
+
+    test('persistirWebhookFareHarbor inserta new_booking cuando no existe link', async () => {
+        const db = crearDbMemoria();
+        const sourceReceivedAt = new Date('2026-10-10T15:00:00.000Z');
+
+        const resultado = await persistirWebhookFareHarbor(crearPayloadWebhookFareHarborSanitizado(), {
+            db,
+            sourceReceivedAt
+        });
+
+        expect(resultado.duplicate).toBe(false);
+        expect(resultado.event_type).toBe(EVENT_TYPE_NEW_BOOKING);
+        expect(db.state.eventos).toHaveLength(1);
+        expect(db.state.eventos[0]).toMatchObject({
+            provider: 'fareharbor',
+            event_type: EVENT_TYPE_NEW_BOOKING,
+            external_booking_id: '11111111-2222-4333-8444-555555555555',
+            review_status: 'pending_review',
+            application_status: 'not_applied'
+        });
+        expect(db.state.eventos[0].source_received_at).toBe(sourceReceivedAt);
+    });
+
+    test('persistirWebhookFareHarbor trata mismo snapshot como duplicado', async () => {
+        const db = crearDbMemoria();
+        const payload = crearPayloadWebhookFareHarborSanitizado();
+
+        await persistirWebhookFareHarbor(payload, { db });
+        const duplicado = await persistirWebhookFareHarbor(payload, { db });
+
+        expect(duplicado.duplicate).toBe(true);
+        expect(db.state.eventos).toHaveLength(1);
+    });
+
+    test('persistirWebhookFareHarbor permite snapshots distintos del mismo booking', async () => {
+        const db = crearDbMemoria();
+
+        await persistirWebhookFareHarbor(crearPayloadWebhookFareHarborSanitizado(), { db });
+        await persistirWebhookFareHarbor(crearPayloadWebhookFareHarborSanitizado({
+            customer_count: 3
+        }), { db });
+
+        expect(db.state.eventos).toHaveLength(2);
+        expect(db.state.eventos[0].external_event_id).not.toBe(db.state.eventos[1].external_event_id);
+    });
+
+    test('persistirWebhookFareHarbor clasifica modification cuando existe link', async () => {
+        const db = crearDbMemoria({ conLink: true });
+
+        const resultado = await persistirWebhookFareHarbor(crearPayloadWebhookFareHarborSanitizado(), { db });
+
+        expect(resultado.event_type).toBe(EVENT_TYPE_MODIFICATION);
+        expect(db.state.eventos[0].event_type).toBe(EVENT_TYPE_MODIFICATION);
     });
 
     test('extraerBookingUuid obtiene el UUID del booking recibido', () => {

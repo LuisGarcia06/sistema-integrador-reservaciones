@@ -1,7 +1,14 @@
 const fareharborClient = require('./fareharbor.client');
+const pool = require('../../config/database');
+const eventosIntegracionService = require('../../services/eventosIntegracion.service');
 const {
+    FareHarborPayloadInvalidoError,
+    PROVIDER,
     normalizarPayloadWebhookFareHarbor
 } = require('./fareharbor.mapper');
+
+const EVENT_TYPE_NEW_BOOKING = 'new_booking';
+const EVENT_TYPE_MODIFICATION = 'modification';
 
 const obtenerWebhookSecret = (env = process.env) => {
     const secret = env.FAREHARBOR_WEBHOOK_SECRET;
@@ -171,6 +178,96 @@ const obtenerBookingActualizado = async ({
     return client.obtenerReserva(shortname, bookingUuid);
 };
 
+const ejecutarEnTransaccion = async (db, callback) => {
+    if (!db.connect) {
+        return callback(db);
+    }
+
+    const client = await db.connect();
+
+    try {
+        await client.query('BEGIN');
+        const resultado = await callback(client);
+        await client.query('COMMIT');
+        return resultado;
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+};
+
+const obtenerReservaIntegracionLink = async (externalBookingId, db) => {
+    const result = await db.query(
+        `
+            SELECT id_reserva_integracion_link
+            FROM reservas_integracion_link
+            WHERE provider = $1
+              AND external_booking_id = $2
+            LIMIT 1
+        `,
+        [PROVIDER, externalBookingId]
+    );
+
+    return result.rows[0] || null;
+};
+
+const clasificarEventoFareHarbor = async (externalBookingId, db) => {
+    const link = await obtenerReservaIntegracionLink(externalBookingId, db);
+
+    return link ? EVENT_TYPE_MODIFICATION : EVENT_TYPE_NEW_BOOKING;
+};
+
+const crearSourceSubjectFareHarbor = (eventoNormalizado) => {
+    const displayId = eventoNormalizado.normalized_data?.booking?.display_id;
+    const identificador = displayId || eventoNormalizado.external_booking_id;
+
+    return identificador ? `FareHarbor booking ${identificador}` : 'FareHarbor booking';
+};
+
+const construirEventoIntegracionFareHarbor = async ({
+    payload,
+    db,
+    sourceReceivedAt = new Date()
+}) => {
+    const eventoNormalizado = normalizarPayloadWebhookFareHarbor(payload);
+    const eventType = await clasificarEventoFareHarbor(eventoNormalizado.external_booking_id, db);
+
+    return {
+        provider: PROVIDER,
+        external_event_id: eventoNormalizado.external_event_id,
+        external_booking_id: eventoNormalizado.external_booking_id,
+        event_type: eventType,
+        urgent: false,
+        normalized_data: eventoNormalizado.normalized_data,
+        source_subject: crearSourceSubjectFareHarbor(eventoNormalizado),
+        source_received_at: sourceReceivedAt
+    };
+};
+
+const persistirWebhookFareHarbor = async (payload = {}, {
+    db = pool,
+    sourceReceivedAt = new Date()
+} = {}) => ejecutarEnTransaccion(db, async (tx) => {
+    const evento = await construirEventoIntegracionFareHarbor({
+        payload,
+        db: tx,
+        sourceReceivedAt
+    });
+
+    const resultado = await eventosIntegracionService.registrarEventoIntegracion(evento, tx);
+
+    return {
+        duplicate: resultado.duplicate,
+        event: resultado.event,
+        external_event_id: evento.external_event_id,
+        external_booking_id: evento.external_booking_id,
+        event_type: evento.event_type,
+        fingerprint: evento.normalized_data.fingerprint
+    };
+});
+
 const procesarPayloadWebhookFareHarbor = (payload = {}) => {
     const eventoNormalizado = normalizarPayloadWebhookFareHarbor(payload);
 
@@ -188,10 +285,16 @@ const procesarPayloadWebhookFareHarbor = (payload = {}) => {
 };
 
 module.exports = {
+    EVENT_TYPE_MODIFICATION,
+    EVENT_TYPE_NEW_BOOKING,
+    FareHarborPayloadInvalidoError,
+    clasificarEventoFareHarbor,
+    construirEventoIntegracionFareHarbor,
     crearResumenWebhookFareHarborSanitizado,
     esPayloadObjeto,
     extraerBookingUuid,
     obtenerBookingActualizado,
+    persistirWebhookFareHarbor,
     procesarPayloadWebhookFareHarbor,
     registrarWebhookRecibido,
     validarWebhookKey
