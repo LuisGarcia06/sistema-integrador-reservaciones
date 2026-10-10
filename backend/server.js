@@ -38,18 +38,24 @@ const CONTENT_SECURITY_POLICY = [
     "frame-ancestors 'none'",
     "form-action 'self'"
 ].join('; ');
+const fareharborWebhookJsonParser = express.json({ limit: '256kb' });
 
 app.disable('x-powered-by');
 
-app.use(express.json());
-
-app.use((req, res, next) => {
+const aplicarHeadersSeguridad = (req, res, next) => {
     res.setHeader('X-Content-Type-Options', 'nosniff');
     res.setHeader('Referrer-Policy', 'no-referrer');
     res.setHeader('X-Frame-Options', 'DENY');
     res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
     next();
-});
+};
+
+app.use('/api/integraciones/fareharbor/webhook', aplicarHeadersSeguridad, fareharborWebhookJsonParser, fareharborWebhookRoutes);
+app.use('/api/webhooks/fareharbor', aplicarHeadersSeguridad, fareharborWebhookJsonParser, fareharborWebhookRoutes);
+
+app.use(express.json());
+
+app.use(aplicarHeadersSeguridad);
 
 app.use('/app', (req, res, next) => {
     res.setHeader('Content-Security-Policy', CONTENT_SECURITY_POLICY);
@@ -79,8 +85,6 @@ app.use('/api/transportes', transportesRoutes);
 app.use('/api/tours', toursRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/vehiculos', vehiculosRoutes);
-app.use('/api/integraciones/fareharbor/webhook', fareharborWebhookRoutes);
-app.use('/api/webhooks/fareharbor', fareharborWebhookRoutes);
 app.use('/api/webhooks/whatsapp', whatsappRoutes);
 
 app.get('/', (req, res) => {
