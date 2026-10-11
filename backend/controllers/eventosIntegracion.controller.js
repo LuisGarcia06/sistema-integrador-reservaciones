@@ -8,6 +8,7 @@ const {
     construirPreviewNuevaReservaFareHarborConDb,
 } = require('../integrations/fareharbor/fareharborApplication.service');
 const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
+const { obtenerDiffModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationDiff.service');
 const { ROLES } = require('../constants/roles');
 const FAREHARBOR_PROVIDER = 'fareharbor';
 const FAREHARBOR_READONLY_MESSAGE = 'La aplicacion de eventos FareHarbor aun no esta habilitada.';
@@ -191,7 +192,28 @@ const obtenerDiffEventoIntegracion = async (req, res) => {
         }
 
         if (esEventoFareHarbor(evento)) {
-            return responderFareHarborNoHabilitado(res);
+            if (evento.event_type !== 'modification') {
+                return responderFareHarborNoHabilitado(res);
+            }
+
+            const resultadoFareHarbor = await obtenerDiffModificationFareHarbor(idEventoIntegracion);
+
+            if (resultadoFareHarbor.tipo === 'no_encontrado') {
+                return res.status(404).json({
+                    mensaje: 'Evento de integracion no encontrado',
+                });
+            }
+
+            if (resultadoFareHarbor.tipo === 'provider_no_soportado' || resultadoFareHarbor.tipo === 'event_type_no_soportado') {
+                return res.status(409).json({
+                    mensaje: 'El diff de integracion no esta soportado para este evento',
+                });
+            }
+
+            return res.status(200).json({
+                mensaje: 'Diff de evento de integracion consultado correctamente',
+                datos: resultadoFareHarbor.fareharbor_modification_diff,
+            });
         }
 
         const resultado = await obtenerDiffModificationGetYourGuide(idEventoIntegracion);

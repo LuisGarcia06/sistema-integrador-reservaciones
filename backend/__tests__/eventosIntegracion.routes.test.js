@@ -28,6 +28,10 @@ jest.mock('../integrations/getyourguide/getyourguideModificationDiff.service', (
     obtenerDiffModificationGetYourGuide: jest.fn(),
 }));
 
+jest.mock('../integrations/fareharbor/fareharborModificationDiff.service', () => ({
+    obtenerDiffModificationFareHarbor: jest.fn(),
+}));
+
 jest.mock('../integrations/fareharbor/fareharborApplication.service', () => ({
     aplicarNuevaReservaFareHarbor: jest.fn(),
     construirPreviewNuevaReservaFareHarborConDb: jest.fn(),
@@ -39,6 +43,7 @@ const {
     obtenerPreviewNuevaReservaGetYourGuideConDb,
 } = require('../integrations/getyourguide/getyourguideReservationApplication.service');
 const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
+const { obtenerDiffModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationDiff.service');
 const {
     aplicarNuevaReservaFareHarbor,
     construirPreviewNuevaReservaFareHarborConDb,
@@ -171,6 +176,28 @@ describe('eventosIntegracion.routes', () => {
                     pax: { actual: 2, nuevo: 3, cambio: true },
                 },
                 warnings: [],
+            },
+        });
+        obtenerDiffModificationFareHarbor.mockResolvedValue({
+            tipo: 'preview',
+            fareharbor_modification_diff: {
+                external_booking_id: 'fh-booking-sintetico',
+                id_reservacion: 20,
+                baseline_status: 'found',
+                changes: [
+                    {
+                        field: 'pax',
+                        baseline_external: 2,
+                        internal_current: 2,
+                        fareharbor_new: 3,
+                        external_changed: true,
+                        internal_diverged_from_baseline: false,
+                        conflict: false,
+                    },
+                ],
+                blocking_issues: [],
+                warnings: [],
+                actionable: false,
             },
         });
         eventosIntegracionService.revisarEventoIntegracion.mockResolvedValue({
@@ -530,7 +557,7 @@ describe('eventosIntegracion.routes', () => {
         expect(construirPreviewNuevaReservaFareHarborConDb).not.toHaveBeenCalled();
     });
 
-    test('diff FareHarbor devuelve 409 sin llamar servicio GetYourGuide', async () => {
+    test('diff FareHarbor modification devuelve preview read-only sin llamar servicio GetYourGuide', async () => {
         eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
             provider: 'fareharbor',
             event_type: 'modification',
@@ -541,8 +568,13 @@ describe('eventosIntegracion.routes', () => {
             .get('/api/eventos-integracion/1/diff')
             .set('Authorization', `Bearer ${tokenConsulta}`);
 
-        expect(response.status).toBe(409);
-        expect(response.body.mensaje).toBe('La aplicacion de eventos FareHarbor aun no esta habilitada.');
+        expect(response.status).toBe(200);
+        expect(response.body.datos).toEqual(expect.objectContaining({
+            external_booking_id: 'fh-booking-sintetico',
+            id_reservacion: 20,
+            actionable: false,
+        }));
+        expect(obtenerDiffModificationFareHarbor).toHaveBeenCalledWith(1);
         expect(obtenerDiffModificationGetYourGuide).not.toHaveBeenCalled();
     });
 
