@@ -35,8 +35,13 @@
     customer_name: "Cliente",
     nombre_cliente: "Nombre",
     customer_phone: "Telefono",
+    telefono_cliente: "Teléfono",
     ninos: "Niños",
     price: "Precio",
+    precio_total: "Precio total",
+    deposito: "Depósito",
+    saldo: "Balance pendiente",
+    money_group: "Datos de pago",
     id_pais: "Pais",
     motivo_cancelacion: "Motivo de cancelación"
   };
@@ -339,6 +344,10 @@
     return Boolean(evento && evento.provider === "fareharbor");
   }
 
+  function isFareHarborModificationEvent(evento) {
+    return Boolean(isFareHarborEvent(evento) && evento.event_type === "modification");
+  }
+
   function getFareHarborSummary(evento) {
     return getObject(evento && evento.fareharbor_summary);
   }
@@ -370,6 +379,20 @@
   function getFareHarborDisplayId(evento) {
     const booking = getFareHarborBooking(evento);
     return booking.display_id || (evento && evento.external_booking_id) || EMPTY_VALUE;
+  }
+
+  function maskExternalBookingId(value) {
+    const text = String(value || "").trim();
+
+    if (!text) {
+      return EMPTY_VALUE;
+    }
+
+    if (text.length <= 10) {
+      return text;
+    }
+
+    return text.slice(0, 6) + "…" + text.slice(-4);
   }
 
   function formatFareHarborPresence(value) {
@@ -801,14 +824,20 @@
     const item = getFareHarborItem(evento);
     const customers = getFareHarborCustomers(evento);
     const money = getFareHarborMoney(evento);
+    const eventTypeLabel = isFareHarborModificationEvent(evento)
+      ? "Modificación FareHarbor"
+      : getEventTypeLabel(evento && evento.event_type);
+    const primaryText = isFareHarborModificationEvent(evento)
+      ? maskExternalBookingId(getFareHarborDisplayId(evento))
+      : getFareHarborDisplayId(evento);
 
     return [
       '<article class="dashboard-integration-item">',
       '<div class="dashboard-integration-main">',
-      '<strong class="dashboard-primary-text">' + escapeHtml(getFareHarborDisplayId(evento)) + "</strong>",
+      '<strong class="dashboard-primary-text">' + escapeHtml(primaryText) + "</strong>",
       '<div class="dashboard-integration-meta">',
       '<span>FareHarbor</span>',
-      '<span>' + escapeHtml(getEventTypeLabel(evento && evento.event_type)) + "</span>",
+      '<span>' + escapeHtml(eventTypeLabel) + "</span>",
       '<span>' + escapeHtml(formatDateTimeLocal(receivedAt)) + "</span>",
       "</div>",
       '<div class="dashboard-integration-meta">',
@@ -1398,6 +1427,207 @@
     ].join("");
   }
 
+  function getFareHarborModificationPreview(diff) {
+    const preview = getObject(diff);
+    return getObject(preview.fareharbor_modification_diff || preview);
+  }
+
+  function formatFareHarborDiffValue(value) {
+    if (value === null || value === undefined || value === "") {
+      return EMPTY_VALUE;
+    }
+
+    if (Array.isArray(value)) {
+      return value.length ? value.map(formatFareHarborDiffValue).join(", ") : EMPTY_VALUE;
+    }
+
+    if (value && typeof value === "object") {
+      return Object.keys(value).filter(function (key) {
+        return value[key] !== null && value[key] !== undefined && value[key] !== "";
+      }).map(function (key) {
+        return getFieldLabel(key) + ": " + formatFareHarborDiffValue(value[key]);
+      }).join(", ") || EMPTY_VALUE;
+    }
+
+    if (typeof value === "boolean") {
+      return value ? "Sí" : "No";
+    }
+
+    return String(value);
+  }
+
+  function getFareHarborChangeReasonLabel(reason) {
+    const labels = {
+      baseline_external_missing: "El valor aplicado originalmente desde FareHarbor no está disponible para comparar.",
+      baseline_tour_manual_or_unknown: "El tour original fue manual o no se pudo determinar desde FareHarbor.",
+      baseline_turno_manual_or_unknown: "El turno original fue manual o no se pudo determinar desde FareHarbor.",
+      baseline_pickup_manual_or_unknown: "El pickup original fue manual o no se pudo determinar desde FareHarbor.",
+      baseline_ninos_manual_or_unknown: "Los niños originales fueron manuales o no se pudieron derivar desde FareHarbor.",
+      baseline_money_manual_or_unknown: "Los importes originales fueron manuales o no se pudieron derivar desde FareHarbor.",
+      internal_diverged_from_baseline: "El valor interno ya no coincide con el último valor aplicado desde FareHarbor.",
+      operational_change_requires_review: "El cambio afecta datos operativos y requiere revisión manual.",
+      unknown_customer_category: "FareHarbor envió una categoría de pasajero no reconocida.",
+    };
+
+    return labels[reason] || reason || "";
+  }
+
+  function getFareHarborProposedActionLabel(value) {
+    if (value === "manual") {
+      return "Revisión manual";
+    }
+
+    if (value === "future_apply") {
+      return "Cambio detectado";
+    }
+
+    return "Sin acción automática";
+  }
+
+  function getFareHarborModificationIssueLabel(issue) {
+    const labels = {
+      external_booking_id_faltante: "Falta el identificador externo de FareHarbor.",
+      sin_reservacion_vinculada: "No existe una reservación interna vinculada a este booking FareHarbor.",
+      reservacion_vinculada_no_encontrada: "La reservación vinculada no fue encontrada.",
+      baseline_aplicado_faltante: "No se encontró un evento FareHarbor aplicado para usar como baseline.",
+    };
+
+    return labels[issue] || issue;
+  }
+
+  function getFareHarborModificationSummary(preview, changes) {
+    const blockingIssues = getArray(preview.blocking_issues);
+
+    if (getObject(preview.current_event).is_latest_snapshot === false) {
+      return "Existe un snapshot FareHarbor más reciente para este booking. Este evento se muestra solo como referencia.";
+    }
+
+    if (preview.baseline_status === "missing") {
+      return "No hay baseline aplicado suficiente para comparar la modificación automáticamente.";
+    }
+
+    if (!changes.length) {
+      return "No se detectaron cambios relevantes entre FareHarbor y la reservación interna.";
+    }
+
+    if (blockingIssues.length) {
+      return "Se detectaron cambios, pero hay condiciones que requieren revisión antes de cualquier aplicación futura.";
+    }
+
+    return "Se detectaron cambios FareHarbor listos para revisión visual. La aplicación automática aún no está habilitada.";
+  }
+
+  function renderFareHarborModificationIssues(title, issues, className) {
+    const list = getArray(issues).filter(Boolean);
+
+    if (!list.length) {
+      return "";
+    }
+
+    return [
+      '<section class="dashboard-integration-block">',
+      "<h3>" + escapeHtml(title) + "</h3>",
+      '<div class="' + (className || "dashboard-integration-warning") + '">',
+      list.map(function (issue) {
+        return "<p>" + escapeHtml(getFareHarborModificationIssueLabel(issue)) + "</p>";
+      }).join(""),
+      "</div>",
+      "</section>"
+    ].join("");
+  }
+
+  function renderFareHarborModificationResolution(change) {
+    const parts = [getFareHarborProposedActionLabel(change.proposed_action)];
+    const reason = getFareHarborChangeReasonLabel(change.reason);
+
+    if (change.conflict) {
+      parts.push("Conflicto detectado");
+    } else if (change.external_changed) {
+      parts.push("Sin divergencia interna");
+    }
+
+    if (change.field === "pax" && change.delta_pax !== null && change.delta_pax !== undefined) {
+      parts.push("Delta PAX: " + (change.delta_pax > 0 ? "+" : "") + String(change.delta_pax));
+    }
+
+    if (change.requires_capacity_validation) {
+      parts.push("Requiere validación de capacidad");
+    }
+
+    if (reason) {
+      parts.push(reason);
+    }
+
+    return parts.join(". ");
+  }
+
+  function renderFareHarborModificationChanges(changes) {
+    if (!changes.length) {
+      return App.ui.emptyState("Sin cambios relevantes", "FareHarbor no reportó diferencias aplicables contra el baseline.");
+    }
+
+    return [
+      '<div class="table-container dashboard-integration-table-container">',
+      '<table class="data-table dashboard-integration-diff-table">',
+      "<thead><tr><th>Campo</th><th>Baseline aplicado</th><th>Interno actual</th><th>Nuevo FareHarbor</th><th>Resolución</th></tr></thead>",
+      "<tbody>",
+      changes.map(function (change) {
+        return [
+          "<tr>",
+          "<td>" + escapeHtml(getFieldLabel(change.field)) + "</td>",
+          "<td>" + escapeHtml(formatFareHarborDiffValue(change.baseline_external)) + "</td>",
+          "<td>" + escapeHtml(formatFareHarborDiffValue(change.internal_current)) + "</td>",
+          "<td>" + escapeHtml(formatFareHarborDiffValue(change.fareharbor_new)) + "</td>",
+          "<td>" + escapeHtml(renderFareHarborModificationResolution(change)) + "</td>",
+          "</tr>"
+        ].join("");
+      }).join(""),
+      "</tbody>",
+      "</table>",
+      "</div>"
+    ].join("");
+  }
+
+  function renderFareHarborModificationDiff(evento, diff) {
+    const preview = getFareHarborModificationPreview(diff);
+    const changes = getArray(preview.changes);
+    const currentEvent = getObject(preview.current_event);
+    const baseline = getObject(preview.baseline);
+    const reservationContext = getObject(preview.reservation_context);
+    const snapshotLabel = currentEvent.is_latest_snapshot === true
+      ? "Más reciente"
+      : (currentEvent.is_latest_snapshot === false ? "Obsoleto" : EMPTY_VALUE);
+    const transportLabel = reservationContext.assigned_to_transport
+      ? "Asignada a transporte"
+      : "Sin transporte asignado";
+
+    return [
+      '<section class="dashboard-integration-block">',
+      "<h3>Modificación FareHarbor</h3>",
+      '<p class="form-message is-info">' + escapeHtml(getFareHarborModificationSummary(preview, changes)) + "</p>",
+      '<div class="dashboard-integration-detail-grid">',
+      renderDetailItem("Booking FareHarbor", maskExternalBookingId(preview.external_booking_id || (evento && evento.external_booking_id))),
+      renderDetailItem("Reservación interna", preview.id_reservacion),
+      renderDetailItem("Revisión", getReviewStatusLabel(evento && evento.review_status)),
+      renderDetailItem("Aplicación", getApplicationStatusLabel(evento && evento.application_status)),
+      renderDetailItem("Snapshot", snapshotLabel),
+      renderDetailItem("Recibido", formatDateTimeLocal(currentEvent.source_received_at || (evento && evento.source_received_at))),
+      renderDetailItem("Baseline", baseline.id_evento_integracion ? "Evento " + baseline.id_evento_integracion : preview.baseline_status),
+      renderDetailItem("Transporte", transportLabel),
+      renderDetailItem("Estado interno", reservationContext.estado),
+      "</div>",
+      reservationContext.assigned_to_transport
+        ? '<p class="dashboard-integration-warning">La reservación ya tiene transporte asignado; los cambios operativos requieren validación manual.</p>'
+        : "",
+      "</section>",
+      renderFareHarborModificationIssues("Bloqueos", preview.blocking_issues, "form-message is-error"),
+      renderFareHarborModificationIssues("Advertencias", preview.warnings, "dashboard-integration-warning"),
+      '<section class="dashboard-integration-block">',
+      "<h3>Cambios detectados</h3>",
+      renderFareHarborModificationChanges(changes),
+      "</section>"
+    ].join("");
+  }
   function getFareHarborApplicationPreview(evento) {
     return getObject(evento && evento.fareharbor_application_preview);
   }
@@ -1647,6 +1877,10 @@
       const disabled = integrationState.actionLoading ? " disabled" : "";
       const actions = ['<button class="btn" type="button" data-dialog-action="close">Cerrar</button>'];
 
+      if (isFareHarborModificationEvent(evento)) {
+        return actions.join("");
+      }
+
       if (!isAdmin) {
         actions.unshift('<span class="card-text dashboard-integration-readonly">Modo consulta: solo lectura.</span>');
         return actions.join("");
@@ -1719,6 +1953,8 @@
         '<p class="card-text">Cargando evento de integración.</p>',
         "</div>"
       ].join("");
+    } else if (isFareHarborModificationEvent(evento)) {
+      content = renderFareHarborModificationDiff(evento, diff);
     } else if (isFareHarborEvent(evento)) {
       content = [
         renderCommonIntegrationDetails(evento),
@@ -1904,7 +2140,7 @@
       const evento = getIntegrationDetail(detailResponse);
       let diff = null;
 
-      if (evento && evento.event_type === "modification" && !isFareHarborEvent(evento)) {
+      if (evento && evento.event_type === "modification") {
         const diffResponse = await App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/diff");
         diff = getIntegrationDetail(diffResponse);
       }
