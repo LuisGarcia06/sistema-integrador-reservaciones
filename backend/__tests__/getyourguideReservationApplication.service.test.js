@@ -7,7 +7,11 @@ jest.mock('../services/reservaciones.service', () => ({
 const reservacionesService = require('../services/reservaciones.service');
 const {
     aplicarNuevaReservaGetYourGuide,
+    evaluarFechaActividadGetYourGuide,
+    ISSUE_FECHA_ACTIVIDAD_INDETERMINADA,
+    ISSUE_FECHA_ACTIVIDAD_PASADA,
     LINK_UNIQUE_CONSTRAINT,
+    obtenerFechaLocalYYYYMMDD,
     obtenerPreviewNuevaReservaGetYourGuideConDb,
     prepararNuevaReservaGetYourGuideConDb,
 } = require('../integrations/getyourguide/getyourguideReservationApplication.service');
@@ -225,10 +229,10 @@ describe('getyourguideReservation.mapper', () => {
     });
 
     test('normaliza fechas inglesas deterministas de GetYourGuide a ISO', () => {
-        expect(normalizarFechaIngles('August 11, 2026')).toBe('2026-08-11');
+        expect(normalizarFechaIngles('August 11, 2027')).toBe('2027-08-11');
         expect(normalizarFechaIngles('January 2, 2027')).toBe('2027-01-02');
         expect(normalizarFechaIngles('December 31, 2026')).toBe('2026-12-31');
-        expect(normalizarFechaIngles('August 18, 2026 7:00 AM')).toBe('2026-08-18');
+        expect(normalizarFechaIngles('August 18, 2027 7:00 AM')).toBe('2027-08-18');
         expect(normalizarFechaIngles('January 2, 2027 10:30 PM')).toBe('2027-01-02');
     });
 
@@ -247,7 +251,7 @@ describe('getyourguideReservation.mapper', () => {
     test('caso real con fecha inglesa no queda como missing ni warning', () => {
         const resultado = mapGetYourGuideNewBookingToReservation({
             normalized_data: {
-                date: 'August 11, 2026',
+                date: 'August 11, 2027',
                 pax: 2,
                 customer_name: 'Cliente Prueba',
                 pickup_place: 'Hotel Prueba',
@@ -263,7 +267,7 @@ describe('getyourguideReservation.mapper', () => {
             },
         });
 
-        expect(resultado.reservationData.fecha).toBe('2026-08-11');
+        expect(resultado.reservationData.fecha).toBe('2027-08-11');
         expect(resultado.missingFields).not.toContain('fecha');
         expect(resultado.warnings).not.toContain('date_no_tiene_formato_seguro');
     });
@@ -295,7 +299,7 @@ describe('getyourguideReservation.mapper', () => {
     test('fecha con hora se normaliza sin generar pickup_time', () => {
         const resultado = mapGetYourGuideNewBookingToReservation({
             normalized_data: {
-                date: 'August 18, 2026 7:00 AM',
+                date: 'August 18, 2027 7:00 AM',
                 pax: 2,
                 customer_name: 'Cliente Prueba',
                 pickup_place: 'Hotel Prueba',
@@ -310,7 +314,7 @@ describe('getyourguideReservation.mapper', () => {
             },
         });
 
-        expect(resultado.reservationData.fecha).toBe('2026-08-18');
+        expect(resultado.reservationData.fecha).toBe('2027-08-18');
         expect(resultado.reservationData).not.toHaveProperty('pickup_time');
         expect(resultado.missingFields).toContain('pickup_time');
         expect(resultado.missingFields).not.toContain('fecha');
@@ -525,6 +529,184 @@ describe('getyourguideReservationApplication.service', () => {
         jest.clearAllMocks();
     });
 
+    test('evalua timing GYG por fecha local sin usar start_time ni pickup_time', () => {
+        expect(obtenerFechaLocalYYYYMMDD(new Date(2026, 9, 11, 23, 30))).toBe('2026-10-11');
+
+        expect(evaluarFechaActividadGetYourGuide(crearEvento({
+            normalized_data: {
+                date: '2026-10-10',
+                start_time: '23:59',
+                pickup_time: '23:59',
+            },
+        }), { today: '2026-10-11' })).toEqual({
+            date: '2026-10-10',
+            is_past_date: true,
+            issue: ISSUE_FECHA_ACTIVIDAD_PASADA,
+        });
+        expect(evaluarFechaActividadGetYourGuide(crearEvento({
+            normalized_data: {
+                date: '2026-10-11',
+                start_time: '00:01',
+                pickup_time: '00:01',
+            },
+        }), { today: '2026-10-11' })).toEqual({
+            date: '2026-10-11',
+            is_past_date: false,
+            issue: null,
+        });
+        expect(evaluarFechaActividadGetYourGuide(crearEvento({
+            normalized_data: { date: '2026-10-12' },
+        }), { today: '2026-10-11' })).toEqual({
+            date: '2026-10-12',
+            is_past_date: false,
+            issue: null,
+        });
+        expect(evaluarFechaActividadGetYourGuide(crearEvento({
+            normalized_data: { date: 'fecha-invalida' },
+        }), { today: '2026-10-11' })).toEqual({
+            date: null,
+            is_past_date: null,
+            issue: ISSUE_FECHA_ACTIVIDAD_INDETERMINADA,
+        });
+    });
+
+    test('preview expone activity_timing y bloqueos para fecha pasada o indeterminada', async () => {
+        const pasado = await obtenerPreviewNuevaReservaGetYourGuideConDb(
+            crearDbPoolFake({ evento: crearEvento({ normalized_data: { date: '2026-10-10' } }) }).client,
+            crearEvento({ normalized_data: { date: '2026-10-10' } }),
+            {},
+            { today: '2026-10-11' }
+        );
+        const hoy = await obtenerPreviewNuevaReservaGetYourGuideConDb(
+            crearDbPoolFake({ evento: crearEvento({ normalized_data: { date: '2026-10-11' } }) }).client,
+            crearEvento({ normalized_data: { date: '2026-10-11' } }),
+            {},
+            { today: '2026-10-11' }
+        );
+        const invalido = await obtenerPreviewNuevaReservaGetYourGuideConDb(
+            crearDbPoolFake({ evento: crearEvento({ normalized_data: { date: 'fecha-invalida' } }) }).client,
+            crearEvento({ normalized_data: { date: 'fecha-invalida' } }),
+            {},
+            { today: '2026-10-11' }
+        );
+
+        expect(pasado.activity_timing).toEqual({ date: '2026-10-10', is_past_date: true });
+        expect(pasado.warnings).toContain(ISSUE_FECHA_ACTIVIDAD_PASADA);
+        expect(hoy.activity_timing).toEqual({ date: '2026-10-11', is_past_date: false });
+        expect(hoy.warnings).not.toContain(ISSUE_FECHA_ACTIVIDAD_PASADA);
+        expect(invalido.activity_timing).toEqual({ date: null, is_past_date: null });
+        expect(invalido.missingFields).toContain('fecha');
+        expect(invalido.warnings).toEqual(expect.arrayContaining([
+            'date_no_tiene_formato_seguro',
+            ISSUE_FECHA_ACTIVIDAD_INDETERMINADA,
+        ]));
+    });
+
+    test('apply bloquea fecha pasada antes de crear reserva link o applied', async () => {
+        const evento = crearEvento({
+            normalized_data: {
+                date: '2026-10-10',
+                pax: 2,
+                customer_name: 'Cliente Prueba',
+                pickup_place: 'Hotel Prueba',
+                price: 1000,
+            },
+        });
+        const { pool, client } = crearDbPoolFake({ evento });
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            id_tour: 3,
+            id_pais: 5,
+            pickup_time: '08:30',
+            turno: 'Mañana',
+        }, pool, { today: '2026-10-11' });
+
+        expect(resultado).toEqual({
+            tipo: 'fecha_actividad_pasada',
+            reason: ISSUE_FECHA_ACTIVIDAD_PASADA,
+            activity_timing: {
+                date: '2026-10-10',
+                is_past_date: true,
+            },
+        });
+        expect(reservacionesService.crearReservacionConDb).not.toHaveBeenCalled();
+        expect(client.queries.some((query) => /INSERT INTO reservas_integracion_link/i.test(query))).toBe(false);
+        expect(client.queries.some((query) => /UPDATE eventos_integracion[\s\S]+application_status/i.test(query))).toBe(false);
+        expect(client.queries).toContain('ROLLBACK');
+        expect(client.queries).not.toContain('COMMIT');
+    });
+
+    test('fecha ausente o invalida no puede aplicar aunque completar incluya fecha manual', async () => {
+        const invalido = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            fecha: '2026-10-12',
+            id_tour: 3,
+            id_pais: 5,
+            pickup_time: '08:30',
+            turno: 'Mañana',
+        }, crearDbPoolFake({
+            evento: crearEvento({ normalized_data: { date: 'fecha-invalida' } }),
+        }).pool, { today: '2026-10-11' });
+        const ausente = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            fecha: '2026-10-12',
+            id_tour: 3,
+            id_pais: 5,
+            pickup_time: '08:30',
+            turno: 'Mañana',
+        }, crearDbPoolFake({
+            evento: crearEvento({ normalized_data: { date: undefined } }),
+        }).pool, { today: '2026-10-11' });
+
+        expect(invalido.tipo).toBe('faltan_datos');
+        expect(invalido.missingFields).toContain('fecha');
+        expect(invalido.warnings).toContain(ISSUE_FECHA_ACTIVIDAD_INDETERMINADA);
+        expect(ausente.tipo).toBe('faltan_datos');
+        expect(ausente.missingFields).toContain('fecha');
+        expect(ausente.warnings).toContain(ISSUE_FECHA_ACTIVIDAD_INDETERMINADA);
+        expect(reservacionesService.crearReservacionConDb).not.toHaveBeenCalled();
+    });
+
+    test('fecha de hoy y fecha futura conservan flujo normal', async () => {
+        const hoy = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            id_tour: 3,
+            id_pais: 5,
+            pickup_time: '08:30',
+            turno: 'Mañana',
+        }, crearDbPoolFake({
+            evento: crearEvento({
+                normalized_data: {
+                    date: '2026-10-11',
+                    start_time: '00:01',
+                    pax: 2,
+                    customer_name: 'Cliente Prueba',
+                    pickup_place: 'Hotel Prueba',
+                    price: 1000,
+                },
+            }),
+        }).pool, { today: '2026-10-11' });
+        reservacionesService.crearReservacionConDb.mockClear();
+        const futuro = await aplicarNuevaReservaGetYourGuide(1, 9, {
+            id_tour: 3,
+            id_pais: 5,
+            pickup_time: '08:30',
+            turno: 'Mañana',
+        }, crearDbPoolFake({
+            evento: crearEvento({
+                normalized_data: {
+                    date: '2026-10-12',
+                    pickup_time: '00:01',
+                    pax: 2,
+                    customer_name: 'Cliente Prueba',
+                    pickup_place: 'Hotel Prueba',
+                    price: 1000,
+                },
+            }),
+        }).pool, { today: '2026-10-11' });
+
+        expect(hoy.tipo).toBe('aplicado');
+        expect(futuro.tipo).toBe('aplicado');
+        expect(reservacionesService.crearReservacionConDb).toHaveBeenCalledTimes(1);
+    });
+
     test('evento approved new_booking valido crea reserva, link y marca aplicado', async () => {
         const { pool, client } = crearDbPoolFake();
 
@@ -549,7 +731,7 @@ describe('getyourguideReservationApplication.service', () => {
     test('new_booking sin equivalencia aplica con tour y turno manuales sin crear equivalencia', async () => {
         const evento = crearEvento({
             normalized_data: {
-                date: 'August 11, 2026',
+                date: 'August 11, 2027',
                 pax: 2,
                 customer_name: 'Cliente Manual',
                 pickup_place: 'Hotel Manual',
@@ -571,7 +753,7 @@ describe('getyourguideReservationApplication.service', () => {
         expect(reservacionesService.crearReservacionConDb).toHaveBeenCalledWith(
             client,
             expect.objectContaining({
-                fecha: '2026-08-11',
+                fecha: '2027-08-11',
                 id_tour: 74,
                 turno: 'Tarde',
                 pickup_time: '10:00',
@@ -1144,7 +1326,7 @@ describe('getyourguideReservationApplication.service', () => {
     test('preparacion con fecha inglesa y equivalencia exacta deja solo pickup_time como dato manual', async () => {
         const evento = crearEvento({
             normalized_data: {
-                date: 'August 11, 2026',
+                date: 'August 11, 2027',
                 pax: 4,
                 customer_name: 'Cliente Prueba',
                 pickup_place: 'Hotel Prueba',
@@ -1170,7 +1352,7 @@ describe('getyourguideReservationApplication.service', () => {
 
         expect(resultado.tipo).toBe('preparado');
         expect(resultado.reservationData).toEqual(expect.objectContaining({
-            fecha: '2026-08-11',
+            fecha: '2027-08-11',
             id_tour: 74,
             turno: 'Tarde',
             id_pais: 987,
@@ -1182,7 +1364,7 @@ describe('getyourguideReservationApplication.service', () => {
     test('sin equivalencia exacta no hace fuzzy matching y mantiene tour/turno faltantes', async () => {
         const evento = crearEvento({
             normalized_data: {
-                date: 'August 11, 2026',
+                date: 'August 11, 2027',
                 pax: 4,
                 customer_name: 'Cliente Prueba',
                 pickup_place: 'Hotel Prueba',
@@ -1200,7 +1382,7 @@ describe('getyourguideReservationApplication.service', () => {
         const resultado = await prepararNuevaReservaGetYourGuideConDb(client, evento, {});
 
         expect(resultado.tipo).toBe('preparado');
-        expect(resultado.reservationData).toHaveProperty('fecha', '2026-08-11');
+        expect(resultado.reservationData).toHaveProperty('fecha', '2027-08-11');
         expect(resultado.reservationData).not.toHaveProperty('id_tour');
         expect(resultado.reservationData).not.toHaveProperty('turno');
         expect(resultado.missingFields).toEqual(expect.arrayContaining(['id_tour', 'turno', 'pickup_time']));
@@ -1209,7 +1391,7 @@ describe('getyourguideReservationApplication.service', () => {
     test('preview new_booking expone pais derivado y referencias internas para el Dashboard', async () => {
         const evento = crearEventoConTitulosEquivalencia({
             normalized_data: {
-                date: 'August 11, 2026',
+                date: 'August 11, 2027',
                 pax: 2,
                 customer_name: 'Cliente Prueba',
                 pickup_place: 'Hotel Prueba',
@@ -1233,7 +1415,7 @@ describe('getyourguideReservationApplication.service', () => {
 
         expect(resultado.tipo).toBe('preview');
         expect(resultado.reservationData).toEqual(expect.objectContaining({
-            fecha: '2026-08-11',
+            fecha: '2027-08-11',
             id_tour: 74,
             turno: 'Tarde',
             id_pais: 987,
@@ -1248,7 +1430,7 @@ describe('getyourguideReservationApplication.service', () => {
     test('preparacion GetYourGuide sin equivalencia expone fallback manual de tour y turno', async () => {
         const evento = crearEvento({
             normalized_data: {
-                date: 'August 11, 2026',
+                date: 'August 11, 2027',
                 pax: 2,
                 customer_name: 'Cliente Prueba',
                 pickup_place: 'Hotel Prueba',
@@ -1267,7 +1449,7 @@ describe('getyourguideReservationApplication.service', () => {
 
         expect(resultado.tipo).toBe('preview');
         expect(resultado.reservationData).toEqual(expect.objectContaining({
-            fecha: '2026-08-11',
+            fecha: '2027-08-11',
             id_pais: 987,
             pax: 2,
         }));
@@ -1282,7 +1464,7 @@ describe('getyourguideReservationApplication.service', () => {
     test('preparacion GetYourGuide con fecha inglesa con hora y pickup faltante expone solo campos manuales', async () => {
         const evento = crearEvento({
             normalized_data: {
-                date: 'August 18, 2026 7:00 AM',
+                date: 'August 18, 2027 7:00 AM',
                 pax: 2,
                 customer_name: 'Cliente Prueba',
                 price: 1000,
@@ -1300,7 +1482,7 @@ describe('getyourguideReservationApplication.service', () => {
 
         expect(resultado.tipo).toBe('preview');
         expect(resultado.reservationData).toEqual(expect.objectContaining({
-            fecha: '2026-08-18',
+            fecha: '2027-08-18',
             id_pais: 987,
             pax: 2,
         }));
@@ -1432,7 +1614,7 @@ describe('getyourguideReservationApplication.service', () => {
         const { pool } = crearDbPoolFake({
             evento: crearEvento({
                 normalized_data: {
-                    date: 'August 18, 2026 7:00 AM',
+                    date: 'August 18, 2027 7:00 AM',
                     pax: 2,
                     customer_name: 'Cliente Prueba',
                     price: 1000,
@@ -1455,7 +1637,7 @@ describe('getyourguideReservationApplication.service', () => {
         expect(reservacionesService.crearReservacionConDb).toHaveBeenCalledWith(
             expect.anything(),
             expect.objectContaining({
-                fecha: '2026-08-18',
+                fecha: '2027-08-18',
                 id_tour: 74,
                 pickup_place: 'Punto acordado en Tulum',
                 pickup_time: '10:00',

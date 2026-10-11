@@ -360,6 +360,20 @@ describe('eventosIntegracion.routes', () => {
         });
     });
 
+    test('aplicar GetYourGuide responde 409 cuando la fecha de actividad ya paso', async () => {
+        aplicarNuevaReservaGetYourGuide.mockResolvedValueOnce({
+            tipo: 'fecha_actividad_pasada',
+        });
+
+        const response = await request(app)
+            .post('/api/eventos-integracion/1/aplicar')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: { id_tour: 1, id_pais: 2, pickup_time: '08:30', turno: 'Mañana' } });
+
+        expect(response.status).toBe(409);
+        expect(response.body.mensaje).toBe('La fecha de la actividad GetYourGuide ya pasó y no puede aplicarse como una reservación operativa.');
+    });
+
     test('id_tour invalido en completar devuelve 400', async () => {
         const response = await request(app)
             .post('/api/eventos-integracion/1/aplicar')

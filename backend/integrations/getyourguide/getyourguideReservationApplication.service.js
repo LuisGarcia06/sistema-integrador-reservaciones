@@ -7,6 +7,7 @@ const {
 } = require('../../validators/reservaciones.validator');
 const {
     mapGetYourGuideNewBookingToReservation,
+    normalizarFechaGetYourGuide,
 } = require('./getyourguideReservation.mapper');
 const { obtenerPreviewModificationGetYourGuideConDb } = require('./getyourguideModificationDiff.service');
 
@@ -20,12 +21,75 @@ const REVIEW_STATUS_APPROVED = 'approved';
 const APPLICATION_STATUS_NOT_APPLIED = 'not_applied';
 const APPLICATION_STATUS_APPLIED = 'applied';
 const LINK_UNIQUE_CONSTRAINT = 'uq_reservas_integracion_link_provider_booking';
+const ISSUE_FECHA_ACTIVIDAD_PASADA = 'La fecha de la actividad GetYourGuide ya pasó y no puede registrarse como una reservación operativa.';
+const ISSUE_FECHA_ACTIVIDAD_INDETERMINADA = 'No fue posible determinar la fecha de la actividad GetYourGuide.';
 
 function crearResultado(tipo, datos = {}) {
     return {
         tipo,
         ...datos,
     };
+}
+
+function agregarUnico(lista, valor) {
+    if (valor && !lista.includes(valor)) {
+        lista.push(valor);
+    }
+}
+
+function obtenerFechaLocalYYYYMMDD(now = new Date()) {
+    const fecha = now instanceof Date ? now : new Date(now);
+
+    if (Number.isNaN(fecha.getTime())) {
+        return obtenerFechaLocalYYYYMMDD(new Date());
+    }
+
+    return [
+        String(fecha.getFullYear()).padStart(4, '0'),
+        String(fecha.getMonth() + 1).padStart(2, '0'),
+        String(fecha.getDate()).padStart(2, '0'),
+    ].join('-');
+}
+
+function evaluarFechaActividadGetYourGuide(evento, opciones = {}) {
+    const fechaActividad = normalizarFechaGetYourGuide(evento?.normalized_data?.date);
+    const today = opciones.today || obtenerFechaLocalYYYYMMDD(opciones.now);
+
+    if (!fechaActividad) {
+        return {
+            date: null,
+            is_past_date: null,
+            issue: ISSUE_FECHA_ACTIVIDAD_INDETERMINADA,
+        };
+    }
+
+    const isPastDate = fechaActividad < today;
+
+    return {
+        date: fechaActividad,
+        is_past_date: isPastDate,
+        issue: isPastDate ? ISSUE_FECHA_ACTIVIDAD_PASADA : null,
+    };
+}
+
+function construirWarningsConTiming(warnings = [], activityTiming) {
+    const resultado = [...warnings];
+
+    if (activityTiming.issue) {
+        agregarUnico(resultado, activityTiming.issue);
+    }
+
+    return resultado;
+}
+
+function construirMissingFieldsConTiming(missingFields = [], activityTiming) {
+    const resultado = [...missingFields];
+
+    if (activityTiming.is_past_date === null) {
+        agregarUnico(resultado, 'fecha');
+    }
+
+    return resultado;
 }
 
 async function obtenerEventoParaAplicacion(db, idEventoIntegracion) {
@@ -204,7 +268,7 @@ async function obtenerCompletarDerivadoDesdePaisGenerico(db, evento, completar =
     };
 }
 
-async function prepararNuevaReservaGetYourGuideConDb(db, evento, completar = {}) {
+async function prepararNuevaReservaGetYourGuideConDb(db, evento, completar = {}, opciones = {}) {
     const plataforma = await obtenerPlataformaGetYourGuide(db);
 
     if (!plataforma) {
@@ -227,8 +291,14 @@ async function prepararNuevaReservaGetYourGuideConDb(db, evento, completar = {})
         completar: completarFinal,
         idPlataforma: plataforma.id_plataforma,
     });
+    const activityTiming = evaluarFechaActividadGetYourGuide(evento, opciones);
 
-    return crearResultado('preparado', preparacion);
+    return crearResultado('preparado', {
+        ...preparacion,
+        activityTiming,
+        missingFields: construirMissingFieldsConTiming(preparacion.missingFields, activityTiming),
+        warnings: construirWarningsConTiming(preparacion.warnings, activityTiming),
+    });
 }
 
 async function obtenerTourResumen(db, idTour) {
@@ -267,8 +337,8 @@ async function obtenerPaisResumen(db, idPais) {
     return result.rows[0] || null;
 }
 
-async function obtenerPreviewNuevaReservaGetYourGuideConDb(db = pool, evento, completar = {}) {
-    const preparacion = await prepararNuevaReservaGetYourGuideConDb(db, evento, completar);
+async function obtenerPreviewNuevaReservaGetYourGuideConDb(db = pool, evento, completar = {}, opciones = {}) {
+    const preparacion = await prepararNuevaReservaGetYourGuideConDb(db, evento, completar, opciones);
     const reservationData = preparacion.reservationData || {};
 
     if (preparacion.tipo !== 'preparado') {
@@ -281,6 +351,10 @@ async function obtenerPreviewNuevaReservaGetYourGuideConDb(db = pool, evento, co
     ]);
 
     return crearResultado('preview', {
+        activity_timing: {
+            date: preparacion.activityTiming?.date || null,
+            is_past_date: preparacion.activityTiming?.is_past_date ?? null,
+        },
         reservationData,
         missingFields: preparacion.missingFields || [],
         warnings: preparacion.warnings || [],
@@ -323,7 +397,7 @@ function esUniqueLink(error) {
     return error?.code === '23505' && error?.constraint === LINK_UNIQUE_CONSTRAINT;
 }
 
-async function aplicarNewBookingConDb(client, evento, usuarioId, completar) {
+async function aplicarNewBookingConDb(client, evento, usuarioId, completar, opciones = {}) {
     const linkExistente = await obtenerLinkPorExternalBooking(
         client,
         evento.provider,
@@ -334,10 +408,20 @@ async function aplicarNewBookingConDb(client, evento, usuarioId, completar) {
         return crearResultado('ya_vinculado', { link: linkExistente });
     }
 
-    const preparacion = await prepararNuevaReservaGetYourGuideConDb(client, evento, completar);
+    const preparacion = await prepararNuevaReservaGetYourGuideConDb(client, evento, completar, opciones);
 
     if (preparacion.tipo !== 'preparado') {
         return preparacion;
+    }
+
+    if (preparacion.activityTiming?.is_past_date === true) {
+        return crearResultado('fecha_actividad_pasada', {
+            reason: ISSUE_FECHA_ACTIVIDAD_PASADA,
+            activity_timing: {
+                date: preparacion.activityTiming.date,
+                is_past_date: true,
+            },
+        });
     }
 
     if (preparacion.missingFields.length > 0) {
@@ -555,7 +639,7 @@ async function aplicarModificationConDb(client, evento, usuarioId) {
         camposModificados,
     });
 }
-async function aplicarEventoGetYourGuide(eventoId, usuarioId, completar = {}, dbPool = pool) {
+async function aplicarEventoGetYourGuide(eventoId, usuarioId, completar = {}, dbPool = pool, opciones = {}) {
     const client = await dbPool.connect();
 
     try {
@@ -591,7 +675,7 @@ async function aplicarEventoGetYourGuide(eventoId, usuarioId, completar = {}, db
         let resultado;
 
         if (evento.event_type === EVENT_TYPE_NEW_BOOKING) {
-            resultado = await aplicarNewBookingConDb(client, evento, usuarioId, completar);
+            resultado = await aplicarNewBookingConDb(client, evento, usuarioId, completar, opciones);
         } else if (evento.event_type === EVENT_TYPE_CANCELLATION) {
             resultado = await aplicarCancellationConDb(client, evento, usuarioId, completar);
         } else if (evento.event_type === EVENT_TYPE_MODIFICATION) {
@@ -621,9 +705,13 @@ const aplicarNuevaReservaGetYourGuide = aplicarEventoGetYourGuide;
 module.exports = {
     APPLICATION_STATUS_APPLIED,
     APPLICATION_STATUS_NOT_APPLIED,
+    ISSUE_FECHA_ACTIVIDAD_INDETERMINADA,
+    ISSUE_FECHA_ACTIVIDAD_PASADA,
     LINK_UNIQUE_CONSTRAINT,
     aplicarEventoGetYourGuide,
     aplicarNuevaReservaGetYourGuide,
+    evaluarFechaActividadGetYourGuide,
+    obtenerFechaLocalYYYYMMDD,
     obtenerPreviewNuevaReservaGetYourGuideConDb,
     prepararNuevaReservaGetYourGuideConDb,
 };

@@ -386,6 +386,12 @@ const aplicarEventoIntegracion = async (req, res) => {
             });
         }
 
+        if (resultado.tipo === 'fecha_actividad_pasada') {
+            return res.status(409).json({
+                mensaje: 'La fecha de la actividad GetYourGuide ya pasó y no puede aplicarse como una reservación operativa.',
+            });
+        }
+
         if (resultado.tipo === 'reserva_no_vinculada') {
             return res.status(409).json({
                 mensaje: 'El evento de integracion no tiene reservacion vinculada',

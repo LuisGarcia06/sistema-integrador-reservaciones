@@ -1095,6 +1095,13 @@
   function renderNewBookingPreviewMessage(evento) {
     const missingFields = getNewBookingMissingFields(evento);
     const nonManualMissingFields = getNonManualNewBookingMissingFields(evento);
+    const temporalBlockers = getNewBookingTemporalBlockers(evento);
+
+    if (temporalBlockers.length > 0) {
+      return '<p class="form-message is-error">' + temporalBlockers.map(function (message) {
+        return App.ui.escapeHtml(message);
+      }).join(" ") + "</p>";
+    }
 
     if (missingFields.length === 0) {
       return "";
@@ -1228,7 +1235,21 @@
   }
 
   function hasBlockingNewBookingMissingFields(evento) {
-    return getNonManualNewBookingMissingFields(evento).length > 0;
+    return getNonManualNewBookingMissingFields(evento).length > 0 || getNewBookingTemporalBlockers(evento).length > 0;
+  }
+
+  function getNewBookingTemporalBlockers(evento) {
+    const preview = getNewBookingPreview(evento);
+    const timing = getObject(preview.activity_timing);
+    const blockers = [];
+
+    if (timing.is_past_date === true) {
+      blockers.push("La fecha de la actividad GetYourGuide ya pasó y no puede registrarse como una reservación operativa.");
+    } else if (timing.is_past_date === null && Object.prototype.hasOwnProperty.call(timing, "is_past_date")) {
+      blockers.push("No fue posible determinar la fecha de la actividad GetYourGuide.");
+    }
+
+    return blockers;
   }
 
   function isNewBookingReadyForApply(evento) {
@@ -2101,6 +2122,12 @@
     const completar = {};
     let approvedInThisAction = false;
     let response;
+    const temporalBlockers = getNewBookingTemporalBlockers(evento);
+
+    if (temporalBlockers.length > 0) {
+      setModalError(temporalBlockers.join(" "));
+      return;
+    }
 
     if (hasBlockingNewBookingMissingFields(evento)) {
       setModalError("El evento todavía tiene datos obligatorios que no se pueden completar manualmente desde este modal.");
