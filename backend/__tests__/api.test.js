@@ -868,4 +868,287 @@ describe('API CP-044', () => {
             client.release();
         }
     });
+
+    test('FH-3B1 aplica new_booking FareHarbor sintetico en DB test de forma idempotente', async () => {
+        expect(contexto.currentDatabase).toBe('sian_kaan_reservaciones_test');
+
+        const runId = `fh3b1-${Date.now()}`;
+        const externalBookingId = `${runId}-booking`;
+        const oldBookingId = `${runId}-old-booking`;
+        const idsEventos = [];
+        const idsReservaciones = [];
+        let paisNoEspecificadoCreado = null;
+        let plataformaFareHarborCreada = null;
+
+        const obtenerOCrearPaisNoEspecificado = async () => {
+            const existente = await pool.query('SELECT id_pais FROM paises WHERE nombre = $1 LIMIT 1', ['No especificado']);
+
+            if (existente.rows[0]) {
+                return existente.rows[0].id_pais;
+            }
+
+            const creado = await pool.query(
+                'INSERT INTO paises (nombre) VALUES ($1) RETURNING id_pais',
+                ['No especificado']
+            );
+            paisNoEspecificadoCreado = creado.rows[0].id_pais;
+            return paisNoEspecificadoCreado;
+        };
+
+        const obtenerOCrearPlataformaFareHarbor = async () => {
+            const existente = await pool.query('SELECT id_plataforma FROM plataformas WHERE nombre = $1 LIMIT 1', ['FareHarbor']);
+
+            if (existente.rows[0]) {
+                return existente.rows[0].id_plataforma;
+            }
+
+            const creado = await pool.query(
+                'INSERT INTO plataformas (nombre) VALUES ($1) RETURNING id_plataforma',
+                ['FareHarbor']
+            );
+            plataformaFareHarborCreada = creado.rows[0].id_plataforma;
+            return plataformaFareHarborCreada;
+        };
+
+        const crearNormalizedFareHarbor = (bookingId, overrides = {}) => ({
+            booking: {
+                status: 'booked',
+                uuid: bookingId,
+                display_id: `${bookingId}-display`,
+                ...(overrides.booking || {}),
+            },
+            availability: {
+                start_at: '2027-03-15T06:00:00-0500',
+                end_at: '2027-03-15T11:00:00-0500',
+                item: {
+                    pk: 636130,
+                    name: 'Kayak',
+                    headline: 'Ages 12+ - Kayak Adventure',
+                },
+                ...(overrides.availability || {}),
+            },
+            customers: overrides.customers || {
+                total: 3,
+                by_category: [
+                    { customer_type_pk: 1, singular: 'Adult', plural: 'Adults', count: 2 },
+                    { customer_type_pk: 2, singular: 'Child', plural: 'Children', count: 1 },
+                ],
+            },
+            contact: overrides.contact || {
+                name: 'Cliente Sintetico FH3B1',
+                normalized_phone: '+520000000000',
+            },
+            pickup: overrides.pickup || {
+                pickup: null,
+                lodging: null,
+                arrival: null,
+            },
+            money: overrides.money || {
+                receipt_total: '376000',
+                amount_paid: '100000',
+                receipt_total_display: '$3,760.00 MXN',
+                amount_paid_display: '$1,000.00 MXN',
+                invoice_price_display: '$3,760.00 MXN',
+                currency: 'mxn',
+            },
+            fingerprint: `${bookingId}-fingerprint`,
+        });
+
+        const insertarEventoFareHarbor = async ({ bookingId, externalEventId, sourceReceivedAt }) => {
+            const result = await pool.query(
+                `
+                    INSERT INTO eventos_integracion (
+                        provider,
+                        external_event_id,
+                        external_booking_id,
+                        event_type,
+                        urgent,
+                        review_status,
+                        application_status,
+                        normalized_data,
+                        source_subject,
+                        source_received_at
+                    )
+                    VALUES ($1, $2, $3, $4, FALSE, $5, $6, $7::jsonb, $8, $9)
+                    RETURNING id_evento_integracion
+                `,
+                [
+                    'fareharbor',
+                    externalEventId,
+                    bookingId,
+                    'new_booking',
+                    'pending_review',
+                    'not_applied',
+                    JSON.stringify(crearNormalizedFareHarbor(bookingId)),
+                    `FH3B1 sintetico ${bookingId}`,
+                    sourceReceivedAt,
+                ]
+            );
+
+            idsEventos.push(result.rows[0].id_evento_integracion);
+            return result.rows[0].id_evento_integracion;
+        };
+
+        try {
+            await obtenerOCrearPaisNoEspecificado();
+            await obtenerOCrearPlataformaFareHarbor();
+
+            const idEvento = await insertarEventoFareHarbor({
+                bookingId: externalBookingId,
+                externalEventId: `${runId}:event-main`,
+                sourceReceivedAt: new Date('2027-03-15T15:00:00.000Z'),
+            });
+
+            const aprobar = await request(app)
+                .patch(`/api/eventos-integracion/${idEvento}/revision`)
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send({ accion: 'approve', nota: 'FH3B1 sintetico' });
+            expect(aprobar.status).toBe(200);
+
+            const aplicar = await request(app)
+                .post(`/api/eventos-integracion/${idEvento}/aplicar`)
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send({
+                    completar: {
+                        id_tour: contexto.catalogos.id_tour,
+                        turno: 'Mañana',
+                        pickup_place: 'Lobby sintetico FH3B1',
+                        pickup_time: '08:00',
+                    },
+                });
+
+            expect(aplicar.status).toBe(201);
+            expect(aplicar.body.datos.codigo).toMatch(/^RSV-/);
+            idsReservaciones.push(aplicar.body.datos.id_reservacion);
+
+            const reservacion = await pool.query(
+                `
+                    SELECT
+                        id_reservacion,
+                        codigo,
+                        estado,
+                        id_tour,
+                        pax,
+                        ninos,
+                        pickup_place,
+                        pickup_time,
+                        turno,
+                        precio_total,
+                        deposito,
+                        saldo
+                    FROM reservaciones
+                    WHERE id_reservacion = $1
+                `,
+                [aplicar.body.datos.id_reservacion]
+            );
+            expect(reservacion.rows).toHaveLength(1);
+            expect(reservacion.rows[0]).toEqual(expect.objectContaining({
+                estado: 'Pendiente',
+                id_tour: contexto.catalogos.id_tour,
+                pax: 3,
+                ninos: 1,
+                pickup_place: 'Lobby sintetico FH3B1',
+                turno: 'Mañana',
+            }));
+            expect(String(reservacion.rows[0].precio_total)).toBe('3760.00');
+            expect(String(reservacion.rows[0].deposito)).toBe('1000.00');
+            expect(String(reservacion.rows[0].saldo)).toBe('2760.00');
+
+            const link = await pool.query(
+                `
+                    SELECT provider, external_booking_id, id_reservacion
+                    FROM reservas_integracion_link
+                    WHERE provider = $1
+                      AND external_booking_id = $2
+                `,
+                ['fareharbor', externalBookingId]
+            );
+            expect(link.rows).toEqual([{ provider: 'fareharbor', external_booking_id: externalBookingId, id_reservacion: aplicar.body.datos.id_reservacion }]);
+
+            const bitacora = await pool.query(
+                'SELECT accion FROM bitacora WHERE id_reservacion = $1 AND accion = $2',
+                [aplicar.body.datos.id_reservacion, 'CREAR']
+            );
+            expect(bitacora.rows).toHaveLength(1);
+
+            const eventoAplicado = await pool.query(
+                `
+                    SELECT review_status, application_status, applied_by, applied_at
+                    FROM eventos_integracion
+                    WHERE id_evento_integracion = $1
+                `,
+                [idEvento]
+            );
+            expect(eventoAplicado.rows[0]).toEqual(expect.objectContaining({
+                review_status: 'approved',
+                application_status: 'applied',
+                applied_by: contexto.usuarios.administrador.id_usuario,
+            }));
+            expect(eventoAplicado.rows[0].applied_at).toBeInstanceOf(Date);
+
+            const repetir = await request(app)
+                .post(`/api/eventos-integracion/${idEvento}/aplicar`)
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send({ completar: {} });
+            expect(repetir.status).toBe(409);
+
+            const totalReservas = await pool.query(
+                `
+                    SELECT COUNT(*)::int AS total
+                    FROM reservas_integracion_link
+                    WHERE provider = $1
+                      AND external_booking_id = $2
+                `,
+                ['fareharbor', externalBookingId]
+            );
+            expect(totalReservas.rows[0].total).toBe(1);
+
+            const idEventoViejo = await insertarEventoFareHarbor({
+                bookingId: oldBookingId,
+                externalEventId: `${runId}:event-old`,
+                sourceReceivedAt: new Date('2027-03-15T10:00:00.000Z'),
+            });
+            await insertarEventoFareHarbor({
+                bookingId: oldBookingId,
+                externalEventId: `${runId}:event-newer`,
+                sourceReceivedAt: new Date('2027-03-15T11:00:00.000Z'),
+            });
+            await request(app)
+                .patch(`/api/eventos-integracion/${idEventoViejo}/revision`)
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send({ accion: 'approve', nota: 'FH3B1 viejo sintetico' });
+
+            const viejo = await request(app)
+                .post(`/api/eventos-integracion/${idEventoViejo}/aplicar`)
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send({
+                    completar: {
+                        id_tour: contexto.catalogos.id_tour,
+                        turno: 'Mañana',
+                        pickup_place: 'Lobby sintetico viejo',
+                        pickup_time: '08:00',
+                    },
+                });
+            expect(viejo.status).toBe(409);
+            expect(viejo.body.mensaje).toBe('Existe una actualización más reciente de esta reserva FareHarbor.');
+        } finally {
+            if (idsReservaciones.length > 0) {
+                await pool.query('DELETE FROM reservas_integracion_link WHERE provider = $1 AND id_reservacion = ANY($2::int[])', ['fareharbor', idsReservaciones]);
+                await pool.query('DELETE FROM bitacora WHERE id_reservacion = ANY($1::int[])', [idsReservaciones]);
+                await pool.query('DELETE FROM reservaciones WHERE id_reservacion = ANY($1::int[])', [idsReservaciones]);
+            }
+
+            if (idsEventos.length > 0) {
+                await pool.query('DELETE FROM eventos_integracion WHERE id_evento_integracion = ANY($1::int[])', [idsEventos]);
+            }
+
+            if (paisNoEspecificadoCreado) {
+                await pool.query('DELETE FROM paises WHERE id_pais = $1', [paisNoEspecificadoCreado]);
+            }
+
+            if (plataformaFareHarborCreada) {
+                await pool.query('DELETE FROM plataformas WHERE id_plataforma = $1', [plataformaFareHarborCreada]);
+            }
+        }
+    });
 });

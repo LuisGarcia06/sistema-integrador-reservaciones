@@ -1,4 +1,10 @@
+jest.mock('../services/reservaciones.service', () => ({
+    crearReservacionConDb: jest.fn(),
+}));
+
+const reservacionesService = require('../services/reservaciones.service');
 const {
+    aplicarNuevaReservaFareHarbor,
     calcularNinos,
     construirPreviewNuevaReservaFareHarborConDb,
     convertirDinero,
@@ -339,5 +345,356 @@ describe('fareharborApplication.service FH-3A preview', () => {
         const consultas = db.query.mock.calls.map(([query]) => String(query));
         expect(consultas.length).toBeGreaterThan(0);
         expect(consultas.every((query) => /^\s*SELECT\b/i.test(query))).toBe(true);
+    });
+});
+
+function crearDbPoolAplicacion({
+    evento = crearEventoFareHarbor(),
+    eventosBooking = null,
+    linkExistente = null,
+    equivalencia = null,
+    pais = { id_pais: 5, nombre: 'No especificado' },
+    plataforma = { id_plataforma: 1, nombre: 'FareHarbor' },
+    tour = { id_tour: 70, nombre: 'Kayak Tour' },
+    tourActivo = true,
+    fallaInsertLink = null,
+    marcarAplicadoDevuelveFila = true,
+} = {}) {
+    const client = {
+        queries: [],
+        query: jest.fn(async (query, values = []) => {
+            const sql = String(query);
+            client.queries.push(sql);
+
+            if (sql === 'BEGIN' || sql === 'COMMIT' || sql === 'ROLLBACK') {
+                return { rows: [] };
+            }
+
+            if (/FROM eventos_integracion[\s\S]+WHERE id_evento_integracion = \$1[\s\S]+FOR UPDATE/i.test(sql)) {
+                return { rows: evento ? [evento] : [] };
+            }
+
+            if (/FROM eventos_integracion[\s\S]+WHERE provider = \$1[\s\S]+external_booking_id = \$2[\s\S]+FOR UPDATE/i.test(sql)) {
+                return { rows: eventosBooking || (evento ? [evento] : []) };
+            }
+
+            if (/FROM reservas_integracion_link[\s\S]+WHERE provider = \$1/i.test(sql)) {
+                return { rows: linkExistente ? [linkExistente] : [] };
+            }
+
+            if (/FROM paises[\s\S]+WHERE nombre = \$1/i.test(sql)) {
+                return { rows: pais && values[0] === 'No especificado' ? [pais] : [] };
+            }
+
+            if (/FROM plataformas[\s\S]+WHERE nombre = \$1/i.test(sql)) {
+                return { rows: plataforma && values[0] === 'FareHarbor' ? [plataforma] : [] };
+            }
+
+            if (/FROM equivalencias_tours_externos/i.test(sql)) {
+                if (!equivalencia) {
+                    return { rows: [] };
+                }
+
+                return {
+                    rows: [{
+                        id_equivalencia_tour_externo: equivalencia.id_equivalencia_tour_externo || 33,
+                        provider: 'fareharbor',
+                        id_tour: equivalencia.id_tour,
+                        turno: equivalencia.turno,
+                    }],
+                };
+            }
+
+            if (/FROM tours[\s\S]+activo = TRUE/i.test(sql)) {
+                return { rows: tourActivo && tour && Number(values[0]) === Number(tour.id_tour) ? [tour] : [] };
+            }
+
+            if (/FROM tours/i.test(sql)) {
+                return { rows: tour && Number(values[0]) === Number(tour.id_tour) ? [tour] : [] };
+            }
+
+            if (/INSERT INTO reservas_integracion_link/i.test(sql)) {
+                if (fallaInsertLink) {
+                    throw fallaInsertLink;
+                }
+
+                return {
+                    rows: [{
+                        id_reserva_integracion_link: 77,
+                        provider: values[0],
+                        external_booking_id: values[1],
+                        id_reservacion: values[2],
+                    }],
+                };
+            }
+
+            if (/UPDATE eventos_integracion[\s\S]+application_status/i.test(sql)) {
+                return {
+                    rows: marcarAplicadoDevuelveFila
+                        ? [{
+                            id_evento_integracion: values[2],
+                            review_status: 'approved',
+                            application_status: 'applied',
+                            applied_by: values[1],
+                        }]
+                        : [],
+                };
+            }
+
+            throw new Error(`Query no soportado en apply FH: ${sql}`);
+        }),
+        release: jest.fn(),
+    };
+
+    return {
+        client,
+        pool: {
+            connect: jest.fn(async () => client),
+        },
+    };
+}
+
+function crearEventoFareHarborAplicable(overrides = {}) {
+    return crearEventoFareHarbor({
+        review_status: 'approved',
+        application_status: 'not_applied',
+        ...overrides,
+    });
+}
+
+describe('fareharborApplication.service FH-3B1 apply', () => {
+    beforeEach(() => {
+        reservacionesService.crearReservacionConDb.mockResolvedValue({
+            id_reservacion: 45,
+            codigo: 'RSV-20270101-FH123',
+        });
+    });
+
+    afterEach(() => {
+        jest.clearAllMocks();
+    });
+
+    test('apply exitoso sin equivalencia usa completar manual, crea reserva link y marca applied', async () => {
+        const evento = crearEventoFareHarborAplicable({
+            normalized_data: {
+                pickup: { pickup: null },
+            },
+        });
+        const { pool, client } = crearDbPoolAplicacion({ evento, equivalencia: null });
+
+        const resultado = await aplicarNuevaReservaFareHarbor(10, 9, {
+            id_tour: 70,
+            turno: 'Mañana',
+            pickup_place: 'Lobby manual',
+            pickup_time: '08:00',
+        }, pool);
+
+        expect(resultado.tipo).toBe('aplicado');
+        expect(reservacionesService.crearReservacionConDb).toHaveBeenCalledWith(
+            client,
+            expect.objectContaining({
+                fecha: '2027-03-15',
+                id_tour: 70,
+                id_pais: 5,
+                id_plataforma: 1,
+                nombre_cliente: 'Persona Sintetica',
+                pax: 3,
+                ninos: 1,
+                pickup_place: 'Lobby manual',
+                pickup_time: '08:00',
+                turno: 'Mañana',
+                precio_total: 3760,
+                deposito: 1000,
+                saldo: 2760,
+                tipo_cambio: null,
+                metodo_pago: null,
+                estado: 'Pendiente',
+            }),
+            9
+        );
+        expect(client.queries.some((query) => /INSERT INTO reservas_integracion_link/i.test(query))).toBe(true);
+        expect(client.queries.some((query) => /UPDATE eventos_integracion[\s\S]+application_status/i.test(query))).toBe(true);
+        expect(client.queries).toContain('COMMIT');
+    });
+
+    test('apply exitoso con equivalencia exacta usa tour y turno derivados y rechaza override', async () => {
+        const evento = crearEventoFareHarborAplicable();
+        const { pool } = crearDbPoolAplicacion({
+            evento,
+            equivalencia: { id_tour: 70, turno: 'Mañana' },
+        });
+
+        const ok = await aplicarNuevaReservaFareHarbor(10, 9, {}, pool);
+        expect(ok.tipo).toBe('aplicado');
+        expect(reservacionesService.crearReservacionConDb).toHaveBeenCalledWith(
+            expect.any(Object),
+            expect.objectContaining({ id_tour: 70, turno: 'Mañana' }),
+            9
+        );
+
+        const contradiccion = await aplicarNuevaReservaFareHarbor(10, 9, { id_tour: 71 }, crearDbPoolAplicacion({
+            evento,
+            equivalencia: { id_tour: 70, turno: 'Mañana' },
+        }).pool);
+        expect(contradiccion.tipo).toBe('override_prohibido');
+    });
+
+    test('categoria desconocida exige ninos manual y valida rango', async () => {
+        const evento = crearEventoFareHarborAplicable({
+            normalized_data: {
+                customers: {
+                    total: 2,
+                    by_category: [{ customer_type_pk: 9, singular: 'Youth', plural: 'Youth', count: 2 }],
+                },
+            },
+        });
+
+        const faltante = await aplicarNuevaReservaFareHarbor(10, 9, {}, crearDbPoolAplicacion({
+            evento,
+            equivalencia: { id_tour: 70, turno: 'Mañana' },
+        }).pool);
+        expect(faltante.tipo).toBe('faltan_datos');
+        expect(faltante.missingFields).toContain('ninos');
+
+        const invalido = await aplicarNuevaReservaFareHarbor(10, 9, { ninos: 3 }, crearDbPoolAplicacion({
+            evento,
+            equivalencia: { id_tour: 70, turno: 'Mañana' },
+        }).pool);
+        expect(invalido.tipo).toBe('datos_invalidos');
+
+        const manual = await aplicarNuevaReservaFareHarbor(10, 9, { ninos: 2 }, crearDbPoolAplicacion({
+            evento,
+            equivalencia: { id_tour: 70, turno: 'Mañana' },
+        }).pool);
+        expect(manual.tipo).toBe('aplicado');
+    });
+
+    test('pickup derivado no usa availability.start_at y pickup manual completa faltantes', async () => {
+        const conPickup = await aplicarNuevaReservaFareHarbor(10, 9, {}, crearDbPoolAplicacion({
+            evento: crearEventoFareHarborAplicable(),
+            equivalencia: { id_tour: 70, turno: 'Mañana' },
+        }).pool);
+        expect(conPickup.tipo).toBe('aplicado');
+        expect(reservacionesService.crearReservacionConDb).toHaveBeenLastCalledWith(
+            expect.any(Object),
+            expect.objectContaining({ pickup_time: '08:30' }),
+            9
+        );
+
+        const sinPickup = crearEventoFareHarborAplicable({ normalized_data: { pickup: { pickup: null } } });
+        const faltante = await aplicarNuevaReservaFareHarbor(10, 9, {}, crearDbPoolAplicacion({
+            evento: sinPickup,
+            equivalencia: { id_tour: 70, turno: 'Mañana' },
+        }).pool);
+        expect(faltante.tipo).toBe('faltan_datos');
+        expect(faltante.missingFields).toEqual(expect.arrayContaining(['pickup_place', 'pickup_time']));
+    });
+
+    test('dinero bloquea moneda no MXN, paid mayor que total y overflow', async () => {
+        const casos = [
+            [{ money: { currency: 'usd' } }, 'moneda_no_soportada'],
+            [{ money: { receipt_total: '100000', amount_paid: '100001', currency: 'mxn' } }, 'dinero_inconsistente'],
+            [{ money: { receipt_total: '10000000000', amount_paid: '0', currency: 'mxn' } }, 'dinero_overflow'],
+        ];
+
+        for (const [normalizedOverride, tipo] of casos) {
+            const resultado = await aplicarNuevaReservaFareHarbor(10, 9, {}, crearDbPoolAplicacion({
+                evento: crearEventoFareHarborAplicable({ normalized_data: normalizedOverride }),
+                equivalencia: { id_tour: 70, turno: 'Mañana' },
+            }).pool);
+
+            expect(resultado.tipo).toBe(tipo);
+            expect(reservacionesService.crearReservacionConDb).not.toHaveBeenCalled();
+            reservacionesService.crearReservacionConDb.mockClear();
+        }
+    });
+
+    test('rechaza fecha pax dinero y otros campos derivados enviados por frontend', async () => {
+        const resultado = await aplicarNuevaReservaFareHarbor(10, 9, {
+            fecha: '2027-03-15',
+            pax: 4,
+            precio_total: 1,
+        }, crearDbPoolAplicacion({
+            evento: crearEventoFareHarborAplicable(),
+            equivalencia: { id_tour: 70, turno: 'Mañana' },
+        }).pool);
+
+        expect(resultado.tipo).toBe('completar_invalido');
+        expect(resultado.errores).toEqual(expect.arrayContaining([
+            'El campo completar.fecha no esta permitido para FareHarbor',
+            'El campo completar.pax no esta permitido para FareHarbor',
+            'El campo completar.precio_total no esta permitido para FareHarbor',
+        ]));
+        expect(reservacionesService.crearReservacionConDb).not.toHaveBeenCalled();
+    });
+
+    test('bloquea pending, already applied, link existente y snapshot viejo', async () => {
+        await expect(aplicarNuevaReservaFareHarbor(10, 9, {}, crearDbPoolAplicacion({
+            evento: crearEventoFareHarbor({ review_status: 'pending_review', application_status: 'not_applied' }),
+        }).pool)).resolves.toMatchObject({ tipo: 'no_aprobado' });
+
+        await expect(aplicarNuevaReservaFareHarbor(10, 9, {}, crearDbPoolAplicacion({
+            evento: crearEventoFareHarborAplicable({ application_status: 'applied' }),
+        }).pool)).resolves.toMatchObject({ tipo: 'ya_aplicado' });
+
+        await expect(aplicarNuevaReservaFareHarbor(10, 9, {}, crearDbPoolAplicacion({
+            evento: crearEventoFareHarborAplicable(),
+            linkExistente: { id_reserva_integracion_link: 1, provider: 'fareharbor', external_booking_id: 'fh-booking-preview', id_reservacion: 45 },
+        }).pool)).resolves.toMatchObject({ tipo: 'ya_vinculado' });
+
+        await expect(aplicarNuevaReservaFareHarbor(10, 9, {}, crearDbPoolAplicacion({
+            evento: crearEventoFareHarborAplicable({ id_evento_integracion: 10 }),
+            eventosBooking: [
+                crearEventoFareHarborAplicable({ id_evento_integracion: 11, source_received_at: new Date('2027-03-15T12:00:00Z') }),
+                crearEventoFareHarborAplicable({ id_evento_integracion: 10, source_received_at: new Date('2027-03-15T11:00:00Z') }),
+            ],
+        }).pool)).resolves.toMatchObject({ tipo: 'snapshot_obsoleto' });
+    });
+
+    test('rollback si falla crearReservacionConDb o su bitacora interna', async () => {
+        const fallo = new Error('fallo bitacora sintetico');
+        reservacionesService.crearReservacionConDb.mockRejectedValueOnce(fallo);
+        const db = crearDbPoolAplicacion({
+            evento: crearEventoFareHarborAplicable(),
+            equivalencia: { id_tour: 70, turno: 'Mañana' },
+        });
+
+        await expect(aplicarNuevaReservaFareHarbor(10, 9, {}, db.pool)).rejects.toThrow('fallo bitacora sintetico');
+        expect(db.client.queries).toContain('ROLLBACK');
+        expect(db.client.queries.some((query) => /INSERT INTO reservas_integracion_link/i.test(query))).toBe(false);
+        expect(db.client.queries.some((query) => /UPDATE eventos_integracion[\s\S]+application_status/i.test(query))).toBe(false);
+    });
+    test('rollback si falla link o marcar applied', async () => {
+        const unique = new Error('duplicate link');
+        unique.code = '23505';
+        unique.constraint = 'uq_reservas_integracion_link_provider_booking';
+        const falloLink = crearDbPoolAplicacion({
+            evento: crearEventoFareHarborAplicable(),
+            equivalencia: { id_tour: 70, turno: 'Mañana' },
+            fallaInsertLink: unique,
+        });
+
+        const link = await aplicarNuevaReservaFareHarbor(10, 9, {}, falloLink.pool);
+        expect(link.tipo).toBe('ya_vinculado');
+        expect(falloLink.client.queries).toContain('ROLLBACK');
+
+        const falloApplied = crearDbPoolAplicacion({
+            evento: crearEventoFareHarborAplicable(),
+            equivalencia: { id_tour: 70, turno: 'Mañana' },
+            marcarAplicadoDevuelveFila: false,
+        });
+        const applied = await aplicarNuevaReservaFareHarbor(10, 9, {}, falloApplied.pool);
+        expect(applied.tipo).toBe('ya_aplicado');
+        expect(falloApplied.client.queries).toContain('ROLLBACK');
+    });
+
+    test('modification y cancellation FareHarbor siguen bloqueados por service', async () => {
+        await expect(aplicarNuevaReservaFareHarbor(10, 9, {}, crearDbPoolAplicacion({
+            evento: crearEventoFareHarborAplicable({ event_type: 'modification' }),
+        }).pool)).resolves.toMatchObject({ tipo: 'event_type_no_soportado' });
+
+        await expect(aplicarNuevaReservaFareHarbor(10, 9, {}, crearDbPoolAplicacion({
+            evento: crearEventoFareHarborAplicable({ event_type: 'cancellation' }),
+        }).pool)).resolves.toMatchObject({ tipo: 'event_type_no_soportado' });
     });
 });

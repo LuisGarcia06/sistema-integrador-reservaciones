@@ -29,6 +29,7 @@ jest.mock('../integrations/getyourguide/getyourguideModificationDiff.service', (
 }));
 
 jest.mock('../integrations/fareharbor/fareharborApplication.service', () => ({
+    aplicarNuevaReservaFareHarbor: jest.fn(),
     construirPreviewNuevaReservaFareHarborConDb: jest.fn(),
 }));
 const authService = require('../services/auth.service');
@@ -38,7 +39,10 @@ const {
     obtenerPreviewNuevaReservaGetYourGuideConDb,
 } = require('../integrations/getyourguide/getyourguideReservationApplication.service');
 const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
-const { construirPreviewNuevaReservaFareHarborConDb } = require('../integrations/fareharbor/fareharborApplication.service');
+const {
+    aplicarNuevaReservaFareHarbor,
+    construirPreviewNuevaReservaFareHarborConDb,
+} = require('../integrations/fareharbor/fareharborApplication.service');
 const eventosIntegracionRoutes = require('../routes/eventosIntegracion.routes');
 
 const JWT_SECRET = 'secret-eventos-integracion-test';
@@ -147,6 +151,12 @@ describe('eventosIntegracion.routes', () => {
             reservation_candidate: { id_tour: null, turno: null },
             missing_fields: ['id_tour', 'turno'],
             ready_to_apply: false,
+        });
+        aplicarNuevaReservaFareHarbor.mockResolvedValue({
+            tipo: 'aplicado',
+            reservacion: { id_reservacion: 20, codigo: 'RSV-20270101-FH123' },
+            link: { external_booking_id: 'fh-booking-sintetico' },
+            evento: { id_evento_integracion: 1, application_status: 'applied' },
         });
         obtenerDiffModificationGetYourGuide.mockResolvedValue({
             tipo: 'preview',
@@ -522,9 +532,31 @@ describe('eventosIntegracion.routes', () => {
         expect(obtenerDiffModificationGetYourGuide).not.toHaveBeenCalled();
     });
 
-    test('revision FareHarbor devuelve 409 sin modificar review_status', async () => {
+    test('revision FareHarbor new_booking permite aprobar con contrato existente', async () => {
         eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
             provider: 'fareharbor',
+            event_type: 'new_booking',
+            fareharbor_summary: {},
+        }));
+
+        const response = await request(app)
+            .patch('/api/eventos-integracion/1/revision')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ accion: 'approve' });
+
+        expect(response.status).toBe(200);
+        expect(eventosIntegracionService.revisarEventoIntegracion).toHaveBeenCalledWith({
+            idEventoIntegracion: 1,
+            accion: 'approve',
+            idUsuario: 1,
+            nota: undefined,
+        });
+    });
+
+    test('revision FareHarbor modification sigue bloqueada en FH-3B1', async () => {
+        eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
+            provider: 'fareharbor',
+            event_type: 'modification',
             fareharbor_summary: {},
         }));
 
@@ -538,19 +570,65 @@ describe('eventosIntegracion.routes', () => {
         expect(eventosIntegracionService.revisarEventoIntegracion).not.toHaveBeenCalled();
     });
 
-    test('aplicar FareHarbor devuelve 409 sin crear reservacion', async () => {
+    test('aplicar FareHarbor new_booking usa servicio FH-3B1 y no llama GetYourGuide', async () => {
         eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
             provider: 'fareharbor',
+            event_type: 'new_booking',
             fareharbor_summary: {},
         }));
 
         const response = await request(app)
             .post('/api/eventos-integracion/1/aplicar')
             .set('Authorization', `Bearer ${tokenAdministrador}`)
-            .send({ completar: { pickup_time: '08:30' } });
+            .send({ completar: { id_tour: 70, turno: 'Mañana', pickup_time: '08:30' } });
+
+        expect(response.status).toBe(201);
+        expect(response.body.datos).toEqual({
+            id_reservacion: 20,
+            codigo: 'RSV-20270101-FH123',
+            external_booking_id: 'fh-booking-sintetico',
+            id_evento_integracion: 1,
+        });
+        expect(aplicarNuevaReservaFareHarbor).toHaveBeenCalledWith(1, 1, {
+            id_tour: 70,
+            turno: 'Mañana',
+            pickup_time: '08:30',
+        });
+        expect(aplicarNuevaReservaGetYourGuide).not.toHaveBeenCalled();
+    });
+
+    test('aplicar FareHarbor rechaza campos derivados por backend', async () => {
+        eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
+            provider: 'fareharbor',
+            event_type: 'new_booking',
+            fareharbor_summary: {},
+        }));
+
+        const response = await request(app)
+            .post('/api/eventos-integracion/1/aplicar')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: { fecha: '2027-01-01' } });
+
+        expect(response.status).toBe(400);
+        expect(response.body.errores).toContain('El campo completar.fecha no esta permitido para FareHarbor');
+        expect(aplicarNuevaReservaFareHarbor).not.toHaveBeenCalled();
+    });
+
+    test('aplicar FareHarbor modification sigue bloqueada en FH-3B1', async () => {
+        eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
+            provider: 'fareharbor',
+            event_type: 'modification',
+            fareharbor_summary: {},
+        }));
+
+        const response = await request(app)
+            .post('/api/eventos-integracion/1/aplicar')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: {} });
 
         expect(response.status).toBe(409);
         expect(response.body.mensaje).toBe('La aplicacion de eventos FareHarbor aun no esta habilitada.');
+        expect(aplicarNuevaReservaFareHarbor).not.toHaveBeenCalled();
         expect(aplicarNuevaReservaGetYourGuide).not.toHaveBeenCalled();
     });
 });

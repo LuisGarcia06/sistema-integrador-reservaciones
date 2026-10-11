@@ -1,5 +1,7 @@
 const pool = require('../../config/database');
+const reservacionesService = require('../../services/reservaciones.service');
 const equivalenciasToursExternosService = require('../../services/equivalenciasToursExternos.service');
+const { validarDatosReservacion } = require('../../validators/reservaciones.validator');
 
 const PROVIDER_FAREHARBOR = 'fareharbor';
 const PLATFORM_NAME_FAREHARBOR = 'FareHarbor';
@@ -7,6 +9,19 @@ const PAIS_NO_ESPECIFICADO = 'No especificado';
 const ESTADO_INICIAL_RESERVACION = 'Pendiente';
 const MONEY_NUMERIC_MAX_MINOR = 9999999999n;
 const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d(:[0-5]\d)?$/;
+const EVENT_TYPE_NEW_BOOKING = 'new_booking';
+const REVIEW_STATUS_APPROVED = 'approved';
+const APPLICATION_STATUS_NOT_APPLIED = 'not_applied';
+const APPLICATION_STATUS_APPLIED = 'applied';
+const LINK_UNIQUE_CONSTRAINT = 'uq_reservas_integracion_link_provider_booking';
+const CAMPOS_COMPLETAR_FAREHARBOR = [
+    'id_tour',
+    'turno',
+    'pickup_place',
+    'pickup_time',
+    'ninos',
+    'nombre_cliente',
+];
 
 function crearResultado(tipo, datos = {}) {
     return {
@@ -21,6 +36,12 @@ function obtenerTexto(valor) {
     }
 
     return String(valor).trim() || null;
+}
+
+function normalizarTelefonoCliente(valor) {
+    const texto = obtenerTexto(valor);
+
+    return texto && texto.length <= 30 ? texto : null;
 }
 
 function obtenerEnteroPositivo(valor) {
@@ -284,6 +305,25 @@ async function obtenerTourResumen(db, idTour) {
     return result.rows[0] || null;
 }
 
+async function obtenerTourActivo(db, idTour) {
+    if (!idTour) {
+        return null;
+    }
+
+    const result = await db.query(
+        `
+            SELECT id_tour, nombre
+            FROM tours
+            WHERE id_tour = $1
+              AND activo = TRUE
+            LIMIT 1
+        `,
+        [idTour]
+    );
+
+    return result.rows[0] || null;
+}
+
 async function resolverTourTurno(db, { activityTitle, optionTitle }) {
     if (!activityTitle || !optionTitle) {
         return {
@@ -323,7 +363,7 @@ async function resolverTourTurno(db, { activityTitle, optionTitle }) {
 }
 
 async function construirPreviewNuevaReservaFareHarborConDb(db = pool, evento = {}) {
-    if (evento.provider !== PROVIDER_FAREHARBOR || evento.event_type !== 'new_booking') {
+    if (evento.provider !== PROVIDER_FAREHARBOR || evento.event_type !== EVENT_TYPE_NEW_BOOKING) {
         return crearResultado('event_type_no_soportado');
     }
 
@@ -334,14 +374,12 @@ async function construirPreviewNuevaReservaFareHarborConDb(db = pool, evento = {
     const pax = obtenerEnteroPositivo(normalizedData.customers?.total);
     const fecha = extraerFechaActividad(normalizedData.availability?.start_at);
     const contactName = obtenerTexto(normalizedData.contact?.name);
-    const contactPhone = obtenerTexto(normalizedData.contact?.normalized_phone);
+    const contactPhone = normalizarTelefonoCliente(normalizedData.contact?.normalized_phone);
     const pickupData = obtenerPickupData(normalizedData);
     const money = convertirDinero(normalizedData);
-    const [pais, plataforma, tour] = await Promise.all([
-        obtenerPaisNoEspecificado(db),
-        obtenerPlataformaFareHarbor(db),
-        resolverTourTurno(db, { activityTitle, optionTitle }),
-    ]);
+    const pais = await obtenerPaisNoEspecificado(db);
+    const plataforma = await obtenerPlataformaFareHarbor(db);
+    const tour = await resolverTourTurno(db, { activityTitle, optionTitle });
     const children = calcularNinos(categories, pax);
     const missingFields = [];
     const issues = [];
@@ -475,10 +513,394 @@ async function construirPreviewNuevaReservaFareHarborConDb(db = pool, evento = {
     });
 }
 
+async function obtenerEventoParaAplicacion(db, idEventoIntegracion) {
+    const result = await db.query(
+        `
+            SELECT
+                id_evento_integracion,
+                provider,
+                external_booking_id,
+                event_type,
+                review_status,
+                application_status,
+                applied_at,
+                applied_by,
+                normalized_data,
+                source_received_at,
+                created_at
+            FROM eventos_integracion
+            WHERE id_evento_integracion = $1
+            FOR UPDATE
+        `,
+        [idEventoIntegracion]
+    );
+
+    return result.rows[0] || null;
+}
+
+async function bloquearEventosBookingFareHarbor(db, externalBookingId) {
+    const result = await db.query(
+        `
+            SELECT
+                id_evento_integracion,
+                source_received_at,
+                created_at
+            FROM eventos_integracion
+            WHERE provider = $1
+              AND external_booking_id = $2
+            ORDER BY
+                COALESCE(source_received_at, created_at) DESC,
+                id_evento_integracion DESC
+            FOR UPDATE
+        `,
+        [PROVIDER_FAREHARBOR, externalBookingId]
+    );
+
+    return result.rows;
+}
+
+async function obtenerLinkPorExternalBooking(db, provider, externalBookingId) {
+    const result = await db.query(
+        `
+            SELECT
+                id_reserva_integracion_link,
+                provider,
+                external_booking_id,
+                id_reservacion,
+                created_at
+            FROM reservas_integracion_link
+            WHERE provider = $1
+              AND external_booking_id = $2
+            LIMIT 1
+        `,
+        [provider, externalBookingId]
+    );
+
+    return result.rows[0] || null;
+}
+
+async function crearLinkReservaIntegracion(db, { provider, externalBookingId, idReservacion }) {
+    const result = await db.query(
+        `
+            INSERT INTO reservas_integracion_link (
+                provider,
+                external_booking_id,
+                id_reservacion,
+                created_at
+            )
+            VALUES ($1, $2, $3, CURRENT_TIMESTAMP)
+            RETURNING
+                id_reserva_integracion_link,
+                provider,
+                external_booking_id,
+                id_reservacion,
+                created_at
+        `,
+        [provider, externalBookingId, idReservacion]
+    );
+
+    return result.rows[0];
+}
+
+async function marcarEventoAplicado(db, { idEventoIntegracion, idUsuario }) {
+    const result = await db.query(
+        `
+            UPDATE eventos_integracion
+            SET
+                application_status = $1,
+                applied_at = CURRENT_TIMESTAMP,
+                applied_by = $2,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id_evento_integracion = $3
+              AND application_status = $4
+            RETURNING
+                id_evento_integracion,
+                review_status,
+                application_status,
+                applied_at,
+                applied_by
+        `,
+        [APPLICATION_STATUS_APPLIED, idUsuario, idEventoIntegracion, APPLICATION_STATUS_NOT_APPLIED]
+    );
+
+    return result.rows[0] || null;
+}
+
+function esUniqueLink(error) {
+    return error?.code === '23505' && error?.constraint === LINK_UNIQUE_CONSTRAINT;
+}
+
+function obtenerCamposNoPermitidos(completar = {}) {
+    return Object.keys(completar).filter((campo) => !CAMPOS_COMPLETAR_FAREHARBOR.includes(campo));
+}
+
+function clasificarMoneyIssue(issue) {
+    if (!issue) {
+        return crearResultado('dinero_invalido');
+    }
+
+    if (/moneda/i.test(issue)) {
+        return crearResultado('moneda_no_soportada', { reason: issue });
+    }
+
+    if (/supera el total/i.test(issue)) {
+        return crearResultado('dinero_inconsistente', { reason: issue });
+    }
+
+    if (/exceden/i.test(issue)) {
+        return crearResultado('dinero_overflow', { reason: issue });
+    }
+
+    return crearResultado('dinero_invalido', { reason: issue });
+}
+
+function aplicarCampoManualSiNecesario({ completar, preview, campo, candidate, destino = campo, errores }) {
+    if (!Object.prototype.hasOwnProperty.call(completar, campo)) {
+        return;
+    }
+
+    if (!preview.missing_fields.includes(campo)) {
+        errores.push(`El campo completar.${campo} no puede sobrescribir un valor derivado de FareHarbor`);
+        return;
+    }
+
+    candidate[destino] = completar[campo];
+}
+
+async function construirReservacionFareHarborParaAplicacion(db, evento, completar = {}) {
+    const camposNoPermitidos = obtenerCamposNoPermitidos(completar);
+
+    if (camposNoPermitidos.length > 0) {
+        return crearResultado('completar_invalido', {
+            errores: camposNoPermitidos.map((campo) => `El campo completar.${campo} no esta permitido para FareHarbor`),
+        });
+    }
+
+    const preview = await construirPreviewNuevaReservaFareHarborConDb(db, evento);
+
+    if (preview.tipo !== 'preview') {
+        return preview;
+    }
+
+    const candidate = { ...preview.reservation_candidate };
+    const erroresOverride = [];
+
+    CAMPOS_COMPLETAR_FAREHARBOR.forEach((campo) => {
+        aplicarCampoManualSiNecesario({
+            completar,
+            preview,
+            campo,
+            candidate,
+            errores: erroresOverride,
+        });
+    });
+
+    if (erroresOverride.length > 0) {
+        return crearResultado('override_prohibido', { errores: erroresOverride });
+    }
+
+    const missingFields = preview.missing_fields.filter((campo) => (
+        candidate[campo] === null
+        || candidate[campo] === undefined
+        || candidate[campo] === ''
+    ));
+
+    if (missingFields.length > 0) {
+        return crearResultado('faltan_datos', {
+            missingFields,
+            warnings: preview.issues,
+        });
+    }
+
+    if (!preview.money_ready) {
+        return clasificarMoneyIssue(preview.sources?.money?.issue);
+    }
+
+    if (preview.sources?.tour?.source === 'manual') {
+        const tour = await obtenerTourActivo(db, candidate.id_tour);
+
+        if (!tour) {
+            return crearResultado('referencia_invalida', { campo: 'id_tour' });
+        }
+
+        candidate.tour = tour.nombre;
+    }
+
+    if (preview.sources?.country?.source === 'missing_catalog') {
+        return crearResultado('catalogo_no_encontrado', { campo: 'id_pais' });
+    }
+
+    if (preview.sources?.platform?.source === 'missing_catalog') {
+        return crearResultado('catalogo_no_encontrado', { campo: 'id_plataforma' });
+    }
+
+    const reservationData = {
+        fecha: candidate.fecha,
+        id_tour: candidate.id_tour,
+        id_pais: candidate.id_pais,
+        id_plataforma: candidate.id_plataforma,
+        nombre_cliente: candidate.nombre_cliente,
+        telefono_cliente: candidate.telefono_cliente,
+        habitacion: null,
+        pax: candidate.pax,
+        ninos: candidate.ninos,
+        pickup_place: candidate.pickup_place,
+        pickup_time: candidate.pickup_time,
+        turno: candidate.turno,
+        idioma: null,
+        precio_total: candidate.precio_total,
+        deposito: candidate.deposito,
+        saldo: candidate.saldo,
+        tipo_cambio: null,
+        metodo_pago: null,
+        vendedor: null,
+        observaciones: null,
+        estado: ESTADO_INICIAL_RESERVACION,
+    };
+    const { errores, reservacion } = validarDatosReservacion(reservationData);
+
+    if (errores.length > 0) {
+        return crearResultado('datos_invalidos', { errores });
+    }
+
+    return crearResultado('preparado', {
+        preview,
+        reservationData: reservacion,
+    });
+}
+
+async function aplicarNewBookingConDb(client, evento, usuarioId, completar) {
+    if (!evento.external_booking_id) {
+        return crearResultado('faltan_datos', { missingFields: ['external_booking_id'] });
+    }
+
+    const eventosBooking = await bloquearEventosBookingFareHarbor(client, evento.external_booking_id);
+    const snapshotMasReciente = eventosBooking[0];
+
+    if (
+        !snapshotMasReciente
+        || Number(snapshotMasReciente.id_evento_integracion) !== Number(evento.id_evento_integracion)
+    ) {
+        return crearResultado('snapshot_obsoleto');
+    }
+
+    const linkExistente = await obtenerLinkPorExternalBooking(
+        client,
+        evento.provider,
+        evento.external_booking_id
+    );
+
+    if (linkExistente) {
+        return crearResultado('ya_vinculado', { link: linkExistente });
+    }
+
+    const preparacion = await construirReservacionFareHarborParaAplicacion(client, evento, completar);
+
+    if (preparacion.tipo !== 'preparado') {
+        return preparacion;
+    }
+
+    const reservacion = await reservacionesService.crearReservacionConDb(
+        client,
+        preparacion.reservationData,
+        usuarioId
+    );
+
+    let link;
+
+    try {
+        link = await crearLinkReservaIntegracion(client, {
+            provider: evento.provider,
+            externalBookingId: evento.external_booking_id,
+            idReservacion: reservacion.id_reservacion,
+        });
+    } catch (error) {
+        if (esUniqueLink(error)) {
+            return crearResultado('ya_vinculado');
+        }
+
+        throw error;
+    }
+
+    const eventoAplicado = await marcarEventoAplicado(client, {
+        idEventoIntegracion: evento.id_evento_integracion,
+        idUsuario: usuarioId,
+    });
+
+    if (!eventoAplicado) {
+        return crearResultado('ya_aplicado');
+    }
+
+    return crearResultado('aplicado', {
+        reservacion,
+        link,
+        evento: eventoAplicado,
+        reservationData: preparacion.reservationData,
+    });
+}
+
+async function aplicarNuevaReservaFareHarbor(idEventoIntegracion, usuarioId, completar = {}, dbPool = pool) {
+    const client = await dbPool.connect();
+
+    try {
+        await client.query('BEGIN');
+
+        const evento = await obtenerEventoParaAplicacion(client, idEventoIntegracion);
+
+        if (!evento) {
+            await client.query('ROLLBACK');
+            return crearResultado('no_encontrado');
+        }
+
+        if (evento.provider !== PROVIDER_FAREHARBOR) {
+            await client.query('ROLLBACK');
+            return crearResultado('provider_no_soportado');
+        }
+
+        if (evento.event_type !== EVENT_TYPE_NEW_BOOKING) {
+            await client.query('ROLLBACK');
+            return crearResultado('event_type_no_soportado');
+        }
+
+        if (evento.review_status !== REVIEW_STATUS_APPROVED) {
+            await client.query('ROLLBACK');
+            return crearResultado('no_aprobado');
+        }
+
+        if (evento.application_status === APPLICATION_STATUS_APPLIED) {
+            await client.query('ROLLBACK');
+            return crearResultado('ya_aplicado');
+        }
+
+        const resultado = await aplicarNewBookingConDb(client, evento, usuarioId, completar);
+
+        if (resultado.tipo !== 'aplicado') {
+            await client.query('ROLLBACK');
+            return resultado;
+        }
+
+        await client.query('COMMIT');
+        return resultado;
+    } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
 module.exports = {
+    APPLICATION_STATUS_APPLIED,
+    APPLICATION_STATUS_NOT_APPLIED,
+    CAMPOS_COMPLETAR_FAREHARBOR,
+    EVENT_TYPE_NEW_BOOKING,
+    LINK_UNIQUE_CONSTRAINT,
     MONEY_NUMERIC_MAX_MINOR,
     PLATFORM_NAME_FAREHARBOR,
     PROVIDER_FAREHARBOR,
+    REVIEW_STATUS_APPROVED,
+    aplicarNuevaReservaFareHarbor,
+    construirReservacionFareHarborParaAplicacion,
     construirPreviewNuevaReservaFareHarborConDb,
     convertirDinero,
     extraerActivityTitle,

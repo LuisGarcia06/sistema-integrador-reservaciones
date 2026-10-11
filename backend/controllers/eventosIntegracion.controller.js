@@ -4,6 +4,7 @@ const {
     obtenerPreviewNuevaReservaGetYourGuideConDb,
 } = require('../integrations/getyourguide/getyourguideReservationApplication.service');
 const {
+    aplicarNuevaReservaFareHarbor,
     construirPreviewNuevaReservaFareHarborConDb,
 } = require('../integrations/fareharbor/fareharborApplication.service');
 const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
@@ -19,6 +20,7 @@ const responderFareHarborNoHabilitado = (res) => res.status(409).json({
 });
 
 const {
+    validarAplicacionFareHarbor,
     validarAplicacionEventoIntegracion,
     validarFiltrosEventosIntegracion,
     validarIdEventoIntegracion,
@@ -124,7 +126,7 @@ const revisarEventoIntegracion = async (req, res) => {
             });
         }
 
-        if (esEventoFareHarbor(evento)) {
+        if (esEventoFareHarbor(evento) && evento.event_type !== 'new_booking') {
             return responderFareHarborNoHabilitado(res);
         }
 
@@ -219,6 +221,75 @@ const obtenerDiffEventoIntegracion = async (req, res) => {
     }
 };
 
+
+const responderResultadoAplicacionFareHarbor = (res, resultado) => {
+    if (resultado.tipo === 'no_encontrado') {
+        return res.status(404).json({
+            mensaje: 'Evento de integracion no encontrado',
+        });
+    }
+
+    if (resultado.tipo === 'referencia_invalida' || resultado.tipo === 'catalogo_no_encontrado') {
+        return res.status(404).json({
+            mensaje: 'Referencia interna invalida',
+            campo: resultado.campo,
+        });
+    }
+
+    if (['completar_invalido', 'override_prohibido', 'datos_invalidos', 'faltan_datos'].includes(resultado.tipo)) {
+        const body = {
+            mensaje: resultado.tipo === 'faltan_datos'
+                ? 'El evento requiere informacion adicional'
+                : 'Datos invalidos',
+        };
+
+        if (resultado.errores) {
+            body.errores = resultado.errores;
+        }
+
+        if (resultado.missingFields) {
+            body.missing_fields = resultado.missingFields;
+        }
+
+        if (resultado.warnings) {
+            body.warnings = resultado.warnings;
+        }
+
+        return res.status(400).json(body);
+    }
+
+    if (resultado.tipo === 'snapshot_obsoleto') {
+        return res.status(409).json({
+            mensaje: 'Existe una actualización más reciente de esta reserva FareHarbor.',
+        });
+    }
+
+    if ([
+        'provider_no_soportado',
+        'event_type_no_soportado',
+        'no_aprobado',
+        'ya_aplicado',
+        'ya_vinculado',
+        'moneda_no_soportada',
+        'dinero_inconsistente',
+        'dinero_overflow',
+        'dinero_invalido',
+    ].includes(resultado.tipo)) {
+        return res.status(409).json({
+            mensaje: 'El evento de integracion no puede aplicarse en su estado actual',
+        });
+    }
+
+    return res.status(201).json({
+        mensaje: 'Reserva creada correctamente',
+        datos: {
+            id_reservacion: resultado.reservacion.id_reservacion,
+            codigo: resultado.reservacion.codigo,
+            external_booking_id: resultado.link.external_booking_id,
+            id_evento_integracion: resultado.evento?.id_evento_integracion,
+        },
+    });
+};
 const aplicarEventoIntegracion = async (req, res) => {
     const idEventoIntegracion = validarIdEventoIntegracion(req.params.id);
 
@@ -238,7 +309,26 @@ const aplicarEventoIntegracion = async (req, res) => {
         }
 
         if (esEventoFareHarbor(evento)) {
-            return responderFareHarborNoHabilitado(res);
+            if (evento.event_type !== 'new_booking') {
+                return responderFareHarborNoHabilitado(res);
+            }
+
+            const { errores, aplicacion } = validarAplicacionFareHarbor(req.body || {});
+
+            if (errores.length > 0) {
+                return res.status(400).json({
+                    mensaje: 'Datos invalidos',
+                    errores,
+                });
+            }
+
+            const resultadoFareHarbor = await aplicarNuevaReservaFareHarbor(
+                idEventoIntegracion,
+                req.usuario.id_usuario,
+                aplicacion.completar
+            );
+
+            return responderResultadoAplicacionFareHarbor(res, resultadoFareHarbor);
         }
 
         const { errores, aplicacion } = validarAplicacionEventoIntegracion(req.body || {});

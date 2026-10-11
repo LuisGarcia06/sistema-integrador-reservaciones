@@ -401,6 +401,18 @@ function construirFiltrosEventosIntegracion(filtros = {}) {
             values.push(cutoffAt);
             condiciones.push(`(provider = 'fareharbor' OR COALESCE(source_received_at, created_at) >= $${values.length})`);
         }
+
+        condiciones.push(`
+            (
+                provider <> 'fareharbor'
+                OR NOT EXISTS (
+                    SELECT 1
+                    FROM reservas_integracion_link ril
+                    WHERE ril.provider = eventos_integracion.provider
+                      AND ril.external_booking_id = eventos_integracion.external_booking_id
+                )
+            )
+        `);
     }
 
     return {

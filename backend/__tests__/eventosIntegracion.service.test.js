@@ -133,7 +133,7 @@ function agruparFilasOperativas(filas) {
     return resultado;
 }
 
-function crearDbListadoOperativo(filas) {
+function crearDbListadoOperativo(filas, links = []) {
     return {
         query: jest.fn(async (query, values) => {
             const reviewStatus = values[0];
@@ -146,6 +146,15 @@ function crearDbListadoOperativo(filas) {
                     || obtenerFechaOperativaEvento(fila) >= cutoffAt.getTime()
                 ));
             }
+
+
+            filtradas = filtradas.filter((fila) => (
+                fila.provider !== 'fareharbor'
+                || !links.some((link) => (
+                    link.provider === fila.provider
+                    && link.external_booking_id === fila.external_booking_id
+                ))
+            ));
 
             const operativas = agruparFilasOperativas(filtradas);
 
@@ -751,6 +760,52 @@ describe('eventosIntegracion.service', () => {
         }
     });
 
+    test('operational excluye snapshots FareHarbor si ya existe reservas_integracion_link', async () => {
+        const filas = [
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:linked:old',
+                external_booking_id: 'fh-booking-linked',
+                source_received_at: new Date('2027-03-10T09:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ fingerprint: 'old' }),
+            })), 1),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:linked:new',
+                external_booking_id: 'fh-booking-linked',
+                source_received_at: new Date('2027-03-10T12:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ fingerprint: 'new' }),
+            })), 2),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:open:new',
+                external_booking_id: 'fh-booking-open',
+                source_received_at: new Date('2027-03-10T11:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ booking: { display_id: 'FH-SYN-OPEN', status: 'booked' } }),
+            })), 3),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'getyourguide',
+                external_event_id: 'gyg-linked-name-no-effect',
+                external_booking_id: 'fh-booking-linked',
+                source_received_at: new Date('2027-03-10T13:00:00.000Z'),
+            })), 4),
+        ];
+        const db = crearDbListadoOperativo(filas, [{
+            provider: 'fareharbor',
+            external_booking_id: 'fh-booking-linked',
+        }]);
+
+        const resultado = await listarEventosIntegracion({
+            review_status: REVIEW_STATUS_PENDING,
+            operational_only: true,
+        }, { page: 1, limit: 50 }, db);
+
+        expect(resultado.pagination.total).toBe(2);
+        expect(resultado.data.map((evento) => evento.external_booking_id)).toEqual(['fh-booking-linked', 'fh-booking-open']);
+        expect(resultado.data.find((evento) => evento.provider === 'fareharbor').external_booking_id).toBe('fh-booking-open');
+        expect(db.query.mock.calls[0][0]).toMatch(/NOT EXISTS[\s\S]+reservas_integracion_link/i);
+        expect(db.query.mock.calls[1][0]).toMatch(/NOT EXISTS[\s\S]+reservas_integracion_link/i);
+    });
     test('operational agrupa antes de paginar y conserva pagination.total agrupado', async () => {
         const filas = [
             crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({

@@ -16,6 +16,14 @@ const LIMITES_PAGINACION_EVENTOS = [25, 50, 100];
 const CAMPOS_FILTROS_EVENTOS = ['review_status', 'provider', 'event_type', 'urgent', 'operational_only', 'page', 'limit'];
 const CAMPOS_REVISION_EVENTOS = ['accion', 'nota'];
 const CAMPOS_APLICACION_EVENTOS = ['completar'];
+const CAMPOS_COMPLETAR_FAREHARBOR_PERMITIDOS = [
+    'id_tour',
+    'turno',
+    'pickup_place',
+    'pickup_time',
+    'ninos',
+    'nombre_cliente',
+];
 const MAX_TEXTO_FILTRO = 50;
 const MAX_NOTA_REVISION = 500;
 const { CAMPOS_COMPLETAR_PERMITIDOS } = require('../integrations/getyourguide/getyourguideReservation.mapper');
@@ -366,6 +374,56 @@ const validarAplicacionEventoIntegracion = (body) => {
         aplicacion,
     };
 };
+
+const validarAplicacionFareHarbor = (body) => {
+    const errores = [];
+    const aplicacion = {
+        completar: {},
+    };
+    const datos = body || {};
+
+    Object.keys(datos).forEach((campo) => {
+        if (!CAMPOS_APLICACION_EVENTOS.includes(campo)) {
+            errores.push(`El campo ${campo} no esta permitido`);
+        }
+    });
+
+    if (!tieneCampo(datos, 'completar')) {
+        return {
+            errores,
+            aplicacion,
+        };
+    }
+
+    if (!datos.completar || typeof datos.completar !== 'object' || Array.isArray(datos.completar)) {
+        errores.push('El campo completar debe ser un objeto');
+        return {
+            errores,
+            aplicacion,
+        };
+    }
+
+    Object.keys(datos.completar).forEach((campo) => {
+        if (!CAMPOS_COMPLETAR_FAREHARBOR_PERMITIDOS.includes(campo)) {
+            errores.push(`El campo completar.${campo} no esta permitido para FareHarbor`);
+            return;
+        }
+
+        const resultado = validarCampoCompletar(campo, datos.completar[campo]);
+
+        if (!resultado.valido) {
+            errores.push(resultado.mensaje);
+            return;
+        }
+
+        aplicacion.completar[campo] = resultado.valor;
+    });
+
+    return {
+        errores,
+        aplicacion,
+    };
+};
 const validarRevisionEventoIntegracion = (body) => {
     const errores = [];
     const revision = {};
@@ -410,6 +468,7 @@ const validarRevisionEventoIntegracion = (body) => {
 module.exports = {
     LIMITES_PAGINACION_EVENTOS,
     REVIEW_STATUSES_PERMITIDOS,
+    validarAplicacionFareHarbor,
     validarFiltrosEventosIntegracion,
     validarAplicacionEventoIntegracion,
     validarIdEventoIntegracion,
