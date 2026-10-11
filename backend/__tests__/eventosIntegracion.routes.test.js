@@ -614,6 +614,26 @@ describe('eventosIntegracion.routes', () => {
         expect(aplicarNuevaReservaFareHarbor).not.toHaveBeenCalled();
     });
 
+    test('aplicar FareHarbor responde 409 cuando la actividad ya inicio', async () => {
+        eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
+            provider: 'fareharbor',
+            event_type: 'new_booking',
+            fareharbor_summary: {},
+        }));
+        aplicarNuevaReservaFareHarbor.mockResolvedValueOnce({
+            tipo: 'actividad_iniciada',
+        });
+
+        const response = await request(app)
+            .post('/api/eventos-integracion/1/aplicar')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ completar: {} });
+
+        expect(response.status).toBe(409);
+        expect(response.body.mensaje).toBe('La actividad FareHarbor ya inició y no puede aplicarse como reservación operativa.');
+        expect(aplicarNuevaReservaGetYourGuide).not.toHaveBeenCalled();
+    });
+
     test('aplicar FareHarbor modification sigue bloqueada en FH-3B1', async () => {
         eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
             provider: 'fareharbor',

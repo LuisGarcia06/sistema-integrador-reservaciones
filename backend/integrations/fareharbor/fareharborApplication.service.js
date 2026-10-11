@@ -14,6 +14,8 @@ const REVIEW_STATUS_APPROVED = 'approved';
 const APPLICATION_STATUS_NOT_APPLIED = 'not_applied';
 const APPLICATION_STATUS_APPLIED = 'applied';
 const LINK_UNIQUE_CONSTRAINT = 'uq_reservas_integracion_link_provider_booking';
+const ISSUE_ACTIVIDAD_INICIADA = 'La actividad ya inició y no puede registrarse como una reservación operativa.';
+const ISSUE_HORARIO_INICIO_INDETERMINADO = 'No fue posible determinar el horario de inicio de la actividad FareHarbor.';
 const CAMPOS_COMPLETAR_FAREHARBOR = [
     'id_tour',
     'turno',
@@ -85,6 +87,41 @@ function extraerFechaActividad(startAt) {
     }
 
     return texto.slice(0, 10);
+}
+
+function parseFareHarborStartAt(startAt) {
+    const texto = obtenerTexto(startAt);
+
+    if (!texto) {
+        return null;
+    }
+
+    const normalizado = texto.replace(/([+-]\d{2})(\d{2})$/, '$1:$2');
+    const fecha = new Date(normalizado);
+
+    return Number.isNaN(fecha.getTime()) ? null : fecha;
+}
+
+function evaluarTimingActividadFareHarbor(startAt, now = new Date()) {
+    const texto = obtenerTexto(startAt);
+    const fechaInicio = parseFareHarborStartAt(texto);
+    const fechaActual = now instanceof Date ? now : new Date(now);
+
+    if (!fechaInicio || Number.isNaN(fechaActual.getTime())) {
+        return {
+            start_at: texto,
+            has_started: null,
+            issue: ISSUE_HORARIO_INICIO_INDETERMINADO,
+        };
+    }
+
+    const hasStarted = fechaInicio.getTime() <= fechaActual.getTime();
+
+    return {
+        start_at: texto,
+        has_started: hasStarted,
+        issue: hasStarted ? ISSUE_ACTIVIDAD_INICIADA : null,
+    };
 }
 
 function obtenerCategorias(normalizedData = {}) {
@@ -362,7 +399,7 @@ async function resolverTourTurno(db, { activityTitle, optionTitle }) {
     };
 }
 
-async function construirPreviewNuevaReservaFareHarborConDb(db = pool, evento = {}) {
+async function construirPreviewNuevaReservaFareHarborConDb(db = pool, evento = {}, opciones = {}) {
     if (evento.provider !== PROVIDER_FAREHARBOR || evento.event_type !== EVENT_TYPE_NEW_BOOKING) {
         return crearResultado('event_type_no_soportado');
     }
@@ -377,6 +414,7 @@ async function construirPreviewNuevaReservaFareHarborConDb(db = pool, evento = {
     const contactPhone = normalizarTelefonoCliente(normalizedData.contact?.normalized_phone);
     const pickupData = obtenerPickupData(normalizedData);
     const money = convertirDinero(normalizedData);
+    const activityTiming = evaluarTimingActividadFareHarbor(normalizedData.availability?.start_at, opciones.now);
     const pais = await obtenerPaisNoEspecificado(db);
     const plataforma = await obtenerPlataformaFareHarbor(db);
     const tour = await resolverTourTurno(db, { activityTitle, optionTitle });
@@ -438,6 +476,10 @@ async function construirPreviewNuevaReservaFareHarborConDb(db = pool, evento = {
         issues.push(money.money_issue);
     }
 
+    if (activityTiming.issue) {
+        issues.push(activityTiming.issue);
+    }
+
     const reservationCandidate = {
         codigo: null,
         codigo_source: 'generated_on_apply',
@@ -466,9 +508,17 @@ async function construirPreviewNuevaReservaFareHarborConDb(db = pool, evento = {
         vendedor: null,
         idioma: null,
     };
-    const readyToApply = missingFields.length === 0 && money.money_ready;
+    const readyToApply = (
+        missingFields.length === 0
+        && money.money_ready
+        && activityTiming.has_started === false
+    );
 
     return crearResultado('preview', {
+        activity_timing: {
+            start_at: activityTiming.start_at,
+            has_started: activityTiming.has_started,
+        },
         external: {
             activity_title: activityTitle,
             option_title: optionTitle,
@@ -667,7 +717,7 @@ function aplicarCampoManualSiNecesario({ completar, preview, campo, candidate, d
     candidate[destino] = completar[campo];
 }
 
-async function construirReservacionFareHarborParaAplicacion(db, evento, completar = {}) {
+async function construirReservacionFareHarborParaAplicacion(db, evento, completar = {}, opciones = {}) {
     const camposNoPermitidos = obtenerCamposNoPermitidos(completar);
 
     if (camposNoPermitidos.length > 0) {
@@ -676,10 +726,24 @@ async function construirReservacionFareHarborParaAplicacion(db, evento, completa
         });
     }
 
-    const preview = await construirPreviewNuevaReservaFareHarborConDb(db, evento);
+    const preview = await construirPreviewNuevaReservaFareHarborConDb(db, evento, opciones);
 
     if (preview.tipo !== 'preview') {
         return preview;
+    }
+
+    if (preview.activity_timing?.has_started === true) {
+        return crearResultado('actividad_iniciada', {
+            reason: ISSUE_ACTIVIDAD_INICIADA,
+            preview,
+        });
+    }
+
+    if (preview.activity_timing?.has_started !== false) {
+        return crearResultado('horario_inicio_indeterminado', {
+            reason: ISSUE_HORARIO_INICIO_INDETERMINADO,
+            preview,
+        });
     }
 
     const candidate = { ...preview.reservation_candidate };
@@ -769,7 +833,7 @@ async function construirReservacionFareHarborParaAplicacion(db, evento, completa
     });
 }
 
-async function aplicarNewBookingConDb(client, evento, usuarioId, completar) {
+async function aplicarNewBookingConDb(client, evento, usuarioId, completar, opciones = {}) {
     if (!evento.external_booking_id) {
         return crearResultado('faltan_datos', { missingFields: ['external_booking_id'] });
     }
@@ -794,7 +858,7 @@ async function aplicarNewBookingConDb(client, evento, usuarioId, completar) {
         return crearResultado('ya_vinculado', { link: linkExistente });
     }
 
-    const preparacion = await construirReservacionFareHarborParaAplicacion(client, evento, completar);
+    const preparacion = await construirReservacionFareHarborParaAplicacion(client, evento, completar, opciones);
 
     if (preparacion.tipo !== 'preparado') {
         return preparacion;
@@ -839,7 +903,7 @@ async function aplicarNewBookingConDb(client, evento, usuarioId, completar) {
     });
 }
 
-async function aplicarNuevaReservaFareHarbor(idEventoIntegracion, usuarioId, completar = {}, dbPool = pool) {
+async function aplicarNuevaReservaFareHarbor(idEventoIntegracion, usuarioId, completar = {}, dbPool = pool, opciones = {}) {
     const client = await dbPool.connect();
 
     try {
@@ -872,7 +936,7 @@ async function aplicarNuevaReservaFareHarbor(idEventoIntegracion, usuarioId, com
             return crearResultado('ya_aplicado');
         }
 
-        const resultado = await aplicarNewBookingConDb(client, evento, usuarioId, completar);
+        const resultado = await aplicarNewBookingConDb(client, evento, usuarioId, completar, opciones);
 
         if (resultado.tipo !== 'aplicado') {
             await client.query('ROLLBACK');
@@ -894,6 +958,8 @@ module.exports = {
     APPLICATION_STATUS_NOT_APPLIED,
     CAMPOS_COMPLETAR_FAREHARBOR,
     EVENT_TYPE_NEW_BOOKING,
+    ISSUE_ACTIVIDAD_INICIADA,
+    ISSUE_HORARIO_INICIO_INDETERMINADO,
     LINK_UNIQUE_CONSTRAINT,
     MONEY_NUMERIC_MAX_MINOR,
     PLATFORM_NAME_FAREHARBOR,
@@ -903,6 +969,7 @@ module.exports = {
     construirReservacionFareHarborParaAplicacion,
     construirPreviewNuevaReservaFareHarborConDb,
     convertirDinero,
+    evaluarTimingActividadFareHarbor,
     extraerActivityTitle,
     extraerFechaActividad,
     extraerOptionTitle,

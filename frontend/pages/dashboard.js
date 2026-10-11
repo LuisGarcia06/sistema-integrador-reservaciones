@@ -574,14 +574,24 @@
     const preview = getFareHarborApplicationPreview(evento);
     const blocking = [];
 
+    function pushUnique(message) {
+      if (message && blocking.indexOf(message) === -1) {
+        blocking.push(message);
+      }
+    }
+
     if (preview.money_ready !== true) {
-      blocking.push("El dinero de FareHarbor todavía no está listo para aplicación.");
+      pushUnique("El dinero de FareHarbor todavía no está listo para aplicación.");
     }
 
     getNewBookingMissingFields(evento).forEach(function (field) {
       if (FAREHARBOR_MANUAL_FIELDS.indexOf(field) === -1) {
-        blocking.push("Falta " + getFieldLabel(field) + ".");
+        pushUnique("Falta " + getFieldLabel(field) + ".");
       }
+    });
+
+    getArray(preview.issues).forEach(function (issue) {
+      pushUnique(issue);
     });
 
     return blocking;

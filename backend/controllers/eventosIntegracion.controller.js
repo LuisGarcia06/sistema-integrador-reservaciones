@@ -264,6 +264,18 @@ const responderResultadoAplicacionFareHarbor = (res, resultado) => {
         });
     }
 
+    if (resultado.tipo === 'actividad_iniciada') {
+        return res.status(409).json({
+            mensaje: 'La actividad FareHarbor ya inició y no puede aplicarse como reservación operativa.',
+        });
+    }
+
+    if (resultado.tipo === 'horario_inicio_indeterminado') {
+        return res.status(409).json({
+            mensaje: 'No fue posible determinar el horario de inicio de la actividad FareHarbor.',
+        });
+    }
+
     if ([
         'provider_no_soportado',
         'event_type_no_soportado',

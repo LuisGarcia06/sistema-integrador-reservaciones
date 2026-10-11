@@ -8,7 +8,10 @@ const {
     calcularNinos,
     construirPreviewNuevaReservaFareHarborConDb,
     convertirDinero,
+    evaluarTimingActividadFareHarbor,
     extraerFechaActividad,
+    ISSUE_ACTIVIDAD_INICIADA,
+    ISSUE_HORARIO_INICIO_INDETERMINADO,
 } = require('../integrations/fareharbor/fareharborApplication.service');
 
 function mergeDeep(base, overrides) {
@@ -193,6 +196,49 @@ describe('fareharborApplication.service FH-3A preview', () => {
 
     test('extrae fecha YYYY-MM-DD sin desplazar timezone', () => {
         expect(extraerFechaActividad('2026-10-11T06:00:00-0500')).toBe('2026-10-11');
+    });
+
+    test('activity_timing usa comparacion instantanea para futuro, pasado, igualdad e invalido', async () => {
+        const now = new Date('2026-10-11T11:00:00Z');
+
+        expect(evaluarTimingActividadFareHarbor('2026-10-11T06:00:01-0500', now)).toEqual({
+            start_at: '2026-10-11T06:00:01-0500',
+            has_started: false,
+            issue: null,
+        });
+        expect(evaluarTimingActividadFareHarbor('2026-10-11T06:00:00-0500', now)).toEqual({
+            start_at: '2026-10-11T06:00:00-0500',
+            has_started: true,
+            issue: ISSUE_ACTIVIDAD_INICIADA,
+        });
+        expect(evaluarTimingActividadFareHarbor('2026-10-11T05:59:59-0500', now)).toEqual({
+            start_at: '2026-10-11T05:59:59-0500',
+            has_started: true,
+            issue: ISSUE_ACTIVIDAD_INICIADA,
+        });
+        expect(evaluarTimingActividadFareHarbor('sin-hora', now)).toEqual({
+            start_at: 'sin-hora',
+            has_started: null,
+            issue: ISSUE_HORARIO_INICIO_INDETERMINADO,
+        });
+
+        const preview = await construirPreviewNuevaReservaFareHarborConDb(
+            crearDbPreview({ equivalencia: { id_tour: 70, turno: 'Mañana' } }),
+            crearEventoFareHarbor({
+                normalized_data: {
+                    availability: { start_at: '2026-10-11T05:59:59-0500' },
+                },
+            }),
+            { now }
+        );
+
+        expect(preview.activity_timing).toEqual({
+            start_at: '2026-10-11T05:59:59-0500',
+            has_started: true,
+        });
+        expect(preview.ready_to_apply).toBe(false);
+        expect(preview.missing_fields).not.toContain('start_at');
+        expect(preview.issues).toContain(ISSUE_ACTIVIDAD_INICIADA);
     });
 
     test('pax se deriva de customers.total y conserva categorias seguras', async () => {
@@ -588,6 +634,70 @@ describe('fareharborApplication.service FH-3B1 apply', () => {
         }).pool);
         expect(faltante.tipo).toBe('faltan_datos');
         expect(faltante.missingFields).toEqual(expect.arrayContaining(['pickup_place', 'pickup_time']));
+    });
+
+    test('actividad pasada bloquea apply aunque manuales y dinero esten completos sin crear registros', async () => {
+        const evento = crearEventoFareHarborAplicable({
+            normalized_data: {
+                availability: {
+                    start_at: '2026-10-11T05:59:59-0500',
+                    end_at: '2026-10-11T10:59:59-0500',
+                },
+            },
+        });
+        const db = crearDbPoolAplicacion({
+            evento,
+            equivalencia: { id_tour: 70, turno: 'Mañana' },
+        });
+
+        const resultado = await aplicarNuevaReservaFareHarbor(10, 9, {}, db.pool, {
+            now: new Date('2026-10-11T11:00:00Z'),
+        });
+
+        expect(resultado.tipo).toBe('actividad_iniciada');
+        expect(resultado.reason).toBe(ISSUE_ACTIVIDAD_INICIADA);
+        expect(resultado.preview.ready_to_apply).toBe(false);
+        expect(resultado.preview.activity_timing).toEqual({
+            start_at: '2026-10-11T05:59:59-0500',
+            has_started: true,
+        });
+        expect(reservacionesService.crearReservacionConDb).not.toHaveBeenCalled();
+        expect(db.client.queries.some((query) => /INSERT INTO reservas_integracion_link/i.test(query))).toBe(false);
+        expect(db.client.queries.some((query) => /UPDATE eventos_integracion[\s\S]+application_status/i.test(query))).toBe(false);
+        expect(db.client.queries).toContain('ROLLBACK');
+        expect(db.client.queries).not.toContain('COMMIT');
+    });
+
+    test('horario inicio invalido bloquea apply sin agregar start_at a missing_fields', async () => {
+        const evento = crearEventoFareHarborAplicable({
+            normalized_data: {
+                availability: {
+                    start_at: 'sin-hora',
+                    end_at: null,
+                },
+            },
+        });
+        const db = crearDbPoolAplicacion({
+            evento,
+            equivalencia: { id_tour: 70, turno: 'Mañana' },
+        });
+
+        const resultado = await aplicarNuevaReservaFareHarbor(10, 9, {}, db.pool, {
+            now: new Date('2026-10-11T11:00:00Z'),
+        });
+
+        expect(resultado.tipo).toBe('horario_inicio_indeterminado');
+        expect(resultado.reason).toBe(ISSUE_HORARIO_INICIO_INDETERMINADO);
+        expect(resultado.preview.activity_timing).toEqual({
+            start_at: 'sin-hora',
+            has_started: null,
+        });
+        expect(resultado.preview.missing_fields).toContain('fecha');
+        expect(resultado.preview.missing_fields).not.toContain('start_at');
+        expect(reservacionesService.crearReservacionConDb).not.toHaveBeenCalled();
+        expect(db.client.queries.some((query) => /INSERT INTO reservas_integracion_link/i.test(query))).toBe(false);
+        expect(db.client.queries.some((query) => /UPDATE eventos_integracion[\s\S]+application_status/i.test(query))).toBe(false);
+        expect(db.client.queries).toContain('ROLLBACK');
     });
 
     test('dinero bloquea moneda no MXN, paid mayor que total y overflow', async () => {
