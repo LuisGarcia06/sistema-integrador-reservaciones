@@ -6,6 +6,7 @@
   const TURNO_SIN_CLASIFICAR = "Sin clasificar";
   const INTEGRATION_REFRESH_MS = 60000;
   const MANUAL_NEW_BOOKING_FIELDS = ["id_tour", "turno", "pickup_place", "pickup_time"];
+  const FAREHARBOR_MANUAL_FIELDS = ["id_tour", "turno", "pickup_place", "pickup_time", "ninos", "nombre_cliente"];
   const TURNOS_VALIDOS = ["Mañana", "Tarde"];
   const EVENT_TYPE_LABELS = {
     new_booking: "Nueva reservación",
@@ -68,6 +69,7 @@
     modalLoading: false,
     modalError: "",
     actionLoading: false,
+    fareHarborManualValues: {},
     tours: [],
     toursLoaded: false,
     toursLoading: false,
@@ -478,6 +480,176 @@
 
   function canEditIntegrationManually() {
     return Boolean(App.auth && App.auth.esAdministrador());
+  }
+
+  function resetFareHarborManualValues() {
+    integrationState.fareHarborManualValues = {};
+  }
+
+  function getFareHarborManualValue(field) {
+    const values = getObject(integrationState.fareHarborManualValues);
+    const value = values[field];
+
+    return value === null || value === undefined ? "" : String(value);
+  }
+
+  function setFareHarborManualValue(field, value) {
+    if (FAREHARBOR_MANUAL_FIELDS.indexOf(field) === -1) {
+      return;
+    }
+
+    integrationState.fareHarborManualValues[field] = value === null || value === undefined ? "" : String(value);
+  }
+
+  function saveFareHarborManualInputs() {
+    const fields = {
+      id_tour: "integration-tour-id",
+      turno: "integration-turno",
+      pickup_place: "integration-pickup-place",
+      pickup_time: "integration-pickup-time",
+      nombre_cliente: "fareharbor-customer-name",
+      ninos: "fareharbor-ninos"
+    };
+
+    Object.keys(fields).forEach(function (field) {
+      const input = document.getElementById(fields[field]);
+
+      if (input) {
+        setFareHarborManualValue(field, String(input.value || "").trim());
+      }
+    });
+  }
+
+  function getFareHarborPax(evento) {
+    const candidate = getFareHarborReservationCandidate(evento);
+    const pax = Number(candidate.pax);
+
+    return Number.isInteger(pax) && pax >= 0 ? pax : null;
+  }
+
+  function getFareHarborManualFieldErrors(evento) {
+    const errors = [];
+    const missing = getNewBookingMissingFields(evento);
+    const pax = getFareHarborPax(evento);
+
+    missing.forEach(function (field) {
+      if (FAREHARBOR_MANUAL_FIELDS.indexOf(field) === -1) {
+        return;
+      }
+
+      if (field === "id_tour" && !getManualTourValue()) {
+        errors.push({ field: field, message: "Selecciona el tour interno." });
+      }
+
+      if (field === "turno" && TURNOS_VALIDOS.indexOf(getManualTurnoValue()) === -1) {
+        errors.push({ field: field, message: "Selecciona un turno válido." });
+      }
+
+      if (field === "pickup_place" && !getManualPickupPlaceValue()) {
+        errors.push({ field: field, message: "El lugar de pickup es obligatorio." });
+      }
+
+      if (field === "pickup_time" && !getPickupTimeInputValue()) {
+        errors.push({ field: field, message: "La hora de pickup es obligatoria." });
+      }
+
+      if (field === "nombre_cliente" && !getFareHarborManualValue("nombre_cliente").trim()) {
+        errors.push({ field: field, message: "El nombre es obligatorio." });
+      }
+
+      if (field === "ninos") {
+        const rawValue = getFareHarborManualValue("ninos").trim();
+        const numberValue = Number(rawValue);
+
+        if (rawValue === "" || !Number.isInteger(numberValue) || numberValue < 0 || (pax !== null && numberValue > pax)) {
+          errors.push({ field: field, message: pax !== null ? "La cantidad de niños debe estar entre 0 y " + pax + "." : "La cantidad de niños debe ser un entero mayor o igual a 0." });
+        }
+      }
+    });
+
+    return errors;
+  }
+
+  function getFareHarborBlockingIssues(evento) {
+    const preview = getFareHarborApplicationPreview(evento);
+    const blocking = [];
+
+    if (preview.money_ready !== true) {
+      blocking.push("El dinero de FareHarbor todavía no está listo para aplicación.");
+    }
+
+    getNewBookingMissingFields(evento).forEach(function (field) {
+      if (FAREHARBOR_MANUAL_FIELDS.indexOf(field) === -1) {
+        blocking.push("Falta " + getFieldLabel(field) + ".");
+      }
+    });
+
+    return blocking;
+  }
+
+  function getFareHarborApplyValidation(evento) {
+    const errors = getFareHarborBlockingIssues(evento).concat(getFareHarborManualFieldErrors(evento).map(function (error) {
+      return error.message;
+    }));
+
+    return {
+      valid: errors.length === 0,
+      errors: errors,
+    };
+  }
+
+  function isFareHarborReadyForApply(evento) {
+    return Boolean(
+      evento
+      && isFareHarborEvent(evento)
+      && evento.event_type === "new_booking"
+      && evento.review_status === "approved"
+      && evento.application_status === "not_applied"
+      && !integrationState.actionLoading
+      && !integrationState.toursLoading
+      && getFareHarborApplyValidation(evento).valid
+    );
+  }
+
+  function buildFareHarborApplyCompletar(evento) {
+    const completar = {};
+
+    FAREHARBOR_MANUAL_FIELDS.forEach(function (field) {
+      if (!needsManualField(evento, field)) {
+        return;
+      }
+
+      if (field === "id_tour") {
+        completar.id_tour = Number(getManualTourValue());
+        return;
+      }
+
+      if (field === "turno") {
+        completar.turno = getManualTurnoValue();
+        return;
+      }
+
+      if (field === "pickup_place") {
+        completar.pickup_place = getManualPickupPlaceValue();
+        return;
+      }
+
+      if (field === "pickup_time") {
+        completar.pickup_time = getPickupTimeInputValue();
+        return;
+      }
+
+      if (field === "ninos") {
+        completar.ninos = Number(getFareHarborManualValue("ninos").trim());
+        return;
+      }
+
+      if (field === "nombre_cliente") {
+        completar.nombre_cliente = getFareHarborManualValue("nombre_cliente").trim();
+      }
+    });
+
+    return completar;
   }
 
   function getPreviewReservationData(evento) {
@@ -963,6 +1135,7 @@
   function renderTourSelect(evento) {
     const needsTour = needsManualField(evento, "id_tour");
     const tours = getSelectableTours();
+    const selectedTour = isFareHarborEvent(evento) ? getFareHarborManualValue("id_tour") : "";
 
     if (!needsTour || !canEditIntegrationManually()) {
       return "";
@@ -978,7 +1151,10 @@
       '<select id="integration-tour-id" required' + (integrationState.toursLoading ? " disabled" : "") + ">",
       '<option value="">' + (integrationState.toursLoading ? "Cargando tours..." : "Selecciona un tour") + "</option>",
       tours.map(function (tour) {
-        return '<option value="' + App.ui.escapeHtml(getTourId(tour)) + '">' + App.ui.escapeHtml(getTourName(tour)) + "</option>";
+        const tourId = String(getTourId(tour));
+        const selected = selectedTour && selectedTour === tourId ? ' selected' : '';
+
+        return '<option value="' + App.ui.escapeHtml(tourId) + '"' + selected + '>' + App.ui.escapeHtml(getTourName(tour)) + "</option>";
       }).join(""),
       "</select>",
       "</label>"
@@ -987,6 +1163,7 @@
 
   function renderTurnoSelect(evento) {
     const needsTurno = needsManualField(evento, "turno");
+    const selectedTurno = isFareHarborEvent(evento) ? getFareHarborManualValue("turno") : "";
 
     if (!needsTurno || !canEditIntegrationManually()) {
       return "";
@@ -998,7 +1175,9 @@
       '<select id="integration-turno" required>',
       '<option value="">Selecciona turno</option>',
       TURNOS_VALIDOS.map(function (turno) {
-        return '<option value="' + App.ui.escapeHtml(turno) + '">' + App.ui.escapeHtml(turno) + "</option>";
+        const selected = selectedTurno === turno ? ' selected' : '';
+
+        return '<option value="' + App.ui.escapeHtml(turno) + '"' + selected + '>' + App.ui.escapeHtml(turno) + "</option>";
       }).join(""),
       "</select>",
       "</label>"
@@ -1006,6 +1185,8 @@
   }
 
   function renderPickupPlaceInput(evento) {
+    const value = isFareHarborEvent(evento) ? getFareHarborManualValue("pickup_place") : "";
+
     if (!needsManualField(evento, "pickup_place") || !canEditIntegrationManually()) {
       return "";
     }
@@ -1013,7 +1194,7 @@
     return [
       '<label class="field dashboard-integration-full">',
       '<span>Lugar de pickup *</span>',
-      '<input id="integration-pickup-place" type="text" maxlength="120" required>',
+      '<input id="integration-pickup-place" type="text" maxlength="120" required value="' + App.ui.escapeHtml(value) + '">',
       "</label>"
     ].join("");
   }
@@ -1069,13 +1250,15 @@
   }
 
   function updateNewBookingApplyButtonState() {
-    const button = document.querySelector('[data-dialog-action="apply-new-booking"]');
+    const button = document.querySelector('[data-dialog-action="apply-new-booking"], [data-dialog-action="apply-fareharbor"]');
 
     if (!button || !integrationState.modalEvent || integrationState.actionLoading) {
       return;
     }
 
-    button.disabled = !isNewBookingReadyForApply(integrationState.modalEvent);
+    button.disabled = isFareHarborEvent(integrationState.modalEvent)
+      ? !isFareHarborReadyForApply(integrationState.modalEvent)
+      : !isNewBookingReadyForApply(integrationState.modalEvent);
   }
 
   function renderNewBookingReview(evento) {
@@ -1208,36 +1391,8 @@
   }
 
   function getFareHarborManualMissingFields(evento) {
-    const missing = getNewBookingMissingFields(evento).slice();
-
-    return missing.filter(function (field) {
-      if (field === "id_tour") {
-        return !getManualTourValue();
-      }
-
-      if (field === "turno") {
-        return TURNOS_VALIDOS.indexOf(getManualTurnoValue()) === -1;
-      }
-
-      if (field === "pickup_place") {
-        return !getManualPickupPlaceValue();
-      }
-
-      if (field === "pickup_time") {
-        return !getPickupTimeInputValue();
-      }
-
-      if (field === "nombre_cliente") {
-        const input = document.getElementById("fareharbor-customer-name");
-        return !input || !String(input.value || "").trim();
-      }
-
-      if (field === "ninos") {
-        const input = document.getElementById("fareharbor-ninos");
-        return !input || String(input.value || "").trim() === "";
-      }
-
-      return true;
+    return getFareHarborManualFieldErrors(evento).map(function (error) {
+      return error.field;
     });
   }
 
@@ -1249,16 +1404,19 @@
       return;
     }
 
+    const validation = getFareHarborApplyValidation(evento);
     const missing = getFareHarborManualMissingFields(evento);
 
-    if (missing.length === 0) {
+    if (validation.valid) {
       status.className = "form-message is-info";
-      status.textContent = "Datos completos para aplicación. Todavía no se guardan.";
+      status.textContent = "Datos completos para aplicación.";
       return;
     }
 
     status.className = "form-message is-info";
-    status.textContent = "Faltan datos: " + missing.map(getFieldLabel).join(", ") + ".";
+    status.textContent = missing.length
+      ? "Faltan datos: " + missing.map(getFieldLabel).join(", ") + "."
+      : validation.errors.join(" ");
   }
 
   function renderFareHarborReadonlyCandidate(label, value) {
@@ -1266,6 +1424,8 @@
   }
 
   function renderFareHarborManualName(evento) {
+    const value = getFareHarborManualValue("nombre_cliente");
+
     if (!needsManualField(evento, "nombre_cliente") || !canEditIntegrationManually()) {
       return "";
     }
@@ -1273,12 +1433,15 @@
     return [
       '<label class="field dashboard-integration-full">',
       '<span>Nombre *</span>',
-      '<input id="fareharbor-customer-name" type="text" maxlength="120" required>',
+      '<input id="fareharbor-customer-name" type="text" maxlength="120" required value="' + App.ui.escapeHtml(value) + '">',
       "</label>"
     ].join("");
   }
 
   function renderFareHarborManualChildren(evento) {
+    const value = getFareHarborManualValue("ninos");
+    const pax = getFareHarborPax(evento);
+
     if (!needsManualField(evento, "ninos") || !canEditIntegrationManually()) {
       return "";
     }
@@ -1286,12 +1449,14 @@
     return [
       '<label class="field dashboard-integration-full">',
       '<span>Niños *</span>',
-      '<input id="fareharbor-ninos" type="number" min="0" step="1" required>',
+      '<input id="fareharbor-ninos" type="number" min="0"' + (pax !== null ? ' max="' + App.ui.escapeHtml(pax) + '"' : '') + ' step="1" required value="' + App.ui.escapeHtml(value) + '">',
       "</label>"
     ].join("");
   }
 
   function renderFareHarborPickupTimeInput(evento) {
+    const value = getFareHarborManualValue("pickup_time");
+
     if (!needsManualField(evento, "pickup_time") || !canEditIntegrationManually()) {
       return "";
     }
@@ -1299,7 +1464,7 @@
     return [
       '<label class="field dashboard-integration-full">',
       '<span>Hora de pickup *</span>',
-      '<input id="integration-pickup-time" type="time" required>',
+      '<input id="integration-pickup-time" type="time" required value="' + App.ui.escapeHtml(value) + '">',
       "</label>"
     ].join("");
   }
@@ -1311,14 +1476,15 @@
     const sources = getObject(preview.sources);
     const tourSource = getObject(sources.tour);
     const pickupSource = getObject(sources.pickup);
-    const moneySource = getObject(sources.money);
     const issues = getArray(preview.issues);
     const missingFields = getNewBookingMissingFields(evento);
 
     return [
       '<section class="dashboard-integration-block">',
       "<h3>Datos externos FareHarbor</h3>",
-      '<p class="form-message is-info">Reserva FareHarbor recibida. La aplicación de esta integración aún no está habilitada.</p>',
+      evento.review_status === "pending_review"
+        ? '<p class="form-message is-info">Aprueba esta reserva FareHarbor antes de aplicarla.</p>'
+        : '<p class="form-message is-info">Completa los datos manuales requeridos para aplicar la reserva.</p>',
       '<div class="dashboard-integration-detail-grid">',
       renderDetailItem("Actividad externa", external.activity_title),
       renderDetailItem("Opción externa", external.option_title),
@@ -1333,7 +1499,7 @@
       "<h3>Datos para reservación</h3>",
       missingFields.length
         ? '<p id="fareharbor-preview-status" class="form-message is-info">Faltan datos: ' + missingFields.map(getFieldLabel).join(", ") + ".</p>"
-        : '<p id="fareharbor-preview-status" class="form-message is-info">Datos completos para aplicación. Todavía no se guardan.</p>',
+        : '<p id="fareharbor-preview-status" class="form-message is-info">Datos completos para aplicación.</p>',
       issues.length
         ? '<div class="dashboard-integration-warning">' + issues.map(function (issue) {
             return "<p>" + App.ui.escapeHtml(issue) + "</p>";
@@ -1369,9 +1535,6 @@
       renderFareHarborReadonlyCandidate("Pickup recibido", pickupSource.pickup_place !== "manual" ? "Sí" : "No recibido"),
       renderFareHarborReadonlyCandidate("Lodging", pickupSource.lodging_present ? "Presente" : "No recibido"),
       renderFareHarborReadonlyCandidate("Arrival", pickupSource.arrival_present ? "Presente" : "No recibido"),
-      renderFareHarborReadonlyCandidate("Referencia receipt total", moneySource.receipt_total_display),
-      renderFareHarborReadonlyCandidate("Referencia amount paid", moneySource.amount_paid_display),
-      renderFareHarborReadonlyCandidate("Referencia invoice price", moneySource.invoice_price_display),
       "</div>",
       renderTourSelect(evento),
       renderTurnoSelect(evento),
@@ -1379,7 +1542,6 @@
       renderFareHarborManualChildren(evento),
       renderPickupPlaceInput(evento),
       renderFareHarborPickupTimeInput(evento),
-      '<p class="card-text dashboard-integration-full">Los datos todavía no se guardan. La aplicación de FareHarbor se habilitará en la siguiente fase.</p>',
       "</section>"
     ].join("");
   }
@@ -1401,7 +1563,9 @@
     return [
       '<section class="dashboard-integration-block">',
       "<h3>Reserva FareHarbor</h3>",
-      '<p class="form-message is-info">Reserva FareHarbor recibida. La aplicación de esta integración aún no está habilitada.</p>',
+      evento.review_status === "pending_review"
+        ? '<p class="form-message is-info">Aprueba esta reserva FareHarbor antes de aplicarla.</p>'
+        : '<p class="form-message is-info">Completa los datos manuales requeridos para aplicar la reserva.</p>',
       '<div class="dashboard-integration-detail-grid">',
       renderDetailItem("Display ID", booking.display_id),
       renderDetailItem("Estado externo", booking.status),
@@ -1447,12 +1611,23 @@
   function renderDialogActions(evento, diff) {
     if (isFareHarborEvent(evento)) {
       const isAdmin = App.auth && App.auth.esAdministrador();
-      const preview = getFareHarborApplicationPreview(evento);
-      const disabledApply = isAdmin && preview.tipo === "preview"
-        ? '<button class="btn btn-primary" type="button" disabled>Aplicar reservación</button>'
-        : "";
+      const reviewStatus = evento && evento.review_status;
+      const applicationStatus = evento && evento.application_status;
+      const disabled = integrationState.actionLoading ? " disabled" : "";
+      const actions = ['<button class="btn" type="button" data-dialog-action="close">Cerrar</button>'];
 
-      return disabledApply + '<button class="btn" type="button" data-dialog-action="close">Cerrar</button>';
+      if (!isAdmin) {
+        actions.unshift('<span class="card-text dashboard-integration-readonly">Modo consulta: solo lectura.</span>');
+        return actions.join("");
+      }
+
+      if (evento && evento.event_type === "new_booking" && reviewStatus === "pending_review") {
+        actions.unshift('<button class="btn btn-primary" type="button" data-dialog-action="approve-fareharbor"' + disabled + ">Aprobar</button>");
+      } else if (evento && evento.event_type === "new_booking" && reviewStatus === "approved" && applicationStatus === "not_applied") {
+        actions.unshift('<button class="btn btn-primary" type="button" data-dialog-action="apply-fareharbor"' + disabled + (isFareHarborReadyForApply(evento) ? "" : " disabled") + ">Aplicar reservación</button>");
+      }
+
+      return actions.join("");
     }
 
     const isAdmin = App.auth && App.auth.esAdministrador();
@@ -1605,10 +1780,18 @@
 
       if (input) {
         input.addEventListener("input", function () {
+          if (integrationState.modalEvent && isFareHarborEvent(integrationState.modalEvent)) {
+            saveFareHarborManualInputs();
+          }
+
           updateNewBookingApplyButtonState();
           updateFareHarborPreviewStatus();
         });
         input.addEventListener("change", function () {
+          if (integrationState.modalEvent && isFareHarborEvent(integrationState.modalEvent)) {
+            saveFareHarborManualInputs();
+          }
+
           updateNewBookingApplyButtonState();
           updateFareHarborPreviewStatus();
         });
@@ -1672,7 +1855,13 @@
     }
   }
 
-  async function openIntegrationDialog(id) {
+  async function openIntegrationDialog(id, options) {
+    const config = options || {};
+
+    if (!config.preserveFareHarborManualValues) {
+      resetFareHarborManualValues();
+    }
+
     integrationState.modalEvent = null;
     integrationState.modalDiff = null;
     integrationState.modalError = "";
@@ -1711,6 +1900,7 @@
     integrationState.modalLoading = false;
     integrationState.modalError = "";
     integrationState.actionLoading = false;
+    resetFareHarborManualValues();
 
     if (host) {
       host.innerHTML = "";
@@ -1783,6 +1973,116 @@
     }
 
     return fallback || "Reservación registrada correctamente.";
+  }
+
+  function getFareHarborApplySuccessMessage(response) {
+    const datos = response && (response.datos || response.data);
+
+    if (datos && datos.codigo) {
+      return "Reservación registrada correctamente: " + datos.codigo;
+    }
+
+    return "Reservación registrada correctamente.";
+  }
+
+  function getFareHarborApplyErrorMessage(error) {
+    const data = error && error.data ? error.data : null;
+
+    if (error && error.isNetworkError) {
+      return "No hay conexion con el backend. Revisa que el servidor este activo.";
+    }
+
+    if (error && error.status === 404) {
+      return "El evento o uno de los catálogos necesarios ya no está disponible.";
+    }
+
+    if (error && error.status >= 500) {
+      return "No fue posible registrar la reservación.";
+    }
+
+    if (data && Array.isArray(data.errores) && data.errores.length > 0) {
+      return data.errores.map(function (item) {
+        return typeof item === "string" ? item : (item && item.mensaje ? item.mensaje : JSON.stringify(item));
+      }).join(" ");
+    }
+
+    if (data && Array.isArray(data.missing_fields) && data.missing_fields.length > 0) {
+      return "Faltan datos obligatorios: " + data.missing_fields.map(getFieldLabel).join(", ") + ".";
+    }
+
+    if (data && data.mensaje) {
+      return data.mensaje;
+    }
+
+    return "No fue posible registrar la reservación.";
+  }
+
+  function shouldCloseFareHarborAfterConflict(message) {
+    const text = String(message || "").toLowerCase();
+
+    return text.indexOf("actualización") !== -1
+      || text.indexOf("actualizacion") !== -1
+      || text.indexOf("vinculad") !== -1;
+  }
+
+  async function approveFareHarborBooking() {
+    const id = getCurrentIntegrationId();
+
+    saveFareHarborManualInputs();
+    integrationState.actionLoading = true;
+    integrationState.modalError = "";
+    renderIntegrationDialog();
+
+    try {
+      await approveIntegrationEvent(id);
+      integrationState.message = "Evento FareHarbor aprobado.";
+      await loadIntegrationPendientes({ silent: true });
+      integrationState.actionLoading = false;
+      await openIntegrationDialog(id, { preserveFareHarborManualValues: true });
+    } catch (error) {
+      setModalError(getIntegrationErrorMessage(error, "No fue posible aprobar el evento FareHarbor."));
+    }
+  }
+
+  async function applyFareHarborBooking() {
+    const evento = integrationState.modalEvent;
+    const id = getCurrentIntegrationId();
+    let validation;
+    let completar;
+    let response;
+    let message;
+
+    saveFareHarborManualInputs();
+    validation = getFareHarborApplyValidation(evento);
+
+    if (!validation.valid) {
+      setModalError(validation.errors.join(" "));
+      return;
+    }
+
+    completar = buildFareHarborApplyCompletar(evento);
+
+    if (!window.confirm("Se creará una reservación en el Sistema Integrador.\n¿Deseas continuar?")) {
+      return;
+    }
+
+    integrationState.actionLoading = true;
+    integrationState.modalError = "";
+    renderIntegrationDialog();
+
+    try {
+      response = await applyIntegrationEvent(id, completar);
+      await refreshAfterIntegrationAction(getFareHarborApplySuccessMessage(response));
+    } catch (error) {
+      message = getFareHarborApplyErrorMessage(error);
+
+      if (error && error.status === 409 && shouldCloseFareHarborAfterConflict(message)) {
+        await refreshAfterIntegrationAction(message);
+        return;
+      }
+
+      setModalError(message);
+    }
   }
 
   async function applyNewBooking() {
@@ -1977,6 +2277,16 @@
 
     if (action === "apply-new-booking") {
       applyNewBooking();
+      return;
+    }
+
+    if (action === "approve-fareharbor") {
+      approveFareHarborBooking();
+      return;
+    }
+
+    if (action === "apply-fareharbor") {
+      applyFareHarborBooking();
       return;
     }
 
