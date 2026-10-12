@@ -17,6 +17,7 @@ const CAMPOS_FILTROS_EVENTOS = ['review_status', 'provider', 'event_type', 'urge
 const CAMPOS_REVISION_EVENTOS = ['accion', 'nota'];
 const CAMPOS_APLICACION_EVENTOS = ['completar'];
 const CAMPOS_APLICACION_FAREHARBOR_MODIFICATION = ['diff_fingerprint', 'decisions', 'completar'];
+const CAMPOS_APLICACION_FAREHARBOR_CANCELLATION = ['cancellation_fingerprint', 'motivo_cancelacion'];
 const DECISIONES_FAREHARBOR_MODIFICATION = ['apply_external', 'keep_internal', 'manual'];
 const DECISION_KEYS_FAREHARBOR_MODIFICATION = [
     'fecha',
@@ -507,6 +508,46 @@ const validarAplicacionFareHarborModification = (body) => {
         aplicacion,
     };
 };
+
+const validarAplicacionFareHarborCancellation = (body) => {
+    const errores = [];
+    const aplicacion = {
+        cancellation_fingerprint: null,
+    };
+    const datos = body || {};
+
+    Object.keys(datos).forEach((campo) => {
+        if (!CAMPOS_APLICACION_FAREHARBOR_CANCELLATION.includes(campo)) {
+            errores.push(`El campo ${campo} no esta permitido para FareHarbor cancellation`);
+        }
+    });
+
+    if (
+        typeof datos.cancellation_fingerprint !== 'string'
+        || !/^[a-f0-9]{64}$/i.test(datos.cancellation_fingerprint)
+    ) {
+        errores.push('El campo cancellation_fingerprint es obligatorio y debe ser SHA-256 hexadecimal');
+    } else {
+        aplicacion.cancellation_fingerprint = datos.cancellation_fingerprint.toLowerCase();
+    }
+
+    if (tieneCampo(datos, 'motivo_cancelacion')) {
+        const { errores: erroresMotivo, cancelacion } = validarCancelacionReservacion({
+            motivo_cancelacion: datos.motivo_cancelacion,
+        });
+
+        if (erroresMotivo.length > 0) {
+            errores.push(...erroresMotivo);
+        } else {
+            aplicacion.motivo_cancelacion = cancelacion.motivo_cancelacion;
+        }
+    }
+
+    return {
+        errores,
+        aplicacion,
+    };
+};
 const validarRevisionEventoIntegracion = (body) => {
     const errores = [];
     const revision = {};
@@ -552,6 +593,7 @@ module.exports = {
     LIMITES_PAGINACION_EVENTOS,
     REVIEW_STATUSES_PERMITIDOS,
     validarAplicacionFareHarbor,
+    validarAplicacionFareHarborCancellation,
     validarAplicacionFareHarborModification,
     validarFiltrosEventosIntegracion,
     validarAplicacionEventoIntegracion,

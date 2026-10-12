@@ -40,6 +40,10 @@ jest.mock('../integrations/fareharbor/fareharborModificationApplication.service'
     aplicarModificationFareHarbor: jest.fn(),
 }));
 
+jest.mock('../integrations/fareharbor/fareharborCancellationApplication.service', () => ({
+    aplicarCancellationFareHarbor: jest.fn(),
+}));
+
 jest.mock('../integrations/fareharbor/fareharborApplication.service', () => ({
     aplicarNuevaReservaFareHarbor: jest.fn(),
     construirPreviewNuevaReservaFareHarborConDb: jest.fn(),
@@ -54,6 +58,7 @@ const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyour
 const { obtenerDiffModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationDiff.service');
 const { obtenerDiffCancellationFareHarbor } = require('../integrations/fareharbor/fareharborCancellationPreview.service');
 const { aplicarModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationApplication.service');
+const { aplicarCancellationFareHarbor } = require('../integrations/fareharbor/fareharborCancellationApplication.service');
 const {
     aplicarNuevaReservaFareHarbor,
     construirPreviewNuevaReservaFareHarborConDb,
@@ -179,6 +184,15 @@ describe('eventosIntegracion.routes', () => {
             evento: { id_evento_integracion: 1, application_status: 'applied' },
             updatedFields: ['pickup_place'],
             noChangesApplied: false,
+        });
+        aplicarCancellationFareHarbor.mockResolvedValue({
+            tipo: 'aplicado',
+            evento: { id_evento_integracion: 1, application_status: 'applied' },
+            reservacion: null,
+            link: null,
+            resolutionMode: 'resolve_without_link',
+            alreadyCancelled: false,
+            noReservationLink: true,
         });
         obtenerDiffModificationGetYourGuide.mockResolvedValue({
             tipo: 'preview',
@@ -676,7 +690,7 @@ describe('eventosIntegracion.routes', () => {
         });
     });
 
-    test('revision FareHarbor cancellation sigue bloqueada', async () => {
+    test('revision FareHarbor cancellation permite aprobar para FH-CANCEL-03B', async () => {
         eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
             provider: 'fareharbor',
             event_type: 'cancellation',
@@ -688,9 +702,13 @@ describe('eventosIntegracion.routes', () => {
             .set('Authorization', `Bearer ${tokenAdministrador}`)
             .send({ accion: 'approve' });
 
-        expect(response.status).toBe(409);
-        expect(response.body.mensaje).toBe('La aplicacion de eventos FareHarbor aun no esta habilitada.');
-        expect(eventosIntegracionService.revisarEventoIntegracion).not.toHaveBeenCalled();
+        expect(response.status).toBe(200);
+        expect(eventosIntegracionService.revisarEventoIntegracion).toHaveBeenCalledWith({
+            idEventoIntegracion: 1,
+            accion: 'approve',
+            idUsuario: 1,
+            nota: undefined,
+        });
     });
 
     test('aplicar FareHarbor new_booking usa servicio FH-3B1 y no llama GetYourGuide', async () => {
@@ -825,7 +843,7 @@ describe('eventosIntegracion.routes', () => {
         expect(response.body.mensaje).toBe('La reservación o la modificación cambió. Actualiza los datos antes de aplicar.');
     });
 
-    test('aplicar FareHarbor cancellation sigue bloqueada', async () => {
+    test('aplicar FareHarbor cancellation usa servicio transaccional FH-CANCEL-03B', async () => {
         eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
             provider: 'fareharbor',
             event_type: 'cancellation',
@@ -835,12 +853,39 @@ describe('eventosIntegracion.routes', () => {
         const response = await request(app)
             .post('/api/eventos-integracion/1/aplicar')
             .set('Authorization', `Bearer ${tokenAdministrador}`)
-            .send({ completar: {} });
+            .send({ cancellation_fingerprint: 'c'.repeat(64) });
 
-        expect(response.status).toBe(409);
-        expect(response.body.mensaje).toBe('La aplicacion de eventos FareHarbor aun no esta habilitada.');
+        expect(response.status).toBe(201);
+        expect(response.body.datos).toEqual({
+            id_evento_integracion: 1,
+            resolution_mode: 'resolve_without_link',
+            id_reservacion: null,
+            codigo: null,
+            already_cancelled: false,
+            no_reservation_link: true,
+        });
+        expect(aplicarCancellationFareHarbor).toHaveBeenCalledWith(1, 1, {
+            cancellation_fingerprint: 'c'.repeat(64),
+        });
         expect(aplicarModificationFareHarbor).not.toHaveBeenCalled();
         expect(aplicarNuevaReservaFareHarbor).not.toHaveBeenCalled();
         expect(aplicarNuevaReservaGetYourGuide).not.toHaveBeenCalled();
+    });
+
+    test('aplicar FareHarbor cancellation requiere fingerprint valido', async () => {
+        eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
+            provider: 'fareharbor',
+            event_type: 'cancellation',
+            fareharbor_summary: {},
+        }));
+
+        const response = await request(app)
+            .post('/api/eventos-integracion/1/aplicar')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({});
+
+        expect(response.status).toBe(400);
+        expect(response.body.errores).toContain('El campo cancellation_fingerprint es obligatorio y debe ser SHA-256 hexadecimal');
+        expect(aplicarCancellationFareHarbor).not.toHaveBeenCalled();
     });
 });

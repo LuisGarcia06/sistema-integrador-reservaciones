@@ -1438,4 +1438,320 @@ describe('API CP-044', () => {
             }
         }
     });
+    test('FH-CANCEL-03B aplica cancellation FareHarbor en DB test por modo de resolucion', async () => {
+        expect(contexto.currentDatabase).toBe('sian_kaan_reservaciones_test');
+
+        const runId = `fhcancel03b-${Date.now()}`;
+        const idsEventos = [];
+        const idsReservaciones = [];
+        const bookingIds = [];
+
+        const crearNormalizedCancellation = (bookingId, overrides = {}) => ({
+            external_booking_id: bookingId,
+            booking: {
+                status: 'cancelled',
+                uuid: bookingId,
+                display_id: `${bookingId}-display`,
+                ...(overrides.booking || {}),
+            },
+            availability: {
+                start_at: '2026-01-15T06:00:00-0500',
+                end_at: '2026-01-15T11:00:00-0500',
+                item: {
+                    pk: 636130,
+                    name: `${runId} Kayak`,
+                    headline: `${runId} Ages 12+`,
+                },
+            },
+            customers: { total: 2, by_category: [] },
+            contact: { name: 'Cliente FH Cancel', normalized_phone: '+520000000002' },
+            pickup: { pickup: null, lodging: null, arrival: null },
+            money: { receipt_total: '200000', amount_paid: '50000', currency: 'mxn' },
+            fingerprint: `${bookingId}-cancelled`,
+        });
+
+        const insertarEventoCancellation = async ({ bookingId, suffix, sourceReceivedAt }) => {
+            bookingIds.push(bookingId);
+            const result = await pool.query(
+                `
+                    INSERT INTO eventos_integracion (
+                        provider,
+                        external_event_id,
+                        external_booking_id,
+                        event_type,
+                        urgent,
+                        review_status,
+                        application_status,
+                        normalized_data,
+                        source_subject,
+                        source_received_at
+                    )
+                    VALUES (
+                        'fareharbor',
+                        $1,
+                        $2,
+                        'cancellation',
+                        FALSE,
+                        'approved',
+                        'not_applied',
+                        $3::jsonb,
+                        $4,
+                        $5
+                    )
+                    RETURNING id_evento_integracion
+                `,
+                [
+                    `${runId}-${suffix}`,
+                    bookingId,
+                    JSON.stringify(crearNormalizedCancellation(bookingId)),
+                    `FH-CANCEL-03B sintetico ${runId}`,
+                    sourceReceivedAt,
+                ]
+            );
+
+            idsEventos.push(result.rows[0].id_evento_integracion);
+            return result.rows[0].id_evento_integracion;
+        };
+
+        const crearReservacion = async (suffix, overrides = {}) => {
+            const response = await request(app)
+                .post('/api/reservaciones')
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send(crearPayloadReservacionValida({
+                    fecha: '2026-01-15',
+                    nombre_cliente: `Cliente FH Cancel ${suffix}`,
+                    telefono_cliente: '+520000000002',
+                    pickup_place: `Lobby FH Cancel ${suffix}`,
+                    pickup_time: '08:00',
+                    turno: 'Mañana',
+                    pax: 2,
+                    ninos: 0,
+                    precio_total: 2000,
+                    deposito: 500,
+                    saldo: 1500,
+                    ...overrides,
+                }));
+
+            expect(response.status).toBe(201);
+            idsReservaciones.push(response.body.datos.id_reservacion);
+            return response.body.datos;
+        };
+
+        const crearLink = async (bookingId, idReservacion) => {
+            await pool.query(
+                `
+                    INSERT INTO reservas_integracion_link (provider, external_booking_id, id_reservacion)
+                    VALUES ('fareharbor', $1, $2)
+                `,
+                [bookingId, idReservacion]
+            );
+        };
+
+        try {
+            const sinLinkBookingId = `${runId}-sin-link`;
+            const idEventoSinLink = await insertarEventoCancellation({
+                bookingId: sinLinkBookingId,
+                suffix: 'sin-link',
+                sourceReceivedAt: new Date('2027-05-01T10:00:00.000Z'),
+            });
+            const conteosAntesSinLink = await pool.query(
+                `
+                    SELECT
+                        (SELECT COUNT(*)::int FROM reservaciones) AS reservaciones,
+                        (SELECT COUNT(*)::int FROM reservas_integracion_link) AS links,
+                        (SELECT COUNT(*)::int FROM bitacora) AS bitacora
+                `
+            );
+            const diffSinLink = await request(app)
+                .get(`/api/eventos-integracion/${idEventoSinLink}/diff`)
+                .set('Authorization', `Bearer ${tokenConsulta}`);
+            expect(diffSinLink.status).toBe(200);
+            expect(diffSinLink.body.datos.resolution_mode).toBe('resolve_without_link');
+            expect(diffSinLink.body.datos.cancellation_fingerprint).toMatch(/^[a-f0-9]{64}$/);
+
+            const aplicarSinLink = await request(app)
+                .post(`/api/eventos-integracion/${idEventoSinLink}/aplicar`)
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send({ cancellation_fingerprint: diffSinLink.body.datos.cancellation_fingerprint });
+            expect(aplicarSinLink.status).toBe(201);
+            expect(aplicarSinLink.body.datos).toEqual(expect.objectContaining({
+                resolution_mode: 'resolve_without_link',
+                no_reservation_link: true,
+                id_reservacion: null,
+            }));
+
+            const conteosDespuesSinLink = await pool.query(
+                `
+                    SELECT
+                        (SELECT COUNT(*)::int FROM reservaciones) AS reservaciones,
+                        (SELECT COUNT(*)::int FROM reservas_integracion_link) AS links,
+                        (SELECT COUNT(*)::int FROM bitacora) AS bitacora
+                `
+            );
+            expect(conteosDespuesSinLink.rows[0]).toEqual(conteosAntesSinLink.rows[0]);
+
+            const retrySinLink = await request(app)
+                .post(`/api/eventos-integracion/${idEventoSinLink}/aplicar`)
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send({ cancellation_fingerprint: diffSinLink.body.datos.cancellation_fingerprint });
+            expect(retrySinLink.status).toBe(409);
+
+            const activoBookingId = `${runId}-activo`;
+            const reservacionActiva = await crearReservacion('activo');
+            await crearLink(activoBookingId, reservacionActiva.id_reservacion);
+            const idEventoActivo = await insertarEventoCancellation({
+                bookingId: activoBookingId,
+                suffix: 'activo',
+                sourceReceivedAt: new Date('2027-05-01T11:00:00.000Z'),
+            });
+            const diffActivo = await request(app)
+                .get(`/api/eventos-integracion/${idEventoActivo}/diff`)
+                .set('Authorization', `Bearer ${tokenConsulta}`);
+            expect(diffActivo.status).toBe(200);
+            expect(diffActivo.body.datos.resolution_mode).toBe('cancel_reservation');
+            const aplicarActivo = await request(app)
+                .post(`/api/eventos-integracion/${idEventoActivo}/aplicar`)
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send({
+                    cancellation_fingerprint: diffActivo.body.datos.cancellation_fingerprint,
+                    motivo_cancelacion: 'Cliente cancela desde FareHarbor',
+                });
+            expect(aplicarActivo.status).toBe(201);
+            expect(aplicarActivo.body.datos).toEqual(expect.objectContaining({
+                resolution_mode: 'cancel_reservation',
+                id_reservacion: reservacionActiva.id_reservacion,
+                already_cancelled: false,
+            }));
+            const reservacionCancelada = await pool.query(
+                `SELECT estado, motivo_cancelacion FROM reservaciones WHERE id_reservacion = $1`,
+                [reservacionActiva.id_reservacion]
+            );
+            expect(reservacionCancelada.rows[0]).toEqual({
+                estado: 'Cancelada',
+                motivo_cancelacion: 'Cliente cancela desde FareHarbor',
+            });
+            const bitacoraCancel = await pool.query(
+                `SELECT COUNT(*)::int AS total FROM bitacora WHERE id_reservacion = $1 AND accion = 'CANCELAR'`,
+                [reservacionActiva.id_reservacion]
+            );
+            expect(bitacoraCancel.rows[0].total).toBe(1);
+            const retryActivo = await request(app)
+                .post(`/api/eventos-integracion/${idEventoActivo}/aplicar`)
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send({
+                    cancellation_fingerprint: diffActivo.body.datos.cancellation_fingerprint,
+                    motivo_cancelacion: 'Cliente cancela desde FareHarbor',
+                });
+            expect(retryActivo.status).toBe(409);
+            const bitacoraCancelRetry = await pool.query(
+                `SELECT COUNT(*)::int AS total FROM bitacora WHERE id_reservacion = $1 AND accion = 'CANCELAR'`,
+                [reservacionActiva.id_reservacion]
+            );
+            expect(bitacoraCancelRetry.rows[0].total).toBe(1);
+
+            const alreadyBookingId = `${runId}-already`;
+            const reservacionAlready = await crearReservacion('already');
+            const cancelarManual = await request(app)
+                .patch(`/api/reservaciones/${reservacionAlready.id_reservacion}/cancelar`)
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send({ motivo_cancelacion: 'Motivo existente' });
+            expect(cancelarManual.status).toBe(200);
+            await crearLink(alreadyBookingId, reservacionAlready.id_reservacion);
+            const idEventoAlready = await insertarEventoCancellation({
+                bookingId: alreadyBookingId,
+                suffix: 'already',
+                sourceReceivedAt: new Date('2027-05-01T12:00:00.000Z'),
+            });
+            const bitacoraAlreadyAntes = await pool.query(
+                `SELECT COUNT(*)::int AS total FROM bitacora WHERE id_reservacion = $1 AND accion = 'CANCELAR'`,
+                [reservacionAlready.id_reservacion]
+            );
+            const diffAlready = await request(app)
+                .get(`/api/eventos-integracion/${idEventoAlready}/diff`)
+                .set('Authorization', `Bearer ${tokenConsulta}`);
+            expect(diffAlready.status).toBe(200);
+            expect(diffAlready.body.datos.resolution_mode).toBe('reconcile_already_cancelled');
+            const aplicarAlready = await request(app)
+                .post(`/api/eventos-integracion/${idEventoAlready}/aplicar`)
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send({ cancellation_fingerprint: diffAlready.body.datos.cancellation_fingerprint });
+            expect(aplicarAlready.status).toBe(201);
+            expect(aplicarAlready.body.datos.already_cancelled).toBe(true);
+            const reservacionAlreadyFinal = await pool.query(
+                `SELECT estado, motivo_cancelacion FROM reservaciones WHERE id_reservacion = $1`,
+                [reservacionAlready.id_reservacion]
+            );
+            expect(reservacionAlreadyFinal.rows[0]).toEqual({
+                estado: 'Cancelada',
+                motivo_cancelacion: 'Motivo existente',
+            });
+            const bitacoraAlreadyDespues = await pool.query(
+                `SELECT COUNT(*)::int AS total FROM bitacora WHERE id_reservacion = $1 AND accion = 'CANCELAR'`,
+                [reservacionAlready.id_reservacion]
+            );
+            expect(bitacoraAlreadyDespues.rows[0].total).toBe(bitacoraAlreadyAntes.rows[0].total);
+
+            const staleBookingId = `${runId}-stale`;
+            const reservacionStale = await crearReservacion('stale');
+            await crearLink(staleBookingId, reservacionStale.id_reservacion);
+            const idEventoStale = await insertarEventoCancellation({
+                bookingId: staleBookingId,
+                suffix: 'stale',
+                sourceReceivedAt: new Date('2027-05-01T13:00:00.000Z'),
+            });
+            const diffStale = await request(app)
+                .get(`/api/eventos-integracion/${idEventoStale}/diff`)
+                .set('Authorization', `Bearer ${tokenConsulta}`);
+            expect(diffStale.status).toBe(200);
+            await pool.query(
+                `UPDATE reservaciones SET ultima_actualizacion = TIMESTAMP '2027-05-01 14:00:00' WHERE id_reservacion = $1`,
+                [reservacionStale.id_reservacion]
+            );
+            const aplicarStale = await request(app)
+                .post(`/api/eventos-integracion/${idEventoStale}/aplicar`)
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send({
+                    cancellation_fingerprint: diffStale.body.datos.cancellation_fingerprint,
+                    motivo_cancelacion: 'Cliente cancela stale',
+                });
+            expect(aplicarStale.status).toBe(409);
+            expect(aplicarStale.body.mensaje).toBe('La cancelación o la reservación cambió. Actualiza los datos antes de aplicar.');
+            const staleFinal = await pool.query(
+                `
+                    SELECT r.estado, ei.application_status
+                    FROM reservaciones r
+                    CROSS JOIN eventos_integracion ei
+                    WHERE r.id_reservacion = $1
+                      AND ei.id_evento_integracion = $2
+                `,
+                [reservacionStale.id_reservacion, idEventoStale]
+            );
+            expect(staleFinal.rows[0]).toEqual({
+                estado: 'Pendiente',
+                application_status: 'not_applied',
+            });
+        } finally {
+            if (idsReservaciones.length > 0) {
+                await pool.query('DELETE FROM reservas_integracion_link WHERE provider = $1 AND id_reservacion = ANY($2::int[])', ['fareharbor', idsReservaciones]);
+                await pool.query('DELETE FROM bitacora WHERE id_reservacion = ANY($1::int[])', [idsReservaciones]);
+                await pool.query('DELETE FROM reservaciones WHERE id_reservacion = ANY($1::int[])', [idsReservaciones]);
+            }
+
+            if (idsEventos.length > 0) {
+                await pool.query('DELETE FROM eventos_integracion WHERE id_evento_integracion = ANY($1::int[])', [idsEventos]);
+            }
+
+            if (bookingIds.length > 0) {
+                const residuos = await pool.query(
+                    `
+                        SELECT
+                            (SELECT COUNT(*)::int FROM eventos_integracion WHERE external_booking_id = ANY($1::text[])) AS eventos,
+                            (SELECT COUNT(*)::int FROM reservas_integracion_link WHERE provider = 'fareharbor' AND external_booking_id = ANY($1::text[])) AS links
+                    `,
+                    [bookingIds]
+                );
+                expect(residuos.rows[0]).toEqual({ eventos: 0, links: 0 });
+            }
+        }
+    });
 });

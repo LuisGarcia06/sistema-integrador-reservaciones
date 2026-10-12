@@ -11,6 +11,7 @@ const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyour
 const { obtenerDiffModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationDiff.service');
 const { obtenerDiffCancellationFareHarbor } = require('../integrations/fareharbor/fareharborCancellationPreview.service');
 const { aplicarModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationApplication.service');
+const { aplicarCancellationFareHarbor } = require('../integrations/fareharbor/fareharborCancellationApplication.service');
 const { ROLES } = require('../constants/roles');
 const FAREHARBOR_PROVIDER = 'fareharbor';
 const FAREHARBOR_READONLY_MESSAGE = 'La aplicacion de eventos FareHarbor aun no esta habilitada.';
@@ -24,6 +25,7 @@ const responderFareHarborNoHabilitado = (res) => res.status(409).json({
 
 const {
     validarAplicacionFareHarbor,
+    validarAplicacionFareHarborCancellation,
     validarAplicacionFareHarborModification,
     validarAplicacionEventoIntegracion,
     validarFiltrosEventosIntegracion,
@@ -130,7 +132,7 @@ const revisarEventoIntegracion = async (req, res) => {
             });
         }
 
-        if (esEventoFareHarbor(evento) && !['new_booking', 'modification'].includes(evento.event_type)) {
+        if (esEventoFareHarbor(evento) && !['new_booking', 'modification', 'cancellation'].includes(evento.event_type)) {
             return responderFareHarborNoHabilitado(res);
         }
 
@@ -390,6 +392,71 @@ const responderResultadoModificationFareHarbor = (res, resultado) => {
     });
 };
 
+
+const responderResultadoCancellationFareHarbor = (res, resultado) => {
+    if (resultado.tipo === 'no_encontrado') {
+        return res.status(404).json({
+            mensaje: 'Evento de integracion no encontrado',
+        });
+    }
+
+    if (['datos_invalidos'].includes(resultado.tipo)) {
+        return res.status(400).json({
+            mensaje: 'Datos invalidos',
+            errores: resultado.errores || [],
+        });
+    }
+
+    if (resultado.tipo === 'faltan_datos') {
+        return res.status(400).json({
+            mensaje: 'El evento requiere informacion adicional',
+            missing_fields: resultado.missingFields || [],
+        });
+    }
+
+    if (resultado.tipo === 'fingerprint_obsoleto') {
+        return res.status(409).json({
+            mensaje: 'La cancelación o la reservación cambió. Actualiza los datos antes de aplicar.',
+        });
+    }
+
+    if (resultado.tipo === 'snapshot_obsoleto') {
+        return res.status(409).json({
+            mensaje: 'Existe una actualización más reciente de esta reserva FareHarbor.',
+        });
+    }
+
+    if (resultado.tipo === 'event_blocked' || resultado.tipo === 'domain_conflict') {
+        return res.status(409).json({
+            mensaje: 'El evento de integracion no puede aplicarse en su estado actual',
+            reason: resultado.reason,
+            blocking_issues: resultado.blockingIssues || [],
+        });
+    }
+
+    if ([
+        'provider_no_soportado',
+        'event_type_no_soportado',
+        'no_aprobado',
+        'ya_aplicado',
+    ].includes(resultado.tipo)) {
+        return res.status(409).json({
+            mensaje: 'El evento de integracion no puede aplicarse en su estado actual',
+        });
+    }
+
+    return res.status(201).json({
+        mensaje: 'Cancelacion FareHarbor aplicada correctamente',
+        datos: {
+            id_evento_integracion: resultado.evento?.id_evento_integracion,
+            resolution_mode: resultado.resolutionMode,
+            id_reservacion: resultado.reservacion?.id_reservacion || resultado.link?.id_reservacion || null,
+            codigo: resultado.reservacion?.codigo || null,
+            already_cancelled: Boolean(resultado.alreadyCancelled),
+            no_reservation_link: Boolean(resultado.noReservationLink),
+        },
+    });
+};
 const aplicarEventoIntegracion = async (req, res) => {
     const idEventoIntegracion = validarIdEventoIntegracion(req.params.id);
 
@@ -445,6 +512,25 @@ const aplicarEventoIntegracion = async (req, res) => {
                 );
 
                 return responderResultadoModificationFareHarbor(res, resultadoFareHarbor);
+            }
+
+            if (evento.event_type === 'cancellation') {
+                const { errores, aplicacion } = validarAplicacionFareHarborCancellation(req.body || {});
+
+                if (errores.length > 0) {
+                    return res.status(400).json({
+                        mensaje: 'Datos invalidos',
+                        errores,
+                    });
+                }
+
+                const resultadoFareHarbor = await aplicarCancellationFareHarbor(
+                    idEventoIntegracion,
+                    req.usuario.id_usuario,
+                    aplicacion
+                );
+
+                return responderResultadoCancellationFareHarbor(res, resultadoFareHarbor);
             }
 
             return responderFareHarborNoHabilitado(res);
