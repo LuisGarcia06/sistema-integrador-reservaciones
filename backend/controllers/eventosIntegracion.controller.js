@@ -9,6 +9,7 @@ const {
 } = require('../integrations/fareharbor/fareharborApplication.service');
 const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
 const { obtenerDiffModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationDiff.service');
+const { obtenerDiffCancellationFareHarbor } = require('../integrations/fareharbor/fareharborCancellationPreview.service');
 const { aplicarModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationApplication.service');
 const { ROLES } = require('../constants/roles');
 const FAREHARBOR_PROVIDER = 'fareharbor';
@@ -194,11 +195,13 @@ const obtenerDiffEventoIntegracion = async (req, res) => {
         }
 
         if (esEventoFareHarbor(evento)) {
-            if (evento.event_type !== 'modification') {
+            if (!['modification', 'cancellation'].includes(evento.event_type)) {
                 return responderFareHarborNoHabilitado(res);
             }
 
-            const resultadoFareHarbor = await obtenerDiffModificationFareHarbor(idEventoIntegracion);
+            const resultadoFareHarbor = evento.event_type === 'cancellation'
+                ? await obtenerDiffCancellationFareHarbor(idEventoIntegracion)
+                : await obtenerDiffModificationFareHarbor(idEventoIntegracion);
 
             if (resultadoFareHarbor.tipo === 'no_encontrado') {
                 return res.status(404).json({
@@ -214,7 +217,9 @@ const obtenerDiffEventoIntegracion = async (req, res) => {
 
             return res.status(200).json({
                 mensaje: 'Diff de evento de integracion consultado correctamente',
-                datos: resultadoFareHarbor.fareharbor_modification_diff,
+                datos: evento.event_type === 'cancellation'
+                    ? resultadoFareHarbor.fareharbor_cancellation_preview
+                    : resultadoFareHarbor.fareharbor_modification_diff,
             });
         }
 

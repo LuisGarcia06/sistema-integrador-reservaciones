@@ -1,4 +1,5 @@
 const {
+    EVENT_TYPE_CANCELLATION,
     EVENT_TYPE_MODIFICATION,
     EVENT_TYPE_NEW_BOOKING,
     crearResumenWebhookFareHarborSanitizado,
@@ -376,6 +377,41 @@ describe('fareharborWebhook.service', () => {
 
         expect(resultado.event_type).toBe(EVENT_TYPE_MODIFICATION);
         expect(db.state.eventos[0].event_type).toBe(EVENT_TYPE_MODIFICATION);
+    });
+
+    test('persistirWebhookFareHarbor clasifica cancellation con status cancelled antes de revisar link', async () => {
+        const sinLink = crearDbMemoria();
+        const conLink = crearDbMemoria({ conLink: true });
+
+        const resultadoSinLink = await persistirWebhookFareHarbor(
+            crearPayloadWebhookFareHarborSanitizado({ status: 'cancelled' }),
+            { db: sinLink }
+        );
+        const resultadoConLink = await persistirWebhookFareHarbor(
+            crearPayloadWebhookFareHarborSanitizado({ status: 'cancelled' }),
+            { db: conLink }
+        );
+
+        expect(resultadoSinLink.event_type).toBe(EVENT_TYPE_CANCELLATION);
+        expect(resultadoConLink.event_type).toBe(EVENT_TYPE_CANCELLATION);
+    });
+
+    test.each([
+        ['booked', false, EVENT_TYPE_NEW_BOOKING],
+        ['booked', true, EVENT_TYPE_MODIFICATION],
+        ['rebooked', false, EVENT_TYPE_NEW_BOOKING],
+        ['canceled', false, EVENT_TYPE_NEW_BOOKING],
+        ['void', false, EVENT_TYPE_NEW_BOOKING],
+        ['refunded', false, EVENT_TYPE_NEW_BOOKING],
+    ])('persistirWebhookFareHarbor no inventa cancellation para status %s conLink=%s', async (status, conLink, expectedType) => {
+        const db = crearDbMemoria({ conLink });
+
+        const resultado = await persistirWebhookFareHarbor(
+            crearPayloadWebhookFareHarborSanitizado({ status }),
+            { db }
+        );
+
+        expect(resultado.event_type).toBe(expectedType);
     });
 
     test('extraerBookingUuid obtiene el UUID del booking recibido', () => {

@@ -9,6 +9,7 @@ const {
 
 const EVENT_TYPE_NEW_BOOKING = 'new_booking';
 const EVENT_TYPE_MODIFICATION = 'modification';
+const EVENT_TYPE_CANCELLATION = 'cancellation';
 
 const obtenerWebhookSecret = (env = process.env) => {
     const secret = env.FAREHARBOR_WEBHOOK_SECRET;
@@ -213,7 +214,20 @@ const obtenerReservaIntegracionLink = async (externalBookingId, db) => {
     return result.rows[0] || null;
 };
 
-const clasificarEventoFareHarbor = async (externalBookingId, db) => {
+const normalizarBookingStatusFareHarbor = (status) => (
+    typeof status === 'string' ? status.trim().toLowerCase() : null
+);
+
+const esCancellationFareHarbor = (eventoNormalizado = {}) => (
+    normalizarBookingStatusFareHarbor(eventoNormalizado.normalized_data?.booking?.status) === 'cancelled'
+);
+
+const clasificarEventoFareHarbor = async (eventoNormalizado, db) => {
+    if (esCancellationFareHarbor(eventoNormalizado)) {
+        return EVENT_TYPE_CANCELLATION;
+    }
+
+    const externalBookingId = eventoNormalizado?.external_booking_id || null;
     const link = await obtenerReservaIntegracionLink(externalBookingId, db);
 
     return link ? EVENT_TYPE_MODIFICATION : EVENT_TYPE_NEW_BOOKING;
@@ -232,7 +246,7 @@ const construirEventoIntegracionFareHarbor = async ({
     sourceReceivedAt = new Date()
 }) => {
     const eventoNormalizado = normalizarPayloadWebhookFareHarbor(payload);
-    const eventType = await clasificarEventoFareHarbor(eventoNormalizado.external_booking_id, db);
+    const eventType = await clasificarEventoFareHarbor(eventoNormalizado, db);
 
     return {
         provider: PROVIDER,
@@ -285,6 +299,7 @@ const procesarPayloadWebhookFareHarbor = (payload = {}) => {
 };
 
 module.exports = {
+    EVENT_TYPE_CANCELLATION,
     EVENT_TYPE_MODIFICATION,
     EVENT_TYPE_NEW_BOOKING,
     FareHarborPayloadInvalidoError,

@@ -32,6 +32,10 @@ jest.mock('../integrations/fareharbor/fareharborModificationDiff.service', () =>
     obtenerDiffModificationFareHarbor: jest.fn(),
 }));
 
+jest.mock('../integrations/fareharbor/fareharborCancellationPreview.service', () => ({
+    obtenerDiffCancellationFareHarbor: jest.fn(),
+}));
+
 jest.mock('../integrations/fareharbor/fareharborModificationApplication.service', () => ({
     aplicarModificationFareHarbor: jest.fn(),
 }));
@@ -48,6 +52,7 @@ const {
 } = require('../integrations/getyourguide/getyourguideReservationApplication.service');
 const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
 const { obtenerDiffModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationDiff.service');
+const { obtenerDiffCancellationFareHarbor } = require('../integrations/fareharbor/fareharborCancellationPreview.service');
 const { aplicarModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationApplication.service');
 const {
     aplicarNuevaReservaFareHarbor,
@@ -210,6 +215,20 @@ describe('eventosIntegracion.routes', () => {
                 blocking_issues: [],
                 warnings: [],
                 actionable: false,
+            },
+        });
+        obtenerDiffCancellationFareHarbor.mockResolvedValue({
+            tipo: 'preview',
+            fareharbor_cancellation_preview: {
+                type: 'fareharbor_cancellation_preview',
+                external_booking_id: 'fh-booking-sintetico',
+                booking_status: 'cancelled',
+                resolution_mode: 'resolve_without_link',
+                requires_motivo_cancelacion: false,
+                reservation_context: null,
+                blocking_issues: [],
+                warnings: [],
+                cancellation_fingerprint: 'c'.repeat(64),
             },
         });
         eventosIntegracionService.revisarEventoIntegracion.mockResolvedValue({
@@ -587,6 +606,31 @@ describe('eventosIntegracion.routes', () => {
             actionable: false,
         }));
         expect(obtenerDiffModificationFareHarbor).toHaveBeenCalledWith(1);
+        expect(obtenerDiffModificationGetYourGuide).not.toHaveBeenCalled();
+    });
+
+    test('diff FareHarbor cancellation devuelve preview read-only sin habilitar apply/revision', async () => {
+        eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
+            provider: 'fareharbor',
+            event_type: 'cancellation',
+            fareharbor_summary: {},
+        }));
+
+        const response = await request(app)
+            .get('/api/eventos-integracion/1/diff')
+            .set('Authorization', `Bearer ${tokenConsulta}`);
+
+        expect(response.status).toBe(200);
+        expect(response.body.datos).toEqual(expect.objectContaining({
+            type: 'fareharbor_cancellation_preview',
+            external_booking_id: 'fh-booking-sintetico',
+            booking_status: 'cancelled',
+            resolution_mode: 'resolve_without_link',
+            requires_motivo_cancelacion: false,
+            cancellation_fingerprint: 'c'.repeat(64),
+        }));
+        expect(obtenerDiffCancellationFareHarbor).toHaveBeenCalledWith(1);
+        expect(obtenerDiffModificationFareHarbor).not.toHaveBeenCalled();
         expect(obtenerDiffModificationGetYourGuide).not.toHaveBeenCalled();
     });
 

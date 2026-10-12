@@ -370,51 +370,29 @@ function prepararEventoDetalleIntegracion(evento = {}) {
     };
 }
 
-function construirFiltrosEventosIntegracion(filtros = {}) {
+function agregarCondicionFiltro({
+    filtros,
+    campo,
+    columna = campo,
+    condiciones,
+    values,
+}) {
+    if (filtros[campo] === undefined || filtros[campo] === null) {
+        return;
+    }
+
+    values.push(filtros[campo]);
+    condiciones.push(`${columna} = $${values.length}`);
+}
+
+function construirCondicionesFiltrosEventosIntegracion(filtros = {}, values = []) {
     const condiciones = [];
-    const values = [];
 
-    if (filtros.review_status) {
-        values.push(filtros.review_status);
-        condiciones.push(`review_status = $${values.length}`);
-    }
+    agregarCondicionFiltro({ filtros, campo: 'review_status', condiciones, values });
+    agregarCondicionFiltro({ filtros, campo: 'provider', condiciones, values });
+    agregarCondicionFiltro({ filtros, campo: 'event_type', condiciones, values });
+    agregarCondicionFiltro({ filtros, campo: 'urgent', condiciones, values });
 
-    if (filtros.provider) {
-        values.push(filtros.provider);
-        condiciones.push(`provider = $${values.length}`);
-    }
-
-    if (filtros.event_type) {
-        values.push(filtros.event_type);
-        condiciones.push(`event_type = $${values.length}`);
-    }
-
-    if (filtros.urgent !== undefined) {
-        values.push(filtros.urgent);
-        condiciones.push(`urgent = $${values.length}`);
-    }
-
-    if (filtros.operational_only) {
-        const cutoffAt = obtenerDashboardCutoffAt();
-
-        if (cutoffAt) {
-            values.push(cutoffAt);
-            condiciones.push(`(provider = 'fareharbor' OR COALESCE(source_received_at, created_at) >= $${values.length})`);
-        }
-
-        condiciones.push(`
-            (
-                provider <> 'fareharbor'
-                OR event_type <> 'new_booking'
-                OR NOT EXISTS (
-                    SELECT 1
-                    FROM reservas_integracion_link ril
-                    WHERE ril.provider = eventos_integracion.provider
-                      AND ril.external_booking_id = eventos_integracion.external_booking_id
-                )
-            )
-        `);
-    }
 
     return {
         where: condiciones.length > 0 ? `WHERE ${condiciones.join('\n            AND ')}` : '',
@@ -422,45 +400,104 @@ function construirFiltrosEventosIntegracion(filtros = {}) {
     };
 }
 
-function construirFuenteEventosIntegracion(filtros = {}) {
-    const { where, values } = construirFiltrosEventosIntegracion(filtros);
+function construirFiltrosEventosIntegracion(filtros = {}) {
+    return construirCondicionesFiltrosEventosIntegracion(filtros, []);
+}
 
-    if (!filtros.operational_only) {
-        return {
-            prefix: '',
-            from: `eventos_integracion ${where}`,
-            values,
-            orderBy: 'created_at DESC, id_evento_integracion DESC',
-        };
+function construirFuenteEventosIntegracionOperacional(filtros = {}) {
+    const values = [];
+    const condicionesBase = [];
+    const cutoffAt = obtenerDashboardCutoffAt();
+
+    if (cutoffAt) {
+        values.push(cutoffAt);
+        condicionesBase.push(`(provider = 'fareharbor' OR COALESCE(source_received_at, created_at) >= $${values.length})`);
     }
+
+    const condicionesOperacionales = construirCondicionesFiltrosEventosIntegracion(
+        {
+            review_status: filtros.review_status,
+            provider: filtros.provider,
+            event_type: filtros.event_type,
+            urgent: filtros.urgent,
+        },
+        values
+    ).where.replace(/^WHERE\s+/i, '');
+
+    const condicionesFinales = [];
+
+    if (condicionesOperacionales) {
+        condicionesFinales.push(condicionesOperacionales);
+    }
+
+    condicionesFinales.push(`
+        (
+            provider <> 'fareharbor'
+            OR event_type <> 'new_booking'
+            OR NOT EXISTS (
+                SELECT 1
+                FROM reservas_integracion_link ril
+                WHERE ril.provider = eventos_latest.provider
+                  AND ril.external_booking_id = eventos_latest.external_booking_id
+            )
+        )
+    `);
 
     return {
         prefix: `
-            WITH eventos_filtrados AS (
+            WITH eventos_base AS (
+                SELECT
+                    ${columnasEventoIntegracion}
+                FROM eventos_integracion
+                ${condicionesBase.length > 0 ? `WHERE ${condicionesBase.join('\n                    AND ')}` : ''}
+            ),
+            eventos_fareharbor_latest AS (
                 SELECT
                     ${columnasEventoIntegracion},
-                    CASE
-                        WHEN provider = 'fareharbor' THEN ROW_NUMBER() OVER (
-                            PARTITION BY provider, external_booking_id
-                            ORDER BY
-                                COALESCE(source_received_at, created_at) DESC,
-                                id_evento_integracion DESC
-                        )
-                        ELSE 1
-                    END AS operational_row_number
-                FROM eventos_integracion
-                ${where}
+                    ROW_NUMBER() OVER (
+                        PARTITION BY provider, external_booking_id
+                        ORDER BY
+                            COALESCE(source_received_at, created_at) DESC,
+                            id_evento_integracion DESC
+                    ) AS operational_row_number
+                FROM eventos_base
+                WHERE provider = 'fareharbor'
+            ),
+            eventos_latest AS (
+                SELECT
+                    ${columnasEventoIntegracion}
+                FROM eventos_base
+                WHERE provider <> 'fareharbor'
+                UNION ALL
+                SELECT
+                    ${columnasEventoIntegracion}
+                FROM eventos_fareharbor_latest
+                WHERE operational_row_number = 1
             ),
             eventos_operational AS (
                 SELECT *
-                FROM eventos_filtrados
-                WHERE provider <> 'fareharbor'
-                   OR operational_row_number = 1
+                FROM eventos_latest
+                WHERE ${condicionesFinales.join('\n                  AND ')}
             )
         `,
         from: 'eventos_operational',
         values,
         orderBy: 'COALESCE(source_received_at, created_at) DESC, id_evento_integracion DESC',
+    };
+}
+
+function construirFuenteEventosIntegracion(filtros = {}) {
+    if (filtros.operational_only) {
+        return construirFuenteEventosIntegracionOperacional(filtros);
+    }
+
+    const { where, values } = construirFiltrosEventosIntegracion(filtros);
+
+    return {
+        prefix: '',
+        from: `eventos_integracion ${where}`,
+        values,
+        orderBy: 'created_at DESC, id_evento_integracion DESC',
     };
 }
 

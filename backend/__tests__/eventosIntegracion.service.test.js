@@ -134,21 +134,37 @@ function agruparFilasOperativas(filas) {
 }
 
 function crearDbListadoOperativo(filas, links = []) {
+    const obtenerParametro = (query, values, columna) => {
+        const match = String(query).match(new RegExp('\\b' + columna + ' = \\$(\\d+)', 'i'));
+        return match ? values[Number(match[1]) - 1] : undefined;
+    };
+
     return {
         query: jest.fn(async (query, values) => {
-            const reviewStatus = values[0];
             const cutoffAt = values.find((value) => value instanceof Date);
-            let filtradas = filas.filter((fila) => !reviewStatus || fila.review_status === reviewStatus);
+            let base = [...filas];
 
             if (cutoffAt) {
-                filtradas = filtradas.filter((fila) => (
+                base = base.filter((fila) => (
                     fila.provider === 'fareharbor'
                     || obtenerFechaOperativaEvento(fila) >= cutoffAt.getTime()
                 ));
             }
 
+            let operativas = agruparFilasOperativas(base);
+            const reviewStatus = obtenerParametro(query, values, 'review_status');
+            const provider = obtenerParametro(query, values, 'provider');
+            const eventType = obtenerParametro(query, values, 'event_type');
+            const urgent = obtenerParametro(query, values, 'urgent');
 
-            filtradas = filtradas.filter((fila) => (
+            operativas = operativas.filter((fila) => (
+                (reviewStatus === undefined || fila.review_status === reviewStatus)
+                && (provider === undefined || fila.provider === provider)
+                && (eventType === undefined || fila.event_type === eventType)
+                && (urgent === undefined || fila.urgent === urgent)
+            ));
+
+            operativas = operativas.filter((fila) => (
                 fila.provider !== 'fareharbor'
                 || fila.event_type !== 'new_booking'
                 || !links.some((link) => (
@@ -156,8 +172,6 @@ function crearDbListadoOperativo(filas, links = []) {
                     && link.external_booking_id === fila.external_booking_id
                 ))
             ));
-
-            const operativas = agruparFilasOperativas(filtradas);
 
             if (/COUNT\(\*\)::int AS total/i.test(query)) {
                 return { rows: [{ total: operativas.length }] };
@@ -549,9 +563,10 @@ describe('eventosIntegracion.service', () => {
             expect(fuente.prefix).toMatch(/ROW_NUMBER\(\) OVER/i);
             expect(fuente.prefix).toMatch(/PARTITION BY provider, external_booking_id/i);
             expect(fuente.prefix).toMatch(/operational_row_number = 1/i);
+            expect(fuente.prefix).toMatch(/eventos_latest/i);
             expect(fuente.orderBy).toBe('COALESCE(source_received_at, created_at) DESC, id_evento_integracion DESC');
-            expect(fuente.values[0]).toBe(REVIEW_STATUS_PENDING);
-            expect(fuente.values[1]).toEqual(new Date('2026-10-08T00:00:00.000Z'));
+            expect(fuente.values[0]).toEqual(new Date('2026-10-08T00:00:00.000Z'));
+            expect(fuente.values[1]).toBe(REVIEW_STATUS_PENDING);
         } finally {
             if (originalCutoff === undefined) {
                 delete process.env.INTEGRATION_DASHBOARD_CUTOFF_AT;
@@ -644,9 +659,9 @@ describe('eventosIntegracion.service', () => {
             }
         }
 
-        expect(db.query.mock.calls[0][0]).toMatch(/provider = 'fareharbor' OR COALESCE\(source_received_at, created_at\) >= \$2/);
-        expect(db.query.mock.calls[0][1][0]).toBe(REVIEW_STATUS_APPROVED);
-        expect(db.query.mock.calls[0][1][1]).toEqual(new Date('2026-10-08T00:00:00.000Z'));
+        expect(db.query.mock.calls[0][0]).toMatch(/provider = 'fareharbor' OR COALESCE\(source_received_at, created_at\) >= \$1/);
+        expect(db.query.mock.calls[0][1][0]).toEqual(new Date('2026-10-08T00:00:00.000Z'));
+        expect(db.query.mock.calls[0][1][1]).toBe(REVIEW_STATUS_APPROVED);
     });
 
     test('operational devuelve un pendiente FareHarbor por booking usando snapshot mas reciente', async () => {
@@ -944,6 +959,106 @@ describe('eventosIntegracion.service', () => {
             external_booking_id: 'fh-booking-linked-real-flow',
         }));
     });
+    test('operational FareHarbor calcula latest antes de filtrar event_type cancellation', async () => {
+        const filas = [
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:cancel-flow:booked',
+                external_booking_id: 'fh-booking-cancel-flow',
+                event_type: 'new_booking',
+                source_received_at: new Date('2027-03-10T09:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ booking: { display_id: 'FH-CAN-001', status: 'booked' } }),
+            })), 50),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:cancel-flow:cancelled',
+                external_booking_id: 'fh-booking-cancel-flow',
+                event_type: 'cancellation',
+                source_received_at: new Date('2027-03-10T12:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ booking: { display_id: 'FH-CAN-001', status: 'cancelled' } }),
+            })), 51),
+        ];
+
+        const all = await listarEventosIntegracion({
+            review_status: REVIEW_STATUS_PENDING,
+            operational_only: true,
+        }, { page: 1, limit: 50 }, crearDbListadoOperativo(filas));
+        const newBooking = await listarEventosIntegracion({
+            review_status: REVIEW_STATUS_PENDING,
+            operational_only: true,
+            event_type: 'new_booking',
+        }, { page: 1, limit: 50 }, crearDbListadoOperativo(filas));
+        const cancellation = await listarEventosIntegracion({
+            review_status: REVIEW_STATUS_PENDING,
+            operational_only: true,
+            event_type: 'cancellation',
+        }, { page: 1, limit: 50 }, crearDbListadoOperativo(filas));
+
+        expect(all.pagination.total).toBe(1);
+        expect(all.data[0]).toEqual(expect.objectContaining({ id_evento_integracion: 51, event_type: 'cancellation' }));
+        expect(newBooking.pagination.total).toBe(0);
+        expect(newBooking.data).toEqual([]);
+        expect(cancellation.pagination.total).toBe(1);
+        expect(cancellation.data[0].id_evento_integracion).toBe(51);
+    });
+
+    test('operational cancellation latest desplaza modification vieja del mismo booking', async () => {
+        const filas = [
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:mod-old',
+                external_booking_id: 'fh-booking-mod-to-cancel',
+                event_type: 'modification',
+                source_received_at: new Date('2027-03-10T09:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ fingerprint: 'mod-old' }),
+            })), 60),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:cancel-new',
+                external_booking_id: 'fh-booking-mod-to-cancel',
+                event_type: 'cancellation',
+                source_received_at: new Date('2027-03-10T12:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ booking: { display_id: 'FH-CAN-002', status: 'cancelled' } }),
+            })), 61),
+        ];
+        const resultado = await listarEventosIntegracion({
+            review_status: REVIEW_STATUS_PENDING,
+            operational_only: true,
+        }, { page: 1, limit: 50 }, crearDbListadoOperativo(filas));
+
+        expect(resultado.pagination.total).toBe(1);
+        expect(resultado.data[0]).toEqual(expect.objectContaining({ id_evento_integracion: 61, event_type: 'cancellation' }));
+    });
+
+    test('operational no revive cancellation vieja si snapshot no cancelado es mas reciente', async () => {
+        const filas = [
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:cancel-old',
+                external_booking_id: 'fh-booking-cancel-old',
+                event_type: 'cancellation',
+                source_received_at: new Date('2027-03-10T09:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ booking: { display_id: 'FH-CAN-003', status: 'cancelled' } }),
+            })), 70),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:booked-new',
+                external_booking_id: 'fh-booking-cancel-old',
+                event_type: 'new_booking',
+                source_received_at: new Date('2027-03-10T12:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ booking: { display_id: 'FH-CAN-003', status: 'booked' } }),
+            })), 71),
+        ];
+        const resultado = await listarEventosIntegracion({
+            review_status: REVIEW_STATUS_PENDING,
+            operational_only: true,
+            event_type: 'cancellation',
+        }, { page: 1, limit: 50 }, crearDbListadoOperativo(filas));
+
+        expect(resultado.pagination.total).toBe(0);
+        expect(resultado.data).toEqual([]);
+    });
+
     test('operational agrupa antes de paginar y conserva pagination.total agrupado', async () => {
         const filas = [
             crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
