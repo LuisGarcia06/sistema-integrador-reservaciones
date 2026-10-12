@@ -405,6 +405,7 @@ function construirFiltrosEventosIntegracion(filtros = {}) {
         condiciones.push(`
             (
                 provider <> 'fareharbor'
+                OR event_type <> 'new_booking'
                 OR NOT EXISTS (
                     SELECT 1
                     FROM reservas_integracion_link ril

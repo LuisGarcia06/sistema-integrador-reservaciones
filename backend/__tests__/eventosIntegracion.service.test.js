@@ -150,6 +150,7 @@ function crearDbListadoOperativo(filas, links = []) {
 
             filtradas = filtradas.filter((fila) => (
                 fila.provider !== 'fareharbor'
+                || fila.event_type !== 'new_booking'
                 || !links.some((link) => (
                     link.provider === fila.provider
                     && link.external_booking_id === fila.external_booking_id
@@ -760,7 +761,7 @@ describe('eventosIntegracion.service', () => {
         }
     });
 
-    test('operational excluye snapshots FareHarbor si ya existe reservas_integracion_link', async () => {
+    test('operational excluye new_booking FareHarbor si ya existe reservas_integracion_link', async () => {
         const filas = [
             crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
                 provider: 'fareharbor',
@@ -803,8 +804,145 @@ describe('eventosIntegracion.service', () => {
         expect(resultado.pagination.total).toBe(2);
         expect(resultado.data.map((evento) => evento.external_booking_id)).toEqual(['fh-booking-linked', 'fh-booking-open']);
         expect(resultado.data.find((evento) => evento.provider === 'fareharbor').external_booking_id).toBe('fh-booking-open');
+        expect(db.query.mock.calls[0][0]).toMatch(/event_type <> 'new_booking'/i);
         expect(db.query.mock.calls[0][0]).toMatch(/NOT EXISTS[\s\S]+reservas_integracion_link/i);
+        expect(db.query.mock.calls[1][0]).toMatch(/event_type <> 'new_booking'/i);
         expect(db.query.mock.calls[1][0]).toMatch(/NOT EXISTS[\s\S]+reservas_integracion_link/i);
+    });
+
+    test('operational incluye modification FareHarbor con reservas_integracion_link y conserva count', async () => {
+        const filas = [
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:linked:modification',
+                external_booking_id: 'fh-booking-linked-modification',
+                event_type: 'modification',
+                source_received_at: new Date('2027-03-10T12:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ fingerprint: 'modification' }),
+            })), 10),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:linked:new-booking',
+                external_booking_id: 'fh-booking-linked-new',
+                event_type: 'new_booking',
+                source_received_at: new Date('2027-03-10T11:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ fingerprint: 'new-booking' }),
+            })), 11),
+        ];
+        const db = crearDbListadoOperativo(filas, [
+            { provider: 'fareharbor', external_booking_id: 'fh-booking-linked-modification' },
+            { provider: 'fareharbor', external_booking_id: 'fh-booking-linked-new' },
+        ]);
+
+        const resultado = await listarEventosIntegracion({
+            review_status: REVIEW_STATUS_PENDING,
+            operational_only: true,
+        }, { page: 1, limit: 50 }, db);
+
+        expect(resultado.pagination.total).toBe(1);
+        expect(resultado.data).toHaveLength(1);
+        expect(resultado.data[0]).toEqual(expect.objectContaining({
+            provider: 'fareharbor',
+            event_type: 'modification',
+            external_booking_id: 'fh-booking-linked-modification',
+        }));
+    });
+
+    test('operational modification FareHarbor con link conserva solo snapshot mas reciente', async () => {
+        const filas = [
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:modification:old',
+                external_booking_id: 'fh-booking-mod-latest',
+                event_type: 'modification',
+                source_received_at: new Date('2027-03-10T09:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ fingerprint: 'old-modification' }),
+            })), 20),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:modification:new',
+                external_booking_id: 'fh-booking-mod-latest',
+                event_type: 'modification',
+                source_received_at: new Date('2027-03-10T12:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ fingerprint: 'new-modification' }),
+            })), 21),
+        ];
+        const db = crearDbListadoOperativo(filas, [{
+            provider: 'fareharbor',
+            external_booking_id: 'fh-booking-mod-latest',
+        }]);
+
+        const resultado = await listarEventosIntegracion({
+            review_status: REVIEW_STATUS_PENDING,
+            operational_only: true,
+        }, { page: 1, limit: 50 }, db);
+
+        expect(resultado.pagination.total).toBe(1);
+        expect(resultado.data[0].id_evento_integracion).toBe(21);
+    });
+
+    test('operational modification FareHarbor aplicada no aparece como pendiente', async () => {
+        const filas = [
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:modification:applied',
+                external_booking_id: 'fh-booking-mod-applied',
+                event_type: 'modification',
+                review_status: REVIEW_STATUS_APPROVED,
+                application_status: 'applied',
+                source_received_at: new Date('2027-03-10T12:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ fingerprint: 'applied-modification' }),
+            })), 30),
+        ];
+        const db = crearDbListadoOperativo(filas, [{
+            provider: 'fareharbor',
+            external_booking_id: 'fh-booking-mod-applied',
+        }]);
+
+        const resultado = await listarEventosIntegracion({
+            review_status: REVIEW_STATUS_PENDING,
+            operational_only: true,
+        }, { page: 1, limit: 50 }, db);
+
+        expect(resultado.pagination.total).toBe(0);
+        expect(resultado.data).toEqual([]);
+    });
+
+    test('operational mantiene oculto new_booking enlazado y muestra modification nueva del mismo booking', async () => {
+        const filas = [
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:same-booking:new-booking',
+                external_booking_id: 'fh-booking-linked-real-flow',
+                event_type: 'new_booking',
+                source_received_at: new Date('2027-03-10T09:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ fingerprint: 'new-booking' }),
+            })), 40),
+            crearFilaEvento(normalizarEventoIntegracion(crearEventoBase({
+                provider: 'fareharbor',
+                external_event_id: 'fh:same-booking:modification',
+                external_booking_id: 'fh-booking-linked-real-flow',
+                event_type: 'modification',
+                source_received_at: new Date('2027-03-10T12:00:00.000Z'),
+                normalized_data: crearNormalizedDataFareHarbor({ fingerprint: 'modification' }),
+            })), 41),
+        ];
+        const db = crearDbListadoOperativo(filas, [{
+            provider: 'fareharbor',
+            external_booking_id: 'fh-booking-linked-real-flow',
+        }]);
+
+        const resultado = await listarEventosIntegracion({
+            review_status: REVIEW_STATUS_PENDING,
+            operational_only: true,
+        }, { page: 1, limit: 50 }, db);
+
+        expect(resultado.pagination.total).toBe(1);
+        expect(resultado.data[0]).toEqual(expect.objectContaining({
+            id_evento_integracion: 41,
+            event_type: 'modification',
+            external_booking_id: 'fh-booking-linked-real-flow',
+        }));
     });
     test('operational agrupa antes de paginar y conserva pagination.total agrupado', async () => {
         const filas = [
