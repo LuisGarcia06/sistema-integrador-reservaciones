@@ -116,6 +116,7 @@ function crearReservacion(overrides = {}) {
         saldo: '2760.00',
         estado: 'Pendiente',
         id_transporte_operacion: null,
+        ultima_actualizacion: new Date('2027-03-01T13:00:00Z'),
         ...overrides,
     };
 }
@@ -319,6 +320,7 @@ describe('fareharborModificationDiff.service FH-MOD-02', () => {
             requires_capacity_validation: true,
         }));
         expect(diff.reservation_context.assigned_to_transport).toBe(true);
+        expect(diff.reservation_context.ultima_actualizacion).toEqual(new Date('2027-03-01T13:00:00Z'));
         expect(diff.blocking_issues).toContain('La reservación tiene transporte asignado; los cambios operativos requieren revisión manual y validación de capacidad.');
     });
 
@@ -494,6 +496,18 @@ describe('fareharborModificationDiff.service FH-MOD-02', () => {
         expect(diff.changes).toEqual([]);
         expect(diff.has_relevant_changes).toBe(false);
         expect(diff.actionable).toBe(false);
+        expect(diff.diff_fingerprint).toMatch(/^[a-f0-9]{64}$/);
+    });
+
+    test('fingerprint cambia cuando cambia la reservacion vinculada', async () => {
+        const original = await obtenerDiff(crearDbFake());
+        const actualizado = await obtenerDiff(crearDbFake({
+            reservacion: crearReservacion({ ultima_actualizacion: new Date('2027-03-01T14:00:00Z') }),
+        }));
+
+        expect(original.diff_fingerprint).toMatch(/^[a-f0-9]{64}$/);
+        expect(actualizado.diff_fingerprint).toMatch(/^[a-f0-9]{64}$/);
+        expect(actualizado.diff_fingerprint).not.toBe(original.diff_fingerprint);
     });
 
     test('providers o event_type no soportados devuelven resultado controlado', async () => {

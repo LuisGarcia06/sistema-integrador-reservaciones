@@ -16,6 +16,23 @@ const LIMITES_PAGINACION_EVENTOS = [25, 50, 100];
 const CAMPOS_FILTROS_EVENTOS = ['review_status', 'provider', 'event_type', 'urgent', 'operational_only', 'page', 'limit'];
 const CAMPOS_REVISION_EVENTOS = ['accion', 'nota'];
 const CAMPOS_APLICACION_EVENTOS = ['completar'];
+const CAMPOS_APLICACION_FAREHARBOR_MODIFICATION = ['diff_fingerprint', 'decisions', 'completar'];
+const DECISIONES_FAREHARBOR_MODIFICATION = ['apply_external', 'keep_internal', 'manual'];
+const DECISION_KEYS_FAREHARBOR_MODIFICATION = [
+    'fecha',
+    'tour_turno_group',
+    'passengers_group',
+    'pickup_place',
+    'pickup_time',
+    'nombre_cliente',
+    'telefono_cliente',
+    'money_group',
+];
+const CAMPOS_COMPLETAR_FAREHARBOR_MODIFICATION = [
+    'id_tour',
+    'turno',
+    'ninos',
+];
 const CAMPOS_COMPLETAR_FAREHARBOR_PERMITIDOS = [
     'id_tour',
     'turno',
@@ -424,6 +441,72 @@ const validarAplicacionFareHarbor = (body) => {
         aplicacion,
     };
 };
+const validarAplicacionFareHarborModification = (body) => {
+    const errores = [];
+    const aplicacion = {
+        diff_fingerprint: null,
+        decisions: {},
+        completar: {},
+    };
+    const datos = body || {};
+
+    Object.keys(datos).forEach((campo) => {
+        if (!CAMPOS_APLICACION_FAREHARBOR_MODIFICATION.includes(campo)) {
+            errores.push(`El campo ${campo} no esta permitido para FareHarbor modification`);
+        }
+    });
+
+    if (typeof datos.diff_fingerprint !== 'string' || !/^[a-f0-9]{64}$/i.test(datos.diff_fingerprint)) {
+        errores.push('El campo diff_fingerprint es obligatorio y debe ser SHA-256 hexadecimal');
+    } else {
+        aplicacion.diff_fingerprint = datos.diff_fingerprint.toLowerCase();
+    }
+
+    if (!datos.decisions || typeof datos.decisions !== 'object' || Array.isArray(datos.decisions)) {
+        errores.push('El campo decisions debe ser un objeto');
+    } else {
+        Object.keys(datos.decisions).forEach((key) => {
+            if (!DECISION_KEYS_FAREHARBOR_MODIFICATION.includes(key)) {
+                errores.push(`El campo decisions.${key} no esta permitido`);
+                return;
+            }
+
+            if (!DECISIONES_FAREHARBOR_MODIFICATION.includes(datos.decisions[key])) {
+                errores.push(`El campo decisions.${key} debe ser apply_external, keep_internal o manual`);
+                return;
+            }
+
+            aplicacion.decisions[key] = datos.decisions[key];
+        });
+    }
+
+    if (tieneCampo(datos, 'completar')) {
+        if (!datos.completar || typeof datos.completar !== 'object' || Array.isArray(datos.completar)) {
+            errores.push('El campo completar debe ser un objeto');
+        } else {
+            Object.keys(datos.completar).forEach((campo) => {
+                if (!CAMPOS_COMPLETAR_FAREHARBOR_MODIFICATION.includes(campo)) {
+                    errores.push(`El campo completar.${campo} no esta permitido para FareHarbor modification`);
+                    return;
+                }
+
+                const resultado = validarCampoCompletar(campo, datos.completar[campo]);
+
+                if (!resultado.valido) {
+                    errores.push(resultado.mensaje);
+                    return;
+                }
+
+                aplicacion.completar[campo] = resultado.valor;
+            });
+        }
+    }
+
+    return {
+        errores,
+        aplicacion,
+    };
+};
 const validarRevisionEventoIntegracion = (body) => {
     const errores = [];
     const revision = {};
@@ -469,6 +552,7 @@ module.exports = {
     LIMITES_PAGINACION_EVENTOS,
     REVIEW_STATUSES_PERMITIDOS,
     validarAplicacionFareHarbor,
+    validarAplicacionFareHarborModification,
     validarFiltrosEventosIntegracion,
     validarAplicacionEventoIntegracion,
     validarIdEventoIntegracion,

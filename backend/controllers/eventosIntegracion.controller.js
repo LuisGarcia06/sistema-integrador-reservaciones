@@ -9,6 +9,7 @@ const {
 } = require('../integrations/fareharbor/fareharborApplication.service');
 const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
 const { obtenerDiffModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationDiff.service');
+const { aplicarModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationApplication.service');
 const { ROLES } = require('../constants/roles');
 const FAREHARBOR_PROVIDER = 'fareharbor';
 const FAREHARBOR_READONLY_MESSAGE = 'La aplicacion de eventos FareHarbor aun no esta habilitada.';
@@ -22,6 +23,7 @@ const responderFareHarborNoHabilitado = (res) => res.status(409).json({
 
 const {
     validarAplicacionFareHarbor,
+    validarAplicacionFareHarborModification,
     validarAplicacionEventoIntegracion,
     validarFiltrosEventosIntegracion,
     validarIdEventoIntegracion,
@@ -127,7 +129,7 @@ const revisarEventoIntegracion = async (req, res) => {
             });
         }
 
-        if (esEventoFareHarbor(evento) && evento.event_type !== 'new_booking') {
+        if (esEventoFareHarbor(evento) && !['new_booking', 'modification'].includes(evento.event_type)) {
             return responderFareHarborNoHabilitado(res);
         }
 
@@ -324,6 +326,65 @@ const responderResultadoAplicacionFareHarbor = (res, resultado) => {
         },
     });
 };
+
+const responderResultadoModificationFareHarbor = (res, resultado) => {
+    if (resultado.tipo === 'no_encontrado') {
+        return res.status(404).json({
+            mensaje: 'Evento de integracion no encontrado',
+        });
+    }
+
+    if (resultado.tipo === 'referencia_invalida') {
+        return res.status(422).json({
+            mensaje: 'Referencia interna invalida',
+            campo: resultado.campo,
+        });
+    }
+
+    if (['datos_invalidos', 'decision_invalida'].includes(resultado.tipo)) {
+        return res.status(400).json({
+            mensaje: 'Datos invalidos',
+            errores: resultado.errores || [],
+        });
+    }
+
+    if (resultado.tipo === 'diff_obsoleto') {
+        return res.status(409).json({
+            mensaje: 'La reservación o la modificación cambió. Actualiza los datos antes de aplicar.',
+        });
+    }
+
+    if (resultado.tipo === 'decision_bloqueada' || resultado.tipo === 'event_blocked') {
+        return res.status(409).json({
+            mensaje: 'El evento de integracion no puede aplicarse en su estado actual',
+            reason: resultado.reason,
+            blocking_issues: resultado.blockingIssues || [],
+        });
+    }
+
+    if ([
+        'provider_no_soportado',
+        'event_type_no_soportado',
+        'no_aprobado',
+        'ya_aplicado',
+    ].includes(resultado.tipo)) {
+        return res.status(409).json({
+            mensaje: 'El evento de integracion no puede aplicarse en su estado actual',
+        });
+    }
+
+    return res.status(201).json({
+        mensaje: 'Modificacion FareHarbor aplicada correctamente',
+        datos: {
+            id_reservacion: resultado.reservacion.id_reservacion,
+            codigo: resultado.reservacion.codigo,
+            id_evento_integracion: resultado.evento?.id_evento_integracion,
+            updated_fields: resultado.updatedFields || [],
+            no_changes_applied: Boolean(resultado.noChangesApplied),
+        },
+    });
+};
+
 const aplicarEventoIntegracion = async (req, res) => {
     const idEventoIntegracion = validarIdEventoIntegracion(req.params.id);
 
@@ -343,26 +404,45 @@ const aplicarEventoIntegracion = async (req, res) => {
         }
 
         if (esEventoFareHarbor(evento)) {
-            if (evento.event_type !== 'new_booking') {
-                return responderFareHarborNoHabilitado(res);
+            if (evento.event_type === 'new_booking') {
+                const { errores, aplicacion } = validarAplicacionFareHarbor(req.body || {});
+
+                if (errores.length > 0) {
+                    return res.status(400).json({
+                        mensaje: 'Datos invalidos',
+                        errores,
+                    });
+                }
+
+                const resultadoFareHarbor = await aplicarNuevaReservaFareHarbor(
+                    idEventoIntegracion,
+                    req.usuario.id_usuario,
+                    aplicacion.completar
+                );
+
+                return responderResultadoAplicacionFareHarbor(res, resultadoFareHarbor);
             }
 
-            const { errores, aplicacion } = validarAplicacionFareHarbor(req.body || {});
+            if (evento.event_type === 'modification') {
+                const { errores, aplicacion } = validarAplicacionFareHarborModification(req.body || {});
 
-            if (errores.length > 0) {
-                return res.status(400).json({
-                    mensaje: 'Datos invalidos',
-                    errores,
-                });
+                if (errores.length > 0) {
+                    return res.status(400).json({
+                        mensaje: 'Datos invalidos',
+                        errores,
+                    });
+                }
+
+                const resultadoFareHarbor = await aplicarModificationFareHarbor(
+                    idEventoIntegracion,
+                    req.usuario.id_usuario,
+                    aplicacion
+                );
+
+                return responderResultadoModificationFareHarbor(res, resultadoFareHarbor);
             }
 
-            const resultadoFareHarbor = await aplicarNuevaReservaFareHarbor(
-                idEventoIntegracion,
-                req.usuario.id_usuario,
-                aplicacion.completar
-            );
-
-            return responderResultadoAplicacionFareHarbor(res, resultadoFareHarbor);
+            return responderFareHarborNoHabilitado(res);
         }
 
         const { errores, aplicacion } = validarAplicacionEventoIntegracion(req.body || {});

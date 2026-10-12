@@ -32,6 +32,10 @@ jest.mock('../integrations/fareharbor/fareharborModificationDiff.service', () =>
     obtenerDiffModificationFareHarbor: jest.fn(),
 }));
 
+jest.mock('../integrations/fareharbor/fareharborModificationApplication.service', () => ({
+    aplicarModificationFareHarbor: jest.fn(),
+}));
+
 jest.mock('../integrations/fareharbor/fareharborApplication.service', () => ({
     aplicarNuevaReservaFareHarbor: jest.fn(),
     construirPreviewNuevaReservaFareHarborConDb: jest.fn(),
@@ -44,6 +48,7 @@ const {
 } = require('../integrations/getyourguide/getyourguideReservationApplication.service');
 const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
 const { obtenerDiffModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationDiff.service');
+const { aplicarModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationApplication.service');
 const {
     aplicarNuevaReservaFareHarbor,
     construirPreviewNuevaReservaFareHarborConDb,
@@ -162,6 +167,13 @@ describe('eventosIntegracion.routes', () => {
             reservacion: { id_reservacion: 20, codigo: 'RSV-20270101-FH123' },
             link: { external_booking_id: 'fh-booking-sintetico' },
             evento: { id_evento_integracion: 1, application_status: 'applied' },
+        });
+        aplicarModificationFareHarbor.mockResolvedValue({
+            tipo: 'aplicado',
+            reservacion: { id_reservacion: 20, codigo: 'RSV-20270101-FH123' },
+            evento: { id_evento_integracion: 1, application_status: 'applied' },
+            updatedFields: ['pickup_place'],
+            noChangesApplied: false,
         });
         obtenerDiffModificationGetYourGuide.mockResolvedValue({
             tipo: 'preview',
@@ -599,10 +611,31 @@ describe('eventosIntegracion.routes', () => {
         });
     });
 
-    test('revision FareHarbor modification sigue bloqueada en FH-3B1', async () => {
+    test('revision FareHarbor modification permite aprobar para FH-MOD-03B', async () => {
         eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
             provider: 'fareharbor',
             event_type: 'modification',
+            fareharbor_summary: {},
+        }));
+
+        const response = await request(app)
+            .patch('/api/eventos-integracion/1/revision')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ accion: 'approve' });
+
+        expect(response.status).toBe(200);
+        expect(eventosIntegracionService.revisarEventoIntegracion).toHaveBeenCalledWith({
+            idEventoIntegracion: 1,
+            accion: 'approve',
+            idUsuario: 1,
+            nota: undefined,
+        });
+    });
+
+    test('revision FareHarbor cancellation sigue bloqueada', async () => {
+        eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
+            provider: 'fareharbor',
+            event_type: 'cancellation',
             fareharbor_summary: {},
         }));
 
@@ -680,10 +713,78 @@ describe('eventosIntegracion.routes', () => {
         expect(aplicarNuevaReservaGetYourGuide).not.toHaveBeenCalled();
     });
 
-    test('aplicar FareHarbor modification sigue bloqueada en FH-3B1', async () => {
+    test('aplicar FareHarbor modification usa servicio transaccional FH-MOD-03B', async () => {
         eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
             provider: 'fareharbor',
             event_type: 'modification',
+            fareharbor_summary: {},
+        }));
+        const body = {
+            diff_fingerprint: 'a'.repeat(64),
+            decisions: { pickup_place: 'apply_external' },
+            completar: {},
+        };
+
+        const response = await request(app)
+            .post('/api/eventos-integracion/1/aplicar')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send(body);
+
+        expect(response.status).toBe(201);
+        expect(response.body.datos).toEqual({
+            id_reservacion: 20,
+            codigo: 'RSV-20270101-FH123',
+            id_evento_integracion: 1,
+            updated_fields: ['pickup_place'],
+            no_changes_applied: false,
+        });
+        expect(aplicarModificationFareHarbor).toHaveBeenCalledWith(1, 1, body);
+        expect(aplicarNuevaReservaFareHarbor).not.toHaveBeenCalled();
+        expect(aplicarNuevaReservaGetYourGuide).not.toHaveBeenCalled();
+    });
+
+    test('aplicar FareHarbor modification requiere fingerprint valido', async () => {
+        eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
+            provider: 'fareharbor',
+            event_type: 'modification',
+            fareharbor_summary: {},
+        }));
+
+        const response = await request(app)
+            .post('/api/eventos-integracion/1/aplicar')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({ decisions: { pickup_place: 'apply_external' }, completar: {} });
+
+        expect(response.status).toBe(400);
+        expect(response.body.errores).toContain('El campo diff_fingerprint es obligatorio y debe ser SHA-256 hexadecimal');
+        expect(aplicarModificationFareHarbor).not.toHaveBeenCalled();
+    });
+
+    test('aplicar FareHarbor modification responde 409 cuando el diff quedo obsoleto', async () => {
+        eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
+            provider: 'fareharbor',
+            event_type: 'modification',
+            fareharbor_summary: {},
+        }));
+        aplicarModificationFareHarbor.mockResolvedValueOnce({ tipo: 'diff_obsoleto' });
+
+        const response = await request(app)
+            .post('/api/eventos-integracion/1/aplicar')
+            .set('Authorization', `Bearer ${tokenAdministrador}`)
+            .send({
+                diff_fingerprint: 'b'.repeat(64),
+                decisions: { pickup_place: 'apply_external' },
+                completar: {},
+            });
+
+        expect(response.status).toBe(409);
+        expect(response.body.mensaje).toBe('La reservación o la modificación cambió. Actualiza los datos antes de aplicar.');
+    });
+
+    test('aplicar FareHarbor cancellation sigue bloqueada', async () => {
+        eventosIntegracionService.obtenerEventoIntegracion.mockResolvedValueOnce(crearEvento({
+            provider: 'fareharbor',
+            event_type: 'cancellation',
             fareharbor_summary: {},
         }));
 
@@ -694,9 +795,8 @@ describe('eventosIntegracion.routes', () => {
 
         expect(response.status).toBe(409);
         expect(response.body.mensaje).toBe('La aplicacion de eventos FareHarbor aun no esta habilitada.');
+        expect(aplicarModificationFareHarbor).not.toHaveBeenCalled();
         expect(aplicarNuevaReservaFareHarbor).not.toHaveBeenCalled();
         expect(aplicarNuevaReservaGetYourGuide).not.toHaveBeenCalled();
     });
 });
-
-

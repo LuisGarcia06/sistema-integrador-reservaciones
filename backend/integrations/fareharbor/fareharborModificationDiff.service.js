@@ -1,3 +1,4 @@
+const crypto = require('node:crypto');
 const pool = require('../../config/database');
 const equivalenciasToursExternosService = require('../../services/equivalenciasToursExternos.service');
 
@@ -360,7 +361,8 @@ async function obtenerReservacionVinculada(db, idReservacion) {
                 deposito,
                 saldo,
                 estado,
-                id_transporte_operacion
+                id_transporte_operacion,
+                ultima_actualizacion
             FROM reservaciones
             WHERE id_reservacion = $1
             LIMIT 1
@@ -489,7 +491,48 @@ function crearContextoReservacion(reservacion) {
         estado: reservacion?.estado || null,
         assigned_to_transport: Boolean(reservacion?.id_transporte_operacion),
         id_transporte_operacion: reservacion?.id_transporte_operacion || null,
+        ultima_actualizacion: reservacion?.ultima_actualizacion || null,
     };
+}
+
+function normalizarValorFingerprint(valor) {
+    if (valor instanceof Date) {
+        return valor.toISOString();
+    }
+
+    if (Array.isArray(valor)) {
+        return valor.map(normalizarValorFingerprint);
+    }
+
+    if (valor && typeof valor === 'object') {
+        return Object.keys(valor).sort().reduce((resultado, key) => {
+            resultado[key] = normalizarValorFingerprint(valor[key]);
+            return resultado;
+        }, {});
+    }
+
+    return valor;
+}
+
+function crearDiffFingerprint(diff) {
+    const payload = normalizarValorFingerprint({
+        id_evento_integracion: diff.current_event?.id_evento_integracion || null,
+        latest_snapshot_id: diff.current_event?.is_latest_snapshot
+            ? diff.current_event?.id_evento_integracion || null
+            : null,
+        id_reservacion: diff.id_reservacion || null,
+        reservacion_ultima_actualizacion: diff.reservation_context?.ultima_actualizacion || null,
+        baseline_id: diff.baseline?.id_evento_integracion || null,
+        baseline_source_received_at: diff.baseline?.source_received_at || null,
+        baseline_created_at: diff.baseline?.created_at || null,
+        changes: diff.changes || [],
+        blocking_issues: diff.blocking_issues || [],
+    });
+
+    return crypto
+        .createHash('sha256')
+        .update(JSON.stringify(payload))
+        .digest('hex');
 }
 
 function agregarBloqueosReservacion(reservacion, blockingIssues) {
@@ -709,24 +752,28 @@ async function construirDiff(db, { evento, baseline, reservacion, opciones = {} 
 }
 
 function construirPreviewBase(evento, datos = {}) {
-    return {
-        fareharbor_modification_diff: {
-            external_booking_id: evento?.external_booking_id || null,
-            id_reservacion: datos.idReservacion || null,
-            baseline_status: datos.baselineStatus || 'unknown',
-            baseline: datos.baseline || null,
-            current_event: datos.currentEvent || {
-                id_evento_integracion: evento?.id_evento_integracion || null,
-                source_received_at: evento?.source_received_at || null,
-                is_latest_snapshot: false,
-            },
-            reservation_context: datos.reservationContext || null,
-            changes: datos.changes || [],
-            has_relevant_changes: Boolean(datos.changes?.length),
-            blocking_issues: datos.blockingIssues || [],
-            warnings: datos.warnings || [],
-            actionable: false,
+    const diff = {
+        external_booking_id: evento?.external_booking_id || null,
+        id_reservacion: datos.idReservacion || null,
+        baseline_status: datos.baselineStatus || 'unknown',
+        baseline: datos.baseline || null,
+        current_event: datos.currentEvent || {
+            id_evento_integracion: evento?.id_evento_integracion || null,
+            source_received_at: evento?.source_received_at || null,
+            is_latest_snapshot: false,
         },
+        reservation_context: datos.reservationContext || null,
+        changes: datos.changes || [],
+        has_relevant_changes: Boolean(datos.changes?.length),
+        blocking_issues: datos.blockingIssues || [],
+        warnings: datos.warnings || [],
+        actionable: false,
+    };
+
+    diff.diff_fingerprint = crearDiffFingerprint(diff);
+
+    return {
+        fareharbor_modification_diff: diff,
     };
 }
 

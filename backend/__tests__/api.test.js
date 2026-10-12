@@ -869,6 +869,293 @@ describe('API CP-044', () => {
         }
     });
 
+    test('FH-MOD-03B aplica modification FareHarbor approved con fingerprint y decisiones', async () => {
+        expect(contexto.currentDatabase).toBe('sian_kaan_reservaciones_test');
+
+        const runId = `fhmod03b-${Date.now()}`;
+        const externalBookingId = `${runId}-booking`;
+        const activityTitle = `${runId} Kayak`;
+        const optionTitle = `${runId} Ages 12+`;
+        const idsEventos = [];
+        const idsReservaciones = [];
+        let equivalenciaCreada = false;
+
+        const normalizedFareHarbor = ({ pickupPlace }) => ({
+            external_booking_id: externalBookingId,
+            booking: {
+                status: 'booked',
+                uuid: externalBookingId,
+                display_id: `${runId}-display`,
+            },
+            availability: {
+                start_at: '2027-04-01T06:00:00-0500',
+                end_at: '2027-04-01T11:00:00-0500',
+                item: {
+                    pk: 636130,
+                    name: activityTitle,
+                    headline: optionTitle,
+                },
+            },
+            customers: {
+                total: 2,
+                by_category: [
+                    { customer_type_pk: 1, singular: 'Adult', plural: 'Adults', count: 2 },
+                ],
+            },
+            contact: {
+                name: 'Cliente FH MOD',
+                normalized_phone: '+520000000001',
+            },
+            pickup: {
+                pickup: {
+                    display_text: pickupPlace,
+                    name: pickupPlace,
+                    time: '08:00',
+                },
+            },
+            money: {
+                receipt_total: '200000',
+                amount_paid: '50000',
+                currency: 'mxn',
+            },
+            fingerprint: `${runId}-${pickupPlace}`,
+        });
+
+        const insertarEventoFareHarbor = async ({
+            suffix,
+            eventType,
+            applicationStatus,
+            reviewStatus,
+            normalizedData,
+            sourceReceivedAt,
+        }) => {
+            const result = await pool.query(
+                `
+                    INSERT INTO eventos_integracion (
+                        provider,
+                        external_event_id,
+                        external_booking_id,
+                        event_type,
+                        urgent,
+                        review_status,
+                        application_status,
+                        normalized_data,
+                        source_subject,
+                        source_received_at,
+                        applied_at,
+                        applied_by
+                    )
+                    VALUES (
+                        'fareharbor',
+                        $1,
+                        $2,
+                        $3,
+                        FALSE,
+                        $4::varchar,
+                        $5::varchar,
+                        $6::jsonb,
+                        $7,
+                        $8,
+                        CASE WHEN $5::varchar = 'applied' THEN CURRENT_TIMESTAMP ELSE NULL END,
+                        CASE WHEN $5::varchar = 'applied' THEN $9::integer ELSE NULL::integer END
+                    )
+                    RETURNING id_evento_integracion
+                `,
+                [
+                    `${runId}-${suffix}`,
+                    externalBookingId,
+                    eventType,
+                    reviewStatus,
+                    applicationStatus,
+                    JSON.stringify(normalizedData),
+                    `FH-MOD-03B sintetico ${runId}`,
+                    sourceReceivedAt,
+                    contexto.usuarios.administrador.id_usuario,
+                ]
+            );
+
+            idsEventos.push(result.rows[0].id_evento_integracion);
+            return result.rows[0].id_evento_integracion;
+        };
+
+        try {
+            const equivalencia = construirDatosEquivalenciaTourExterno({
+                provider: 'fareharbor',
+                activityTitle,
+                optionTitle,
+                idTour: contexto.catalogos.id_tour,
+                turno: 'Mañana',
+                notas: 'Equivalencia FH-MOD-03B sintetica',
+            });
+            await insertarEquivalenciaTourExterno(pool, equivalencia);
+            equivalenciaCreada = true;
+
+            const crearReservacion = await request(app)
+                .post('/api/reservaciones')
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send(crearPayloadReservacionValida({
+                    fecha: '2027-04-01',
+                    id_tour: contexto.catalogos.id_tour,
+                    nombre_cliente: 'Cliente FH MOD',
+                    telefono_cliente: '+520000000001',
+                    pax: 2,
+                    ninos: 0,
+                    pickup_place: 'Lobby FH Baseline',
+                    pickup_time: '08:00',
+                    turno: 'Mañana',
+                    precio_total: 2000,
+                    deposito: 500,
+                    saldo: 1500,
+                }));
+            expect(crearReservacion.status).toBe(201);
+            idsReservaciones.push(crearReservacion.body.datos.id_reservacion);
+
+            await pool.query(
+                `
+                    INSERT INTO reservas_integracion_link (provider, external_booking_id, id_reservacion)
+                    VALUES ('fareharbor', $1, $2)
+                `,
+                [externalBookingId, crearReservacion.body.datos.id_reservacion]
+            );
+
+            await insertarEventoFareHarbor({
+                suffix: 'baseline',
+                eventType: 'new_booking',
+                reviewStatus: 'approved',
+                applicationStatus: 'applied',
+                normalizedData: normalizedFareHarbor({ pickupPlace: 'Lobby FH Baseline' }),
+                sourceReceivedAt: new Date('2027-03-01T10:00:00.000Z'),
+            });
+            const idEventoModification = await insertarEventoFareHarbor({
+                suffix: 'modification',
+                eventType: 'modification',
+                reviewStatus: 'pending_review',
+                applicationStatus: 'not_applied',
+                normalizedData: normalizedFareHarbor({ pickupPlace: 'Lobby FH Nuevo' }),
+                sourceReceivedAt: new Date('2027-03-02T10:00:00.000Z'),
+            });
+
+            const diffResponse = await request(app)
+                .get(`/api/eventos-integracion/${idEventoModification}/diff`)
+                .set('Authorization', `Bearer ${tokenConsulta}`);
+            expect(diffResponse.status).toBe(200);
+            expect(diffResponse.body.datos.diff_fingerprint).toMatch(/^[a-f0-9]{64}$/);
+            expect(diffResponse.body.datos.changes).toEqual(expect.arrayContaining([
+                expect.objectContaining({
+                    field: 'pickup_place',
+                    internal_current: 'Lobby FH Baseline',
+                    fareharbor_new: 'Lobby FH Nuevo',
+                    conflict: false,
+                }),
+            ]));
+
+            const aprobar = await request(app)
+                .patch(`/api/eventos-integracion/${idEventoModification}/revision`)
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send({ accion: 'approve', nota: 'FH-MOD-03B sintetico' });
+            expect(aprobar.status).toBe(200);
+
+            const bitacoraAntes = await pool.query(
+                `SELECT COUNT(*)::int AS total FROM bitacora WHERE id_reservacion = $1 AND accion = 'MODIFICAR'`,
+                [crearReservacion.body.datos.id_reservacion]
+            );
+            const aplicar = await request(app)
+                .post(`/api/eventos-integracion/${idEventoModification}/aplicar`)
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send({
+                    diff_fingerprint: diffResponse.body.datos.diff_fingerprint,
+                    decisions: { pickup_place: 'apply_external' },
+                    completar: {},
+                });
+
+            expect(aplicar.status).toBe(201);
+            expect(aplicar.body.datos).toEqual(expect.objectContaining({
+                id_reservacion: crearReservacion.body.datos.id_reservacion,
+                codigo: crearReservacion.body.datos.codigo,
+                id_evento_integracion: idEventoModification,
+                updated_fields: ['pickup_place'],
+                no_changes_applied: false,
+            }));
+
+            const reservacionFinal = await pool.query(
+                `
+                    SELECT pickup_place, pax, ninos, precio_total::text, deposito::text, saldo::text, estado
+                    FROM reservaciones
+                    WHERE id_reservacion = $1
+                `,
+                [crearReservacion.body.datos.id_reservacion]
+            );
+            expect(reservacionFinal.rows[0]).toEqual(expect.objectContaining({
+                pickup_place: 'Lobby FH Nuevo',
+                pax: 2,
+                ninos: 0,
+                precio_total: '2000.00',
+                deposito: '500.00',
+                saldo: '1500.00',
+                estado: 'Pendiente',
+            }));
+
+            const bitacoraDespues = await pool.query(
+                `
+                    SELECT accion, descripcion
+                    FROM bitacora
+                    WHERE id_reservacion = $1 AND accion = 'MODIFICAR'
+                    ORDER BY id_bitacora DESC
+                `,
+                [crearReservacion.body.datos.id_reservacion]
+            );
+            expect(bitacoraDespues.rows.length).toBe(bitacoraAntes.rows[0].total + 1);
+            expect(bitacoraDespues.rows[0].descripcion).toContain('pickup_place: Lobby FH Baseline -> Lobby FH Nuevo');
+
+            const eventoFinal = await pool.query(
+                `
+                    SELECT review_status, application_status, applied_by, applied_at
+                    FROM eventos_integracion
+                    WHERE id_evento_integracion = $1
+                `,
+                [idEventoModification]
+            );
+            expect(eventoFinal.rows[0]).toEqual(expect.objectContaining({
+                review_status: 'approved',
+                application_status: 'applied',
+                applied_by: contexto.usuarios.administrador.id_usuario,
+            }));
+            expect(eventoFinal.rows[0].applied_at).toBeInstanceOf(Date);
+
+            const reintento = await request(app)
+                .post(`/api/eventos-integracion/${idEventoModification}/aplicar`)
+                .set('Authorization', `Bearer ${tokenAdministrador}`)
+                .send({
+                    diff_fingerprint: diffResponse.body.datos.diff_fingerprint,
+                    decisions: { pickup_place: 'apply_external' },
+                    completar: {},
+                });
+            expect(reintento.status).toBe(409);
+
+            const bitacoraFinal = await pool.query(
+                `SELECT COUNT(*)::int AS total FROM bitacora WHERE id_reservacion = $1 AND accion = 'MODIFICAR'`,
+                [crearReservacion.body.datos.id_reservacion]
+            );
+            expect(bitacoraFinal.rows[0].total).toBe(bitacoraDespues.rows.length);
+        } finally {
+            if (idsReservaciones.length > 0) {
+                await pool.query('DELETE FROM reservas_integracion_link WHERE provider = $1 AND id_reservacion = ANY($2::int[])', ['fareharbor', idsReservaciones]);
+                await pool.query('DELETE FROM bitacora WHERE id_reservacion = ANY($1::int[])', [idsReservaciones]);
+                await pool.query('DELETE FROM reservaciones WHERE id_reservacion = ANY($1::int[])', [idsReservaciones]);
+            }
+
+            if (idsEventos.length > 0) {
+                await pool.query('DELETE FROM eventos_integracion WHERE id_evento_integracion = ANY($1::int[])', [idsEventos]);
+            }
+
+            if (equivalenciaCreada) {
+                await pool.query(
+                    'DELETE FROM equivalencias_tours_externos WHERE provider = $1 AND activity_title = $2 AND option_title = $3',
+                    ['fareharbor', activityTitle, optionTitle]
+                );
+            }
+        }
+    });
     test('FH-3B1 aplica new_booking FareHarbor sintetico en DB test de forma idempotente', async () => {
         expect(contexto.currentDatabase).toBe('sian_kaan_reservaciones_test');
 
