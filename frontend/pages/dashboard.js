@@ -75,6 +75,9 @@
     modalError: "",
     actionLoading: false,
     fareHarborManualValues: {},
+    fareHarborModificationDecisions: {},
+    fareHarborModificationManualValues: {},
+    fareHarborModificationFingerprint: null,
     tours: [],
     toursLoaded: false,
     toursLoading: false,
@@ -543,6 +546,75 @@
     });
   }
 
+  function resetFareHarborModificationState() {
+    integrationState.fareHarborModificationDecisions = {};
+    integrationState.fareHarborModificationManualValues = {};
+    integrationState.fareHarborModificationFingerprint = null;
+  }
+
+  function getFareHarborModificationManualValue(field) {
+    const values = getObject(integrationState.fareHarborModificationManualValues);
+    const value = values[field];
+
+    return value === null || value === undefined ? "" : String(value);
+  }
+
+  function setFareHarborModificationManualValue(field, value) {
+    if (["id_tour", "turno", "ninos"].indexOf(field) === -1) {
+      return;
+    }
+
+    integrationState.fareHarborModificationManualValues[field] = value === null || value === undefined ? "" : String(value);
+  }
+
+  function saveFareHarborModificationInputs() {
+    const fields = {
+      id_tour: "fhmod-tour-id",
+      turno: "fhmod-turno",
+      ninos: "fhmod-ninos"
+    };
+
+    Object.keys(fields).forEach(function (field) {
+      const input = document.getElementById(fields[field]);
+
+      if (input) {
+        setFareHarborModificationManualValue(field, String(input.value || "").trim());
+      }
+    });
+  }
+
+  function setFareHarborModificationDecision(key, value) {
+    if (!key) {
+      return;
+    }
+
+    integrationState.fareHarborModificationDecisions[key] = value || "";
+  }
+
+  function getFareHarborModificationDecision(key) {
+    return getObject(integrationState.fareHarborModificationDecisions)[key] || "";
+  }
+
+  function preserveFareHarborModificationStateForDiff(diff) {
+    const preview = getFareHarborModificationPreview(diff);
+    const keys = getFareHarborModificationGroups(preview).map(function (group) {
+      return group.key;
+    });
+    const allowed = keys.reduce(function (map, key) {
+      map[key] = true;
+      return map;
+    }, {});
+    const decisions = {};
+
+    Object.keys(getObject(integrationState.fareHarborModificationDecisions)).forEach(function (key) {
+      if (allowed[key]) {
+        decisions[key] = integrationState.fareHarborModificationDecisions[key];
+      }
+    });
+
+    integrationState.fareHarborModificationDecisions = decisions;
+    integrationState.fareHarborModificationFingerprint = preview.diff_fingerprint || null;
+  }
   function getFareHarborPax(evento) {
     const candidate = getFareHarborReservationCandidate(evento);
     const pax = Number(candidate.pax);
@@ -1588,18 +1660,458 @@
     ].join("");
   }
 
+  function getFareHarborModificationGroupKey(field) {
+    if (field === "id_tour" || field === "turno") {
+      return "tour_turno_group";
+    }
+
+    if (field === "pax" || field === "ninos") {
+      return "passengers_group";
+    }
+
+    return field;
+  }
+
+  function getFareHarborModificationGroupLabel(key) {
+    const labels = {
+      fecha: "Fecha",
+      tour_turno_group: "Tour / Turno",
+      passengers_group: "PAX / Niños",
+      pickup_place: "Lugar de pickup",
+      pickup_time: "Hora de pickup",
+      nombre_cliente: "Nombre del cliente",
+      telefono_cliente: "Teléfono del cliente",
+      money_group: "Datos de pago"
+    };
+
+    return labels[key] || getFieldLabel(key);
+  }
+
+  function getFareHarborModificationGroups(preview) {
+    const order = [
+      "fecha",
+      "tour_turno_group",
+      "passengers_group",
+      "pickup_place",
+      "pickup_time",
+      "nombre_cliente",
+      "telefono_cliente",
+      "money_group"
+    ];
+    const groups = {};
+
+    getArray(preview && preview.changes).forEach(function (change) {
+      const key = getFareHarborModificationGroupKey(change.field);
+
+      if (order.indexOf(key) === -1) {
+        return;
+      }
+
+      if (!groups[key]) {
+        groups[key] = {
+          key: key,
+          label: getFareHarborModificationGroupLabel(key),
+          changes: []
+        };
+      }
+
+      groups[key].changes.push(change);
+    });
+
+    return order.filter(function (key) {
+      return groups[key];
+    }).map(function (key) {
+      return groups[key];
+    });
+  }
+
+  function hasDeterminedFareHarborValue(value) {
+    if (value === null || value === undefined || value === "") {
+      return false;
+    }
+
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return Object.keys(value).some(function (key) {
+        return hasDeterminedFareHarborValue(value[key]);
+      });
+    }
+
+    return true;
+  }
+
+  function getChangeByField(group, field) {
+    return getArray(group.changes).find(function (change) {
+      return change.field === field;
+    }) || null;
+  }
+
+  function isFareHarborModificationEventBlocker(issue) {
+    const text = String(issue || "");
+
+    return text === "external_booking_id_faltante"
+      || text === "sin_reservacion_vinculada"
+      || text === "reservacion_vinculada_no_encontrada"
+      || text === "baseline_aplicado_faltante"
+      || text.indexOf("no está pendiente de aplicación") !== -1
+      || text.indexOf("no esta pendiente de aplicacion") !== -1
+      || text.indexOf("snapshot FareHarbor más reciente") !== -1
+      || text.indexOf("snapshot FareHarbor mas reciente") !== -1
+      || /cancelada/i.test(text)
+      || /completada/i.test(text)
+      || /ya inició/i.test(text)
+      || /ya inicio/i.test(text);
+  }
+
+  function getFareHarborModificationEventBlockers(preview) {
+    return getArray(preview && preview.blocking_issues).filter(isFareHarborModificationEventBlocker);
+  }
+
+  function groupHasCurrentMoneyIssue(preview) {
+    return getArray(preview && preview.blocking_issues).some(function (issue) {
+      return /^current money:/i.test(String(issue || ""));
+    });
+  }
+
+  function isFareHarborModificationUnknownChildren(group) {
+    const change = getChangeByField(group, "ninos");
+
+    return Boolean(change && change.reason === "unknown_customer_category");
+  }
+
+  function getFareHarborModificationPaxForManual(group) {
+    const paxChange = getChangeByField(group, "pax");
+    const ninosChange = getChangeByField(group, "ninos");
+    const pax = paxChange ? Number(paxChange.fareharbor_new) : Number(ninosChange && ninosChange.fareharbor_new);
+
+    if (Number.isInteger(pax) && pax >= 0) {
+      return pax;
+    }
+
+    if (paxChange && Number.isInteger(Number(paxChange.internal_current))) {
+      return Number(paxChange.internal_current);
+    }
+
+    return null;
+  }
+
+  function getFareHarborModificationGroupOptions(preview, group) {
+    const reservationContext = getObject(preview && preview.reservation_context);
+    const options = {
+      canApplyExternal: true,
+      canKeepInternal: true,
+      canManual: false,
+      applyDisabledReason: "",
+      manualDisabledReason: ""
+    };
+
+    if (!group || !group.key) {
+      return options;
+    }
+
+    if (group.key === "fecha" && reservationContext.assigned_to_transport) {
+      options.canApplyExternal = false;
+      options.applyDisabledReason = "La reservación tiene transporte asignado.";
+    }
+
+    if (group.key === "tour_turno_group") {
+      const tourChange = getChangeByField(group, "id_tour");
+      const turnoChange = getChangeByField(group, "turno");
+      const source = (tourChange && tourChange.source) || (turnoChange && turnoChange.source);
+
+      if (source !== "equivalence") {
+        options.canApplyExternal = false;
+        options.applyDisabledReason = "No existe equivalencia exacta FareHarbor.";
+        options.canManual = true;
+      }
+    }
+
+    if (group.key === "passengers_group") {
+      if (isFareHarborModificationUnknownChildren(group)) {
+        options.canApplyExternal = false;
+        options.applyDisabledReason = "Niños requiere resolución manual.";
+        options.canManual = true;
+      }
+    }
+
+    if (group.key === "money_group" && groupHasCurrentMoneyIssue(preview)) {
+      options.canApplyExternal = false;
+      options.applyDisabledReason = "FareHarbor envió importes inválidos.";
+    }
+
+    if (group.key !== "tour_turno_group" && group.key !== "passengers_group") {
+      const firstChange = getArray(group.changes)[0];
+
+      if (!firstChange || !hasDeterminedFareHarborValue(firstChange.fareharbor_new)) {
+        options.canApplyExternal = false;
+        options.applyDisabledReason = "FareHarbor no envió un valor determinable.";
+      }
+    }
+
+    if (group.key === "money_group") {
+      const money = getArray(group.changes)[0] && getArray(group.changes)[0].fareharbor_new;
+
+      if (!money || typeof money !== "object" || !hasDeterminedFareHarborValue(money.precio_total) || !hasDeterminedFareHarborValue(money.deposito) || !hasDeterminedFareHarborValue(money.saldo)) {
+        options.canApplyExternal = false;
+        options.applyDisabledReason = options.applyDisabledReason || "FareHarbor no envió importes completos.";
+      }
+    }
+
+    return options;
+  }
+
+  function renderFareHarborModificationRadio(group, value, label, disabled, reason) {
+    const selected = getFareHarborModificationDecision(group.key) === value;
+
+    return [
+      '<label class="dashboard-integration-decision-option">',
+      '<input type="radio" name="fhmod-decision-' + App.ui.escapeHtml(group.key) + '" data-fhmod-decision="' + App.ui.escapeHtml(group.key) + '" value="' + App.ui.escapeHtml(value) + '"' + (selected ? " checked" : "") + (disabled ? " disabled" : "") + ">",
+      '<span>' + App.ui.escapeHtml(label) + (reason ? ' <small>(' + App.ui.escapeHtml(reason) + ')</small>' : '') + '</span>',
+      '</label>'
+    ].join("");
+  }
+
+  function renderFareHarborModificationManualControls(group) {
+    const decision = getFareHarborModificationDecision(group.key);
+
+    if (decision !== "manual") {
+      return "";
+    }
+
+    if (group.key === "tour_turno_group") {
+      const selectedTour = getFareHarborModificationManualValue("id_tour");
+      const selectedTurno = getFareHarborModificationManualValue("turno");
+      const tours = getSelectableTours();
+
+      return [
+        '<div class="dashboard-integration-detail-grid">',
+        '<label class="field">',
+        '<span>Tour interno *</span>',
+        '<select id="fhmod-tour-id" data-fhmod-manual="id_tour" required' + (integrationState.toursLoading ? " disabled" : "") + '>',
+        '<option value="">' + (integrationState.toursLoading ? "Cargando tours..." : "Selecciona un tour") + '</option>',
+        tours.map(function (tour) {
+          const tourId = String(getTourId(tour));
+          const selected = selectedTour === tourId ? ' selected' : '';
+
+          return '<option value="' + App.ui.escapeHtml(tourId) + '"' + selected + '>' + App.ui.escapeHtml(getTourName(tour)) + '</option>';
+        }).join(""),
+        '</select>',
+        '</label>',
+        '<label class="field">',
+        '<span>Turno *</span>',
+        '<select id="fhmod-turno" data-fhmod-manual="turno" required>',
+        '<option value="">Selecciona turno</option>',
+        TURNOS_VALIDOS.map(function (turno) {
+          const selected = selectedTurno === turno ? ' selected' : '';
+
+          return '<option value="' + App.ui.escapeHtml(turno) + '"' + selected + '>' + App.ui.escapeHtml(turno) + '</option>';
+        }).join(""),
+        '</select>',
+        '</label>',
+        '</div>',
+        integrationState.toursError ? '<p class="form-message is-error">' + App.ui.escapeHtml(integrationState.toursError) + '</p>' : ''
+      ].join("");
+    }
+
+    if (group.key === "passengers_group") {
+      const value = getFareHarborModificationManualValue("ninos");
+      const pax = getFareHarborModificationPaxForManual(group);
+
+      return [
+        '<label class="field dashboard-integration-full">',
+        '<span>Niños *</span>',
+        '<input id="fhmod-ninos" data-fhmod-manual="ninos" type="number" min="0"' + (pax !== null ? ' max="' + App.ui.escapeHtml(pax) + '"' : '') + ' step="1" required value="' + App.ui.escapeHtml(value) + '">',
+        '</label>',
+        pax !== null ? '<p class="card-text">PAX FareHarbor: ' + App.ui.escapeHtml(pax) + '</p>' : ''
+      ].join("");
+    }
+
+    return "";
+  }
+
+  function renderFareHarborModificationGroup(preview, group, canEdit) {
+    const options = getFareHarborModificationGroupOptions(preview, group);
+    const decision = getFareHarborModificationDecision(group.key);
+    const disabled = !canEdit || integrationState.actionLoading;
+    const hasConflict = getArray(group.changes).some(function (change) {
+      return Boolean(change.conflict);
+    });
+    const hasManualBaseline = getArray(group.changes).some(function (change) {
+      return String(change.reason || "").indexOf("baseline_") === 0;
+    });
+
+    return [
+      '<div class="dashboard-integration-block">',
+      '<h4>' + App.ui.escapeHtml(group.label) + '</h4>',
+      hasConflict ? '<p class="dashboard-integration-warning">Revisión manual' + (getArray(group.changes).map(function (change) { return getFareHarborChangeReasonLabel(change.reason); }).filter(Boolean)[0] ? ': ' + App.ui.escapeHtml(getArray(group.changes).map(function (change) { return getFareHarborChangeReasonLabel(change.reason); }).filter(Boolean)[0]) : '') + '</p>' : '',
+      hasManualBaseline ? '<p class="dashboard-integration-warning">El valor original fue manual o no estaba disponible en FareHarbor.</p>' : '',
+      '<div class="table-container dashboard-integration-table-container">',
+      '<table class="data-table dashboard-integration-diff-table">',
+      '<thead><tr><th>Campo</th><th>Baseline aplicado</th><th>Interno actual</th><th>Nuevo FareHarbor</th></tr></thead>',
+      '<tbody>',
+      getArray(group.changes).map(function (change) {
+        return [
+          '<tr>',
+          '<td>' + escapeHtml(getFieldLabel(change.field)) + '</td>',
+          '<td>' + escapeHtml(formatFareHarborDiffValue(change.baseline_external)) + '</td>',
+          '<td>' + escapeHtml(formatFareHarborDiffValue(change.internal_current)) + '</td>',
+          '<td>' + escapeHtml(formatFareHarborDiffValue(change.fareharbor_new)) + '</td>',
+          '</tr>'
+        ].join("");
+      }).join(""),
+      '</tbody>',
+      '</table>',
+      '</div>',
+      canEdit ? [
+        '<div class="dashboard-integration-decision-group">',
+        renderFareHarborModificationRadio(group, "apply_external", "Usar FareHarbor", disabled || !options.canApplyExternal, options.canApplyExternal ? "" : options.applyDisabledReason),
+        renderFareHarborModificationRadio(group, "keep_internal", "Mantener actual", disabled || !options.canKeepInternal, ""),
+        options.canManual ? renderFareHarborModificationRadio(group, "manual", "Resolver manualmente", disabled, options.manualDisabledReason) : "",
+        '</div>',
+        renderFareHarborModificationManualControls(group),
+        !decision ? '<p class="form-message is-info">Selecciona una decisión para este cambio.</p>' : ''
+      ].join("") : '<p class="card-text dashboard-integration-readonly">Solo lectura.</p>',
+      '</div>'
+    ].join("");
+  }
+
+  function getFareHarborModificationMissingDecisions(preview) {
+    return getFareHarborModificationGroups(preview).filter(function (group) {
+      return !getFareHarborModificationDecision(group.key);
+    }).map(function (group) {
+      return group.label;
+    });
+  }
+
+  function getFareHarborModificationValidation(evento, diff) {
+    const preview = getFareHarborModificationPreview(diff);
+    const groups = getFareHarborModificationGroups(preview);
+    const blockers = getFareHarborModificationEventBlockers(preview);
+    const errors = [];
+
+    if (!preview.diff_fingerprint) {
+      errors.push("Falta el fingerprint actual del diff.");
+    }
+
+    if (blockers.length > 0) {
+      errors.push("Esta modificación no puede aplicarse: " + blockers.map(getFareHarborModificationIssueLabel).join(" "));
+    }
+
+    groups.forEach(function (group) {
+      const decision = getFareHarborModificationDecision(group.key);
+      const options = getFareHarborModificationGroupOptions(preview, group);
+
+      if (!decision) {
+        errors.push("Falta revisar: " + group.label + ".");
+        return;
+      }
+
+      if (decision === "apply_external" && !options.canApplyExternal) {
+        errors.push(group.label + ": no se puede usar FareHarbor. " + options.applyDisabledReason);
+      }
+
+      if (decision === "manual" && !options.canManual) {
+        errors.push(group.label + ": no permite resolución manual.");
+      }
+
+      if (decision === "manual" && group.key === "tour_turno_group") {
+        if (!getFareHarborModificationManualValue("id_tour")) {
+          errors.push("Selecciona el tour interno.");
+        }
+
+        if (TURNOS_VALIDOS.indexOf(getFareHarborModificationManualValue("turno")) === -1) {
+          errors.push("Selecciona un turno válido.");
+        }
+      }
+
+      if (decision === "manual" && group.key === "passengers_group") {
+        const ninos = Number(getFareHarborModificationManualValue("ninos"));
+        const pax = getFareHarborModificationPaxForManual(group);
+
+        if (!Number.isInteger(ninos) || ninos < 0 || (pax !== null && ninos > pax)) {
+          errors.push("Niños debe ser un entero entre 0 y PAX.");
+        }
+      }
+    });
+
+    return {
+      valid: errors.length === 0,
+      errors: errors
+    };
+  }
+
+  function canApplyModification(diff) {
+    return getFareHarborModificationValidation(integrationState.modalEvent, diff).valid;
+  }
+
+  function updateFareHarborModificationApplyButtonState() {
+    const button = document.querySelector('[data-dialog-action="apply-modification"]');
+
+    if (!button || !isFareHarborModificationEvent(integrationState.modalEvent)) {
+      return;
+    }
+
+    button.disabled = integrationState.actionLoading || !canApplyModification(integrationState.modalDiff);
+  }
+  function buildFareHarborModificationApplyBody(diff) {
+    const preview = getFareHarborModificationPreview(diff);
+    const groups = getFareHarborModificationGroups(preview);
+    const body = {
+      diff_fingerprint: preview.diff_fingerprint,
+      decisions: {},
+      completar: {}
+    };
+
+    groups.forEach(function (group) {
+      const decision = getFareHarborModificationDecision(group.key);
+
+      if (!decision) {
+        return;
+      }
+
+      body.decisions[group.key] = decision;
+
+      if (decision === "manual" && group.key === "tour_turno_group") {
+        body.completar.id_tour = Number(getFareHarborModificationManualValue("id_tour"));
+        body.completar.turno = getFareHarborModificationManualValue("turno");
+      }
+
+      if (decision === "manual" && group.key === "passengers_group") {
+        body.completar.ninos = Number(getFareHarborModificationManualValue("ninos"));
+      }
+    });
+
+    return body;
+  }
+
+  function allFareHarborModificationDecisionsKeepInternal(diff) {
+    const groups = getFareHarborModificationGroups(getFareHarborModificationPreview(diff));
+
+    return groups.length > 0 && groups.every(function (group) {
+      return getFareHarborModificationDecision(group.key) === "keep_internal";
+    });
+  }
+
+  function isFareHarborModificationNoop(diff) {
+    return getFareHarborModificationGroups(getFareHarborModificationPreview(diff)).length === 0;
+  }
   function renderFareHarborModificationDiff(evento, diff) {
     const preview = getFareHarborModificationPreview(diff);
     const changes = getArray(preview.changes);
+    const groups = getFareHarborModificationGroups(preview);
     const currentEvent = getObject(preview.current_event);
     const baseline = getObject(preview.baseline);
     const reservationContext = getObject(preview.reservation_context);
+    const canEdit = Boolean(App.auth && App.auth.esAdministrador() && evento && evento.application_status === "not_applied");
+    const missing = getFareHarborModificationMissingDecisions(preview);
+    const eventBlockers = getFareHarborModificationEventBlockers(preview);
     const snapshotLabel = currentEvent.is_latest_snapshot === true
       ? "Más reciente"
       : (currentEvent.is_latest_snapshot === false ? "Obsoleto" : EMPTY_VALUE);
     const transportLabel = reservationContext.assigned_to_transport
       ? "Asignada a transporte"
       : "Sin transporte asignado";
+
+    preserveFareHarborModificationStateForDiff(diff);
 
     return [
       '<section class="dashboard-integration-block">',
@@ -1615,16 +2127,30 @@
       renderDetailItem("Baseline", baseline.id_evento_integracion ? "Evento " + baseline.id_evento_integracion : preview.baseline_status),
       renderDetailItem("Transporte", transportLabel),
       renderDetailItem("Estado interno", reservationContext.estado),
+      renderDetailItem("Fingerprint", preview.diff_fingerprint ? String(preview.diff_fingerprint).slice(0, 12) + "..." : EMPTY_VALUE),
       "</div>",
+      evento && evento.review_status === "pending_review"
+        ? '<p class="form-message is-info">Puedes preparar decisiones, pero primero debes aprobar la modificación.</p>'
+        : "",
       reservationContext.assigned_to_transport
-        ? '<p class="dashboard-integration-warning">La reservación ya tiene transporte asignado; los cambios operativos requieren validación manual.</p>'
+        ? '<p class="dashboard-integration-warning">La reservación ya tiene transporte asignado; algunos cambios operativos pueden quedar bloqueados.</p>'
         : "",
       "</section>",
-      renderFareHarborModificationIssues("Bloqueos", preview.blocking_issues, "form-message is-error"),
+      eventBlockers.length
+        ? renderFareHarborModificationIssues("Esta modificación no puede aplicarse", eventBlockers, "form-message is-error")
+        : "",
+      renderFareHarborModificationIssues("Bloqueos de campo", getArray(preview.blocking_issues).filter(function (issue) { return !isFareHarborModificationEventBlocker(issue); }), "dashboard-integration-warning"),
       renderFareHarborModificationIssues("Advertencias", preview.warnings, "dashboard-integration-warning"),
       '<section class="dashboard-integration-block">',
-      "<h3>Cambios detectados</h3>",
-      renderFareHarborModificationChanges(changes),
+      "<h3>Decisiones</h3>",
+      !groups.length
+        ? App.ui.emptyState("Sin cambios relevantes", "No hay datos de la reservación que actualizar.")
+        : groups.map(function (group) {
+            return renderFareHarborModificationGroup(preview, group, canEdit);
+          }).join(""),
+      missing.length && canEdit
+        ? '<p id="fhmod-decision-status" class="form-message is-info">Falta revisar: ' + missing.map(App.ui.escapeHtml).join(", ") + '.</p>'
+        : '<p id="fhmod-decision-status" class="form-message is-info">' + (groups.length ? "Decisiones completas." : "Evento listo para reconciliación sin cambios.") + '</p>',
       "</section>"
     ].join("");
   }
@@ -1864,10 +2390,6 @@
     ].join("");
   }
 
-  function canApplyModification(diff) {
-    const preview = getObject(diff);
-    return preview.aplicable !== false;
-  }
 
   function renderDialogActions(evento, diff) {
     if (isFareHarborEvent(evento)) {
@@ -1878,6 +2400,18 @@
       const actions = ['<button class="btn" type="button" data-dialog-action="close">Cerrar</button>'];
 
       if (isFareHarborModificationEvent(evento)) {
+        if (!isAdmin) {
+          actions.unshift('<span class="card-text dashboard-integration-readonly">Modo consulta: solo lectura.</span>');
+          return actions.join("");
+        }
+
+        if (reviewStatus === "pending_review") {
+          actions.unshift('<button class="btn btn-primary" type="button" data-dialog-action="approve-modification"' + disabled + ">Aprobar</button>");
+        } else if (reviewStatus === "approved" && applicationStatus === "not_applied") {
+          const applyLabel = isFareHarborModificationNoop(diff) ? "Marcar como revisado" : "Aplicar modificación";
+          actions.unshift('<button class="btn btn-primary" type="button" data-dialog-action="apply-modification"' + disabled + (canApplyModification(diff) ? "" : " disabled") + ">" + applyLabel + "</button>");
+        }
+
         return actions.join("");
       }
 
@@ -1920,7 +2454,7 @@
       if (reviewStatus === "pending_review") {
         actions.push('<button class="btn btn-primary" type="button" data-dialog-action="approve-modification"' + disabled + ">Aprobar modificación</button>");
       } else if (reviewStatus === "approved" && applicationStatus === "not_applied") {
-        actions.push('<button class="btn btn-primary" type="button" data-dialog-action="apply-modification"' + disabled + (canApplyModification(diff) ? "" : " disabled") + ">Aplicar modificación</button>");
+        actions.push('<button class="btn btn-primary" type="button" data-dialog-action="apply-modification"' + disabled + (getObject(diff).aplicable !== false ? "" : " disabled") + ">Aplicar modificación</button>");
       }
     }
 
@@ -2065,10 +2599,28 @@
       }
     });
 
+    host.querySelectorAll("[data-fhmod-decision]").forEach(function (input) {
+      input.addEventListener("change", function () {
+        setFareHarborModificationDecision(input.getAttribute("data-fhmod-decision"), input.value);
+        renderIntegrationDialog();
+      });
+    });
+
+    host.querySelectorAll("[data-fhmod-manual]").forEach(function (input) {
+      input.addEventListener("input", function () {
+        saveFareHarborModificationInputs();
+        updateFareHarborModificationApplyButtonState();
+      });
+      input.addEventListener("change", function () {
+        saveFareHarborModificationInputs();
+        updateFareHarborModificationApplyButtonState();
+      });
+    });
+
     updateNewBookingApplyButtonState();
     updateFareHarborPreviewStatus();
+    updateFareHarborModificationApplyButtonState();
   }
-
   async function loadIntegrationPendientes(options) {
     const config = options || {};
 
@@ -2129,6 +2681,10 @@
       resetFareHarborManualValues();
     }
 
+    if (!config.preserveFareHarborModificationState) {
+      resetFareHarborModificationState();
+    }
+
     integrationState.modalEvent = null;
     integrationState.modalDiff = null;
     integrationState.modalError = "";
@@ -2147,6 +2703,11 @@
 
       if (evento && evento.event_type === "new_booking" && needsManualField(evento, "id_tour")) {
         await loadIntegrationToursIfNeeded();
+      }
+
+      if (isFareHarborModificationEvent(evento)) {
+        await loadIntegrationToursIfNeeded();
+        preserveFareHarborModificationStateForDiff(diff);
       }
 
       integrationState.modalEvent = evento;
@@ -2168,6 +2729,7 @@
     integrationState.modalError = "";
     integrationState.actionLoading = false;
     resetFareHarborManualValues();
+    resetFareHarborModificationState();
 
     if (host) {
       host.innerHTML = "";
@@ -2203,6 +2765,12 @@
     });
   }
 
+  async function applyFareHarborModificationEvent(id, body) {
+    return App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/aplicar", {
+      method: "POST",
+      body: body
+    });
+  }
   function setModalError(message) {
     integrationState.modalError = message;
     integrationState.actionLoading = false;
@@ -2442,6 +3010,7 @@
   async function approveModification() {
     const id = getCurrentIntegrationId();
 
+    saveFareHarborModificationInputs();
     integrationState.actionLoading = true;
     integrationState.modalError = "";
     renderIntegrationDialog();
@@ -2450,16 +3019,102 @@
       await approveIntegrationEvent(id);
       integrationState.message = "Modificacion aprobada. Aun falta aplicarla.";
       await loadIntegrationPendientes({ silent: true });
-      await openIntegrationDialog(id);
+      integrationState.actionLoading = false;
+      await openIntegrationDialog(id, { preserveFareHarborModificationState: true });
     } catch (error) {
       setModalError(getIntegrationErrorMessage(error, "No fue posible aprobar la modificación."));
     }
   }
 
-  async function applyModification() {
-    const id = getCurrentIntegrationId();
+  function getFareHarborModificationApplyConfirmation(diff) {
+    if (isFareHarborModificationNoop(diff) || allFareHarborModificationDecisionsKeepInternal(diff)) {
+      return "No se modificarán los datos de la reservación; el evento se marcará como revisado.\n¿Deseas continuar?";
+    }
 
-    if (!canApplyModification(integrationState.modalDiff)) {
+    return "Se aplicarán las decisiones seleccionadas a la reservación vinculada.\n¿Deseas continuar?";
+  }
+
+  function getFareHarborModificationSuccessMessage(response, diff) {
+    const datos = response && (response.datos || response.data);
+
+    if (datos && datos.no_changes_applied) {
+      return "Evento FareHarbor reconciliado sin modificar la reservación.";
+    }
+
+    if (isFareHarborModificationNoop(diff)) {
+      return "Evento FareHarbor marcado como revisado.";
+    }
+
+    return "Modificacion FareHarbor aplicada correctamente.";
+  }
+
+  function isStaleFareHarborModificationError(error) {
+    const message = getIntegrationErrorMessage(error, "");
+
+    return error && error.status === 409 && message.indexOf("La reservación o la modificación cambió") !== -1;
+  }
+
+  function shouldCloseFareHarborModificationConflict(error) {
+    const message = getIntegrationErrorMessage(error, "").toLowerCase();
+
+    return error && error.status === 409 && (
+      message.indexOf("snapshot") !== -1
+      || message.indexOf("más reciente") !== -1
+      || message.indexOf("mas reciente") !== -1
+      || message.indexOf("vinculad") !== -1
+    );
+  }
+
+  async function applyModification() {
+    const evento = integrationState.modalEvent;
+    const id = getCurrentIntegrationId();
+    let validation;
+    let body;
+    let response;
+
+    if (isFareHarborModificationEvent(evento)) {
+      saveFareHarborModificationInputs();
+      validation = getFareHarborModificationValidation(evento, integrationState.modalDiff);
+
+      if (!validation.valid) {
+        setModalError(validation.errors.join(" "));
+        return;
+      }
+
+      if (!window.confirm(getFareHarborModificationApplyConfirmation(integrationState.modalDiff))) {
+        return;
+      }
+
+      body = buildFareHarborModificationApplyBody(integrationState.modalDiff);
+      integrationState.actionLoading = true;
+      integrationState.modalError = "";
+      renderIntegrationDialog();
+
+      try {
+        response = await applyFareHarborModificationEvent(id, body);
+        await refreshAfterIntegrationAction(getFareHarborModificationSuccessMessage(response, integrationState.modalDiff));
+      } catch (error) {
+        if (isStaleFareHarborModificationError(error)) {
+          const staleMessage = getIntegrationErrorMessage(error, "La reservación o la modificación cambió. Actualiza los datos antes de aplicar.");
+          integrationState.actionLoading = false;
+          await openIntegrationDialog(id, { preserveFareHarborModificationState: true });
+          integrationState.modalError = staleMessage;
+          renderIntegrationDialog();
+          return;
+        }
+
+        if (shouldCloseFareHarborModificationConflict(error)) {
+          await refreshAfterIntegrationAction(getIntegrationErrorMessage(error, "Existe una actualización FareHarbor más reciente."));
+          return;
+        }
+
+        integrationState.actionLoading = false;
+        setModalError(getIntegrationErrorMessage(error, "No fue posible aplicar la modificación."));
+      }
+      return;
+    }
+
+    if (getObject(integrationState.modalDiff).aplicable === false) {
       setModalError("La modificación no puede aplicarse automáticamente.");
       return;
     }
