@@ -78,6 +78,7 @@
     fareHarborModificationDecisions: {},
     fareHarborModificationManualValues: {},
     fareHarborModificationFingerprint: null,
+    fareHarborCancellationReason: "",
     tours: [],
     toursLoaded: false,
     toursLoading: false,
@@ -351,6 +352,10 @@
     return Boolean(isFareHarborEvent(evento) && evento.event_type === "modification");
   }
 
+  function isFareHarborCancellationEvent(evento) {
+    return Boolean(isFareHarborEvent(evento) && evento.event_type === "cancellation");
+  }
+
   function getFareHarborSummary(evento) {
     return getObject(evento && evento.fareharbor_summary);
   }
@@ -614,6 +619,26 @@
 
     integrationState.fareHarborModificationDecisions = decisions;
     integrationState.fareHarborModificationFingerprint = preview.diff_fingerprint || null;
+  }
+
+  function resetFareHarborCancellationState() {
+    integrationState.fareHarborCancellationReason = "";
+  }
+
+  function getFareHarborCancellationReason() {
+    return String(integrationState.fareHarborCancellationReason || "").trim();
+  }
+
+  function setFareHarborCancellationReason(value) {
+    integrationState.fareHarborCancellationReason = value === null || value === undefined ? "" : String(value);
+  }
+
+  function saveFareHarborCancellationInputs() {
+    const input = document.getElementById("fareharbor-cancellation-reason");
+
+    if (input) {
+      setFareHarborCancellationReason(input.value || "");
+    }
   }
   function getFareHarborPax(evento) {
     const candidate = getFareHarborReservationCandidate(evento);
@@ -898,8 +923,8 @@
     const money = getFareHarborMoney(evento);
     const eventTypeLabel = isFareHarborModificationEvent(evento)
       ? "Modificación FareHarbor"
-      : getEventTypeLabel(evento && evento.event_type);
-    const primaryText = isFareHarborModificationEvent(evento)
+      : (isFareHarborCancellationEvent(evento) ? "Cancelación FareHarbor" : getEventTypeLabel(evento && evento.event_type));
+    const primaryText = (isFareHarborModificationEvent(evento) || isFareHarborCancellationEvent(evento))
       ? maskExternalBookingId(getFareHarborDisplayId(evento))
       : getFareHarborDisplayId(evento);
 
@@ -2332,6 +2357,281 @@
       "</section>"
     ].join("");
   }
+  function getFareHarborCancellationPreview(diff) {
+    const data = getObject(diff);
+
+    return getObject(data.fareharbor_cancellation_preview || data.cancellation_preview || data);
+  }
+
+  function getFareHarborCancellationModeLabel(mode) {
+    if (mode === "cancel_reservation") {
+      return "Cancelar reservación";
+    }
+
+    if (mode === "reconcile_already_cancelled") {
+      return "Reconciliar ya cancelada";
+    }
+
+    if (mode === "resolve_without_link") {
+      return "Resolver sin vínculo";
+    }
+
+    if (mode === "link_broken") {
+      return "Vínculo inconsistente";
+    }
+
+    return mode || EMPTY_VALUE;
+  }
+
+  function getFareHarborCancellationApplyLabel(diff) {
+    const mode = getFareHarborCancellationPreview(diff).resolution_mode;
+
+    if (mode === "cancel_reservation") {
+      return "Cancelar reservación";
+    }
+
+    if (mode === "reconcile_already_cancelled") {
+      return "Marcar como reconciliada";
+    }
+
+    if (mode === "resolve_without_link") {
+      return "Marcar como resuelta";
+    }
+
+    return "Aplicar cancelación";
+  }
+
+  function getFareHarborCancellationSummary(preview) {
+    const mode = preview && preview.resolution_mode;
+
+    if (mode === "cancel_reservation") {
+      return "Esta cancelación afectará una reservación existente.";
+    }
+
+    if (mode === "reconcile_already_cancelled") {
+      return "La reservación vinculada ya se encuentra cancelada; el evento puede reconciliarse sin cancelar de nuevo.";
+    }
+
+    if (mode === "resolve_without_link") {
+      return "FareHarbor reportó una cancelación, pero no existe reservación interna vinculada. Puedes marcar el evento como resuelto sin modificar reservaciones.";
+    }
+
+    if (mode === "link_broken") {
+      return "El evento apunta a una reservación interna inconsistente. Requiere revisión manual y no puede aplicarse desde este modal.";
+    }
+
+    return "Revisa la cancelación FareHarbor antes de resolverla.";
+  }
+
+  function formatFareHarborCancellationIssue(issue) {
+    if (!issue) {
+      return "";
+    }
+
+    if (typeof issue === "string") {
+      return issue;
+    }
+
+    return issue.message || issue.mensaje || issue.reason || issue.code || JSON.stringify(issue);
+  }
+
+  function getFareHarborCancellationBlockers(preview) {
+    return getArray(preview && preview.blocking_issues).map(formatFareHarborCancellationIssue).filter(Boolean);
+  }
+
+  function getFareHarborCancellationWarnings(preview) {
+    return getArray(preview && preview.warnings).map(formatFareHarborCancellationIssue).filter(Boolean);
+  }
+
+  function isFareHarborCancellationLatest(preview) {
+    const currentEvent = getObject(preview && preview.current_event);
+
+    return currentEvent.is_latest_snapshot === true;
+  }
+
+  function getFareHarborCancellationValidation(evento, diff) {
+    const preview = getFareHarborCancellationPreview(diff);
+    const blockers = getFareHarborCancellationBlockers(preview);
+    const errors = blockers.slice();
+    const mode = preview.resolution_mode;
+
+    if (!isFareHarborCancellationEvent(evento)) {
+      errors.push("El evento no es una cancelación FareHarbor.");
+    }
+
+    if (!isFareHarborCancellationLatest(preview)) {
+      errors.push("Existe una actualización más reciente de esta reserva FareHarbor.");
+    }
+
+    if (!preview.cancellation_fingerprint) {
+      errors.push("Falta la huella de cancelación. Actualiza los datos antes de aplicar.");
+    }
+
+    if (["cancel_reservation", "reconcile_already_cancelled", "resolve_without_link"].indexOf(mode) === -1) {
+      errors.push("Esta cancelación requiere revisión manual.");
+    }
+
+    if (mode === "cancel_reservation" && !getFareHarborCancellationReason()) {
+      errors.push("El motivo de cancelación es obligatorio.");
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors: errors
+    };
+  }
+
+  function canApplyFareHarborCancellation(diff) {
+    return getFareHarborCancellationValidation(integrationState.modalEvent, diff).valid;
+  }
+
+  function updateFareHarborCancellationApplyButtonState() {
+    const button = document.querySelector('[data-dialog-action="apply-fareharbor-cancellation"]');
+    const status = document.getElementById("fhcancel-apply-status");
+    const reason = getFareHarborCancellationReason();
+
+    if (status) {
+      status.textContent = reason ? "Motivo capturado." : "Captura el motivo para cancelar la reservación.";
+    }
+
+    if (!button || !isFareHarborCancellationEvent(integrationState.modalEvent)) {
+      return;
+    }
+
+    button.disabled = integrationState.actionLoading || !canApplyFareHarborCancellation(integrationState.modalDiff);
+  }
+
+  function buildFareHarborCancellationApplyBody(diff) {
+    const preview = getFareHarborCancellationPreview(diff);
+    const body = {
+      cancellation_fingerprint: preview.cancellation_fingerprint
+    };
+
+    if (preview.resolution_mode === "cancel_reservation") {
+      body.motivo_cancelacion = getFareHarborCancellationReason();
+    }
+
+    return body;
+  }
+
+  function getFareHarborCancellationApplyConfirmation(diff) {
+    const preview = getFareHarborCancellationPreview(diff);
+
+    if (preview.resolution_mode === "cancel_reservation") {
+      return "Se cancelará la reservación interna vinculada.\n¿Deseas continuar?";
+    }
+
+    if (preview.resolution_mode === "reconcile_already_cancelled") {
+      return "La reservación ya está cancelada; el evento se marcará como reconciliado.\n¿Deseas continuar?";
+    }
+
+    if (preview.resolution_mode === "resolve_without_link") {
+      return "El evento se marcará como resuelto sin modificar reservaciones.\n¿Deseas continuar?";
+    }
+
+    return "Se resolverá la cancelación FareHarbor.\n¿Deseas continuar?";
+  }
+
+  function getFareHarborCancellationSuccessMessage(response, diff) {
+    const datos = response && (response.datos || response.data);
+    const mode = (datos && datos.resolution_mode) || getFareHarborCancellationPreview(diff).resolution_mode;
+
+    if (mode === "cancel_reservation") {
+      return "Reservación cancelada correctamente.";
+    }
+
+    if (mode === "reconcile_already_cancelled") {
+      return "Cancelación reconciliada correctamente.";
+    }
+
+    if (mode === "resolve_without_link") {
+      return "Cancelación marcada como resuelta.";
+    }
+
+    return "Cancelación FareHarbor aplicada correctamente.";
+  }
+
+  function renderFareHarborCancellationIssues(title, issues, className) {
+    const items = getArray(issues).map(formatFareHarborCancellationIssue).filter(Boolean);
+
+    if (!items.length) {
+      return "";
+    }
+
+    return [
+      '<section class="dashboard-integration-block">',
+      "<h3>" + App.ui.escapeHtml(title) + "</h3>",
+      '<div class="' + (className || "dashboard-integration-warning") + '">',
+      items.map(function (issue) {
+        return '<p>' + App.ui.escapeHtml(issue) + '</p>';
+      }).join(""),
+      "</div>",
+      "</section>"
+    ].join("");
+  }
+
+  function renderFareHarborCancellationReason(evento, preview, canEdit) {
+    if (!canEdit || preview.resolution_mode !== "cancel_reservation") {
+      return "";
+    }
+
+    return [
+      '<label class="field dashboard-integration-full">',
+      '<span>Motivo de cancelación *</span>',
+      '<textarea id="fareharbor-cancellation-reason" class="dashboard-integration-textarea" required>' + App.ui.escapeHtml(integrationState.fareHarborCancellationReason || "") + '</textarea>',
+      "</label>"
+    ].join("");
+  }
+
+  function renderFareHarborCancellationPreview(evento, diff) {
+    const preview = getFareHarborCancellationPreview(diff);
+    const currentEvent = getObject(preview.current_event);
+    const reservationContext = getObject(preview.reservation_context);
+    const isAdmin = Boolean(App.auth && App.auth.esAdministrador());
+    const canEdit = Boolean(isAdmin && evento && evento.review_status === "approved" && evento.application_status === "not_applied");
+    const snapshotLabel = currentEvent.is_latest_snapshot === true
+      ? "Más reciente"
+      : (currentEvent.is_latest_snapshot === false ? "Obsoleto" : EMPTY_VALUE);
+    const transportLabel = reservationContext.assigned_to_transport
+      ? "Asignada a transporte"
+      : "Sin transporte asignado";
+
+    return [
+      '<section class="dashboard-integration-block">',
+      "<h3>Cancelación FareHarbor</h3>",
+      '<p class="form-message is-info">' + escapeHtml(getFareHarborCancellationSummary(preview)) + "</p>",
+      '<div class="dashboard-integration-detail-grid">',
+      renderDetailItem("Booking FareHarbor", maskExternalBookingId(preview.external_booking_id || (evento && evento.external_booking_id))),
+      renderDetailItem("Estado FareHarbor", preview.booking_status),
+      renderDetailItem("Resolución", getFareHarborCancellationModeLabel(preview.resolution_mode)),
+      renderDetailItem("Revisión", getReviewStatusLabel(evento && evento.review_status)),
+      renderDetailItem("Aplicación", getApplicationStatusLabel(evento && evento.application_status)),
+      renderDetailItem("Snapshot", snapshotLabel),
+      renderDetailItem("Recibido", formatDateTimeLocal(currentEvent.source_received_at || (evento && evento.source_received_at))),
+      renderDetailItem("Reservación interna", reservationContext.id_reservacion),
+      renderDetailItem("Código", reservationContext.codigo),
+      renderDetailItem("Fecha", formatDate(reservationContext.fecha)),
+      renderDetailItem("Tour", reservationContext.id_tour),
+      renderDetailItem("Turno", reservationContext.turno),
+      renderDetailItem("Estado interno", reservationContext.estado),
+      renderDetailItem("Transporte", transportLabel),
+      renderDetailItem("Fingerprint", preview.cancellation_fingerprint ? String(preview.cancellation_fingerprint).slice(0, 12) + "..." : EMPTY_VALUE),
+      "</div>",
+      evento && evento.review_status === "pending_review"
+        ? '<p class="form-message is-info">Aprueba esta cancelación FareHarbor antes de resolverla.</p>'
+        : "",
+      preview.resolution_mode === "link_broken"
+        ? '<p class="form-message is-error">El vínculo interno está inconsistente. No se puede aplicar automáticamente.</p>'
+        : "",
+      "</section>",
+      renderFareHarborCancellationIssues("Esta cancelación no puede aplicarse", getFareHarborCancellationBlockers(preview), "form-message is-error"),
+      renderFareHarborCancellationIssues("Advertencias", getFareHarborCancellationWarnings(preview), "dashboard-integration-warning"),
+      renderFareHarborCancellationReason(evento, preview, canEdit),
+      canEdit && preview.resolution_mode === "cancel_reservation"
+        ? '<p id="fhcancel-apply-status" class="form-message is-info">' + (getFareHarborCancellationReason() ? "Motivo capturado." : "Captura el motivo para cancelar la reservación.") + '</p>'
+        : ""
+    ].join("");
+  }
   function renderFareHarborReadOnly(evento) {
     const preview = getFareHarborApplicationPreview(evento);
 
@@ -2415,6 +2715,21 @@
         return actions.join("");
       }
 
+      if (isFareHarborCancellationEvent(evento)) {
+        if (!isAdmin) {
+          actions.unshift('<span class="card-text dashboard-integration-readonly">Modo consulta: solo lectura.</span>');
+          return actions.join("");
+        }
+
+        if (reviewStatus === "pending_review") {
+          actions.unshift('<button class="btn btn-primary" type="button" data-dialog-action="approve-fareharbor-cancellation"' + disabled + ">Aprobar</button>");
+        } else if (reviewStatus === "approved" && applicationStatus === "not_applied" && getFareHarborCancellationPreview(diff).resolution_mode !== "link_broken") {
+          actions.unshift('<button class="btn btn-primary" type="button" data-dialog-action="apply-fareharbor-cancellation"' + disabled + (canApplyFareHarborCancellation(diff) ? "" : " disabled") + ">" + getFareHarborCancellationApplyLabel(diff) + "</button>");
+        }
+
+        return actions.join("");
+      }
+
       if (!isAdmin) {
         actions.unshift('<span class="card-text dashboard-integration-readonly">Modo consulta: solo lectura.</span>');
         return actions.join("");
@@ -2489,6 +2804,8 @@
       ].join("");
     } else if (isFareHarborModificationEvent(evento)) {
       content = renderFareHarborModificationDiff(evento, diff);
+    } else if (isFareHarborCancellationEvent(evento)) {
+      content = renderFareHarborCancellationPreview(evento, diff);
     } else if (isFareHarborEvent(evento)) {
       content = [
         renderCommonIntegrationDetails(evento),
@@ -2617,9 +2934,25 @@
       });
     });
 
+    ["fareharbor-cancellation-reason"].forEach(function (id) {
+      const input = document.getElementById(id);
+
+      if (input) {
+        input.addEventListener("input", function () {
+          saveFareHarborCancellationInputs();
+          updateFareHarborCancellationApplyButtonState();
+        });
+        input.addEventListener("change", function () {
+          saveFareHarborCancellationInputs();
+          updateFareHarborCancellationApplyButtonState();
+        });
+      }
+    });
+
     updateNewBookingApplyButtonState();
     updateFareHarborPreviewStatus();
     updateFareHarborModificationApplyButtonState();
+    updateFareHarborCancellationApplyButtonState();
   }
   async function loadIntegrationPendientes(options) {
     const config = options || {};
@@ -2685,6 +3018,10 @@
       resetFareHarborModificationState();
     }
 
+    if (!config.preserveFareHarborCancellationState) {
+      resetFareHarborCancellationState();
+    }
+
     integrationState.modalEvent = null;
     integrationState.modalDiff = null;
     integrationState.modalError = "";
@@ -2696,7 +3033,7 @@
       const evento = getIntegrationDetail(detailResponse);
       let diff = null;
 
-      if (evento && evento.event_type === "modification") {
+      if (evento && (evento.event_type === "modification" || isFareHarborCancellationEvent(evento))) {
         const diffResponse = await App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/diff");
         diff = getIntegrationDetail(diffResponse);
       }
@@ -2730,6 +3067,7 @@
     integrationState.actionLoading = false;
     resetFareHarborManualValues();
     resetFareHarborModificationState();
+    resetFareHarborCancellationState();
 
     if (host) {
       host.innerHTML = "";
@@ -2766,6 +3104,13 @@
   }
 
   async function applyFareHarborModificationEvent(id, body) {
+    return App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/aplicar", {
+      method: "POST",
+      body: body
+    });
+  }
+
+  async function applyFareHarborCancellationEvent(id, body) {
     return App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/aplicar", {
       method: "POST",
       body: body
@@ -3131,6 +3476,87 @@
     }
   }
 
+  async function approveFareHarborCancellation() {
+    const id = getCurrentIntegrationId();
+
+    saveFareHarborCancellationInputs();
+    integrationState.actionLoading = true;
+    integrationState.modalError = "";
+    renderIntegrationDialog();
+
+    try {
+      await approveIntegrationEvent(id);
+      integrationState.message = "Cancelación FareHarbor aprobada. Aun falta resolverla.";
+      await loadIntegrationPendientes({ silent: true });
+      integrationState.actionLoading = false;
+      await openIntegrationDialog(id, { preserveFareHarborCancellationState: true });
+    } catch (error) {
+      setModalError(getIntegrationErrorMessage(error, "No fue posible aprobar la cancelación."));
+    }
+  }
+
+  function isStaleFareHarborCancellationError(error) {
+    const message = getIntegrationErrorMessage(error, "");
+
+    return error && error.status === 409 && message.indexOf("La cancelación o la reservación cambió") !== -1;
+  }
+
+  function shouldCloseFareHarborCancellationConflict(error) {
+    const message = getIntegrationErrorMessage(error, "").toLowerCase();
+
+    return error && error.status === 409 && (
+      message.indexOf("snapshot") !== -1
+      || message.indexOf("más reciente") !== -1
+      || message.indexOf("mas reciente") !== -1
+      || message.indexOf("vinculad") !== -1
+    );
+  }
+
+  async function applyFareHarborCancellation() {
+    const id = getCurrentIntegrationId();
+    let validation;
+    let body;
+    let response;
+
+    saveFareHarborCancellationInputs();
+    validation = getFareHarborCancellationValidation(integrationState.modalEvent, integrationState.modalDiff);
+
+    if (!validation.valid) {
+      setModalError(validation.errors.join(" "));
+      return;
+    }
+
+    if (!window.confirm(getFareHarborCancellationApplyConfirmation(integrationState.modalDiff))) {
+      return;
+    }
+
+    body = buildFareHarborCancellationApplyBody(integrationState.modalDiff);
+    integrationState.actionLoading = true;
+    integrationState.modalError = "";
+    renderIntegrationDialog();
+
+    try {
+      response = await applyFareHarborCancellationEvent(id, body);
+      await refreshAfterIntegrationAction(getFareHarborCancellationSuccessMessage(response, integrationState.modalDiff));
+    } catch (error) {
+      if (isStaleFareHarborCancellationError(error)) {
+        const staleMessage = getIntegrationErrorMessage(error, "La cancelación o la reservación cambió. Actualiza los datos antes de aplicar.");
+        integrationState.actionLoading = false;
+        await openIntegrationDialog(id, { preserveFareHarborCancellationState: true });
+        integrationState.modalError = staleMessage;
+        renderIntegrationDialog();
+        return;
+      }
+
+      if (shouldCloseFareHarborCancellationConflict(error)) {
+        await refreshAfterIntegrationAction(getIntegrationErrorMessage(error, "Existe una actualización FareHarbor más reciente."));
+        return;
+      }
+
+      integrationState.actionLoading = false;
+      setModalError(getIntegrationErrorMessage(error, "No fue posible aplicar la cancelación."));
+    }
+  }
   async function applyCancellation() {
     const evento = integrationState.modalEvent;
     const id = getCurrentIntegrationId();
@@ -3225,6 +3651,16 @@
 
     if (action === "apply-modification") {
       applyModification();
+      return;
+    }
+
+    if (action === "approve-fareharbor-cancellation") {
+      approveFareHarborCancellation();
+      return;
+    }
+
+    if (action === "apply-fareharbor-cancellation") {
+      applyFareHarborCancellation();
       return;
     }
 
