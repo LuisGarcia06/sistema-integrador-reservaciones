@@ -10,6 +10,7 @@
   let requestId = 0;
   let usuarios = [];
   let roles = [];
+  let plataformas = [];
   let submitLoading = false;
   let actionLoadingId = null;
   let selectedUsuario = null;
@@ -282,7 +283,8 @@
     try {
       const responses = await Promise.all([
         App.api.apiFetch("/api/usuarios"),
-        App.api.apiFetch("/api/usuarios/roles")
+        App.api.apiFetch("/api/usuarios/roles"),
+        App.api.apiFetch("/api/plataformas")
       ]);
 
       if (currentRequestId !== requestId || window.location.hash !== "#/usuarios") {
@@ -291,6 +293,7 @@
 
       usuarios = getArrayResponse(responses[0]);
       roles = getArrayResponse(responses[1]);
+      plataformas = getArrayResponse(responses[2]);
       renderRoleFilter();
       renderUsuarios();
     } catch (error) {
@@ -334,6 +337,37 @@
     ].join("");
   }
 
+  function renderAlcance(usuario) {
+    const consulta = usuario && usuario.rol === 'Consulta';
+    const modo = consulta ? usuario.alcance_plataformas : '';
+    const ids = consulta && Array.isArray(usuario.platform_ids) ? usuario.platform_ids : [];
+    return [
+      '<fieldset class="usuarios-alcance" id="usuarios-alcance"' + (consulta ? '' : ' hidden') + '>',
+      '<legend>Alcance de visualización</legend>',
+      '<label class="field" for="usuario-alcance"><span class="field-label">Plataformas visibles</span>',
+      '<select class="input" id="usuario-alcance">',
+      '<option value="">Selecciona el alcance</option>',
+      '<option value="all"' + (modo === 'all' ? ' selected' : '') + '>Todas las plataformas</option>',
+      '<option value="selected"' + (modo === 'selected' ? ' selected' : '') + '>Plataformas seleccionadas</option>',
+      '</select></label>',
+      '<div id="usuarios-plataformas"' + (modo === 'selected' ? '' : ' hidden') + '>',
+      plataformas.map(function (plataforma) {
+        return '<label class="usuarios-plataforma"><input type="checkbox" data-plataforma-id="' + App.ui.escapeHtml(plataforma.id_plataforma) + '"' + (ids.includes(Number(plataforma.id_plataforma)) ? ' checked' : '') + '> ' + App.ui.escapeHtml(plataforma.nombre) + '</label>';
+      }).join(''),
+      '<p class="card-text">Sin plataformas seleccionadas, este usuario no verá reservaciones.</p>',
+      '</div></fieldset>'
+    ].join('');
+  }
+
+  function updateAlcanceControls() {
+    const fieldset = document.getElementById('usuarios-alcance');
+    const rol = document.getElementById('usuario-rol');
+    const modo = document.getElementById('usuario-alcance');
+    const lista = document.getElementById('usuarios-plataformas');
+    if (fieldset && rol) fieldset.hidden = getRoleNameById(rol.value) !== 'Consulta';
+    if (lista && modo) lista.hidden = modo.value !== 'selected';
+  }
+
   function renderUserDialog(mode, usuario) {
     const isEdit = mode === FORM_MODE_EDIT;
     const isPassword = mode === FORM_MODE_PASSWORD;
@@ -368,6 +402,7 @@
       '<input type="hidden" id="usuarios-form-id" value="' + App.ui.escapeHtml(usuario ? getUsuarioId(usuario) : "") + '">',
       '<div class="usuarios-form-grid">',
       formContent,
+      isPassword ? "" : renderAlcance(usuario),
       "</div>",
       '<p class="form-message" id="usuarios-form-message" role="status" aria-live="polite"></p>',
       '<div class="usuarios-form-actions">',
@@ -389,6 +424,7 @@
     selectedUsuario = usuario || null;
     host.innerHTML = renderUserDialog(mode, usuario);
     bindFormEvents();
+    updateAlcanceControls();
 
     const firstInput = host.querySelector("input:not([type='hidden']), select");
 
@@ -446,6 +482,14 @@
     payload.correo = correoInput.value.trim().toLowerCase();
     payload.id_rol = Number(rolInput.value);
     payload.estado = parseEstado(estadoInput.value);
+    if (getRoleNameById(payload.id_rol) === 'Consulta') {
+      const alcanceInput = document.getElementById('usuario-alcance');
+      payload.alcance_plataformas = alcanceInput ? alcanceInput.value : '';
+      if (!['all', 'selected'].includes(payload.alcance_plataformas)) errores.push('Selecciona el alcance de visualización.');
+      payload.platform_ids = payload.alcance_plataformas === 'selected'
+        ? Array.from(document.querySelectorAll('[data-plataforma-id]:checked')).map(function (input) { return Number(input.dataset.plataformaId); }).sort(function (a, b) { return a - b; })
+        : [];
+    }
 
     if (!payload.nombre) {
       errores.push("Ingresa el nombre.");
@@ -494,6 +538,11 @@
 
     if (payload.estado !== selectedUsuario.estado) {
       changed.estado = payload.estado;
+    }
+
+    if (payload.alcance_plataformas && (selectedUsuario.rol !== "Consulta" || payload.alcance_plataformas !== selectedUsuario.alcance_plataformas || JSON.stringify(payload.platform_ids) !== JSON.stringify(selectedUsuario.platform_ids || []))) {
+      changed.alcance_plataformas = payload.alcance_plataformas;
+      changed.platform_ids = payload.platform_ids;
     }
 
     return changed;
@@ -662,6 +711,10 @@
   }
 
   function bindFormEvents() {
+    ["usuario-rol", "usuario-alcance"].forEach(function (id) {
+      const control = document.getElementById(id);
+      if (control) control.addEventListener("change", updateAlcanceControls);
+    });
     const form = document.getElementById("usuarios-form");
     const close = document.getElementById("usuarios-close");
     const cancel = document.getElementById("usuarios-cancel");
@@ -717,6 +770,15 @@
   }
 
   App.pages.usuarios = {
+    resetSession: function () {
+      requestId += 1;
+      usuarios = [];
+      roles = [];
+      plataformas = [];
+      submitLoading = false;
+      actionLoadingId = null;
+      selectedUsuario = null;
+    },
     adminOnly: true,
     title: "Usuarios",
     subtitle: "Administración segura de cuentas y roles",

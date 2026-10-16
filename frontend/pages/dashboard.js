@@ -865,6 +865,8 @@
     ].join("");
   }
 
+  function isRestricted() { return Boolean(App.auth && App.auth.esConsultaRestringida()); }
+
   function renderMetrics(metricas) {
     const data = metricas || {};
 
@@ -872,8 +874,8 @@
       '<div class="metric-grid dashboard-metric-grid">',
       renderMetric("Reservaciones", data.reservaciones_vigentes),
       renderMetric("PAX", data.pax_vigentes),
-      renderMetric("Grupos preparados", data.grupos_preparados),
-      renderMetric("Grupos pendientes", data.grupos_pendientes),
+      isRestricted() ? "" : renderMetric("Grupos preparados", data.grupos_preparados),
+      isRestricted() ? "" : renderMetric("Grupos pendientes", data.grupos_pendientes),
       "</div>"
     ].join("");
   }
@@ -1122,8 +1124,8 @@
   function renderQuickActions() {
     const actions = [
       '<a class="btn btn-primary" href="#/reservaciones">Ver reservaciones</a>',
-      '<a class="btn" href="#/operaciones">Ver operaciones</a>',
-      '<a class="btn" href="#/daily">Ver Daily</a>'
+      isRestricted() ? "" : '<a class="btn" href="#/operaciones">Ver operaciones</a>',
+      isRestricted() ? "" : '<a class="btn" href="#/daily">Ver Daily</a>'
     ];
 
     return [
@@ -1150,14 +1152,15 @@
   function renderDashboard(data) {
     return [
       renderTodayHeader(data),
+      isRestricted() ? '<p class="card-text" role="status">Información limitada a las plataformas asignadas a tu usuario.</p>' : "",
       renderMetrics(data && data.metricas),
-      renderAlerts(data && data.alertas),
+      isRestricted() ? "" : renderAlerts(data && data.alertas),
       renderEmptyToday(data && data.metricas),
       '<div class="dashboard-grid">',
       '<div class="stack">',
-      renderIntegrationPanel(),
+      isRestricted() ? "" : renderIntegrationPanel(),
       renderRecentReservations(data && data.reservaciones_recientes),
-      renderSalidas(data && data.salidas_hoy),
+      isRestricted() ? "" : renderSalidas(data && data.salidas_hoy),
       "</div>",
       renderQuickActions(),
       "</div>"
@@ -2957,7 +2960,7 @@
   async function loadIntegrationPendientes(options) {
     const config = options || {};
 
-    if (!isDashboardActive()) {
+    if (!isDashboardActive() || isRestricted()) {
       return;
     }
 
@@ -3706,6 +3709,19 @@
   }
 
   App.pages.dashboard = {
+    resetSession: function () {
+      requestId += 1;
+      currentFecha = '';
+      stopIntegrationRefresh();
+      resetIntegrationState();
+      resetFareHarborModificationState();
+      integrationState.fareHarborManualValues = {};
+      integrationState.fareHarborCancellationReason = '';
+      integrationState.tours = [];
+      integrationState.toursLoaded = false;
+      integrationState.toursLoading = false;
+      integrationState.toursError = '';
+    },
     title: "Dashboard",
     subtitle: "Resumen operativo de hoy",
     render: function () {
@@ -3723,8 +3739,10 @@
       currentFecha = getLocalDateValue();
       resetIntegrationState();
       loadDashboard(currentFecha);
-      loadIntegrationPendientes({ silent: false });
-      startIntegrationRefresh();
+      if (!isRestricted()) {
+        loadIntegrationPendientes({ silent: false });
+        startIntegrationRefresh();
+      }
     }
   };
 })();

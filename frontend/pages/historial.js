@@ -1055,6 +1055,21 @@
   }
 
   App.pages.historial = {
+    resetSession: function () {
+      requestId += 1;
+      reservaciones = [];
+      tours = [];
+      plataformas = [];
+      resumenTours = [];
+      pagination = {
+    page: 1,
+    limit: 25,
+    total: 0,
+    totalPages: 0
+  };
+      savedState = null;
+      savedStateUserId = null;
+    },
     title: "Historial",
     subtitle: "Consulta histórica de reservaciones",
     render: function () {

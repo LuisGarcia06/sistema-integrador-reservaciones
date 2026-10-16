@@ -12,7 +12,7 @@ const consultarResumen = async (req, res) => {
     }
 
     try {
-        const resumen = await dashboardService.obtenerResumenDashboard(filtros.fecha);
+        const resumen = await dashboardService.obtenerResumenDashboard(filtros.fecha, req.alcanceReservaciones);
 
         return res.status(200).json({
             mensaje: 'Dashboard consultado correctamente',

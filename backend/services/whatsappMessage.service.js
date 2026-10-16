@@ -1,3 +1,4 @@
+const whatsappConfig = require('../config/whatsapp');
 const META_MESSAGES_ENDPOINT = 'https://graph.facebook.com';
 
 const crearErrorServicio = (message, statusCode, code, details = null) => {
@@ -104,6 +105,10 @@ const crearErrorMeta = (response, responseBody) => {
 };
 
 const enviarMensajeTextoWhatsapp = async (destinatario, texto) => {
+    if (!whatsappConfig.habilitado) {
+        throw crearErrorServicio('Integracion WhatsApp deshabilitada', 503, 'WHATSAPP_DISABLED');
+    }
+
     const to = validarTextoRequerido(destinatario, 'destinatario');
     const body = validarTextoRequerido(texto, 'texto');
     const {

@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const pool = require('../config/database');
 const { ROLES } = require('../constants/roles');
+const { validarDatosActualizacionUsuario } = require('../validators/usuarios.validator');
 
 const BCRYPT_SALT_ROUNDS = 12;
 const MENSAJE_AUTO_DESACTIVACION = 'No puedes desactivar tu propia cuenta de Administrador.';
@@ -11,7 +12,8 @@ const camposActualizables = [
     'nombre',
     'correo',
     'id_rol',
-    'estado'
+    'estado',
+    'alcance_plataformas'
 ];
 
 const columnasUsuarioPublico = `
@@ -20,7 +22,14 @@ const columnasUsuarioPublico = `
     u.correo,
     u.id_rol,
     r.nombre AS rol,
-    u.estado
+    u.estado,
+    u.alcance_plataformas,
+    ARRAY(
+        SELECT upv.id_plataforma
+        FROM usuario_plataformas_visibles upv
+        WHERE upv.id_usuario = u.id_usuario
+        ORDER BY upv.id_plataforma
+    ) AS platform_ids
 `;
 
 const obtenerUsuarios = async () => {
@@ -180,6 +189,63 @@ const validarProteccionAdministradores = (
     }
 };
 
+const crearErrorAlcance = (mensaje) => {
+    const error = new Error(mensaje);
+    error.statusCode = 400;
+    return error;
+};
+
+const prepararAlcanceUsuario = async (db, campos, rolFinal, usuarioActual = null) => {
+    const tieneModo = tieneCampo(campos, 'alcance_plataformas');
+    const tieneIds = tieneCampo(campos, 'platform_ids');
+    const esConsulta = rolFinal === ROLES.CONSULTA;
+
+    if (!esConsulta) {
+        if (tieneModo || tieneIds) {
+            throw crearErrorAlcance('El alcance solo se configura para usuarios Consulta');
+        }
+        return null;
+    }
+
+    if ((!usuarioActual || usuarioActual.rol === ROLES.ADMINISTRADOR) && !tieneModo) {
+        throw crearErrorAlcance('Debe definir explícitamente el alcance final del usuario Consulta');
+    }
+
+    if (!tieneModo && !tieneIds) {
+        return null;
+    }
+
+    const configuracion = {};
+    if (tieneModo) configuracion.alcance_plataformas = campos.alcance_plataformas;
+    if (tieneIds) configuracion.platform_ids = campos.platform_ids;
+    const validacion = validarDatosActualizacionUsuario(configuracion);
+    if (validacion.errores.length) throw crearErrorAlcance(validacion.errores.join('. '));
+
+    const modo = tieneModo ? campos.alcance_plataformas : usuarioActual.alcance_plataformas;
+    const ids = tieneIds ? validacion.camposActualizacion.platform_ids : [];
+    if (!['all', 'selected'].includes(modo)) throw crearErrorAlcance('Alcance inválido');
+    if (modo === 'all' && ids.length) throw crearErrorAlcance('all no admite asignaciones seleccionadas');
+
+    if (ids.length) {
+        const result = await db.query(
+            'SELECT id_plataforma FROM plataformas WHERE id_plataforma = ANY($1::int[]) ORDER BY id_plataforma FOR KEY SHARE',
+            [ids]
+        );
+        if (result.rows.length !== ids.length) throw crearErrorAlcance('Una o más plataformas no existen');
+    }
+    return { alcance_plataformas: modo, platform_ids: ids };
+};
+
+const guardarPlataformasUsuario = async (db, idUsuario, ids) => {
+    await db.query('DELETE FROM usuario_plataformas_visibles WHERE id_usuario = $1', [idUsuario]);
+    if (ids.length) {
+        await db.query(
+            'INSERT INTO usuario_plataformas_visibles (id_usuario, id_plataforma) SELECT $1, unnest($2::int[])',
+            [idUsuario, ids]
+        );
+    }
+};
+
 const crearUsuario = async (usuario) => {
     const client = await pool.connect();
 
@@ -194,6 +260,7 @@ const crearUsuario = async (usuario) => {
             throw error;
         }
 
+        const alcance = await prepararAlcanceUsuario(client, usuario, rol.nombre);
         const passwordHash = await hashearPassword(usuario.password);
         const query = `
             INSERT INTO usuarios (
@@ -201,9 +268,10 @@ const crearUsuario = async (usuario) => {
                 nombre,
                 correo,
                 password,
-                estado
+                estado,
+                alcance_plataformas
             )
-            VALUES ($1, $2, $3, $4, $5)
+            VALUES ($1, $2, $3, $4, $5, $6)
             RETURNING
                 id_usuario
         `;
@@ -212,9 +280,11 @@ const crearUsuario = async (usuario) => {
             usuario.nombre,
             usuario.correo,
             passwordHash,
-            usuario.estado
+            usuario.estado,
+            alcance ? alcance.alcance_plataformas : 'all'
         ]);
 
+        if (alcance) await guardarPlataformasUsuario(client, result.rows[0].id_usuario, alcance.platform_ids);
         const usuarioCreado = await obtenerUsuarioPorIdConDb(client, result.rows[0].id_usuario);
 
         await client.query('COMMIT');
@@ -320,9 +390,13 @@ const actualizarUsuarioParcial = async (idUsuario, campos, usuarioAutenticado) =
             );
         }
 
-        const camposConCambios = obtenerCambiosUsuario(usuarioActual, campos);
+        const rolFinal = construirEstadoFinalUsuario(usuarioActual, campos, rolActualizado).rol;
+        const alcance = await prepararAlcanceUsuario(client, campos, rolFinal, usuarioActual);
+        const camposGuardables = Object.fromEntries(Object.entries(campos).filter(([campo]) => camposActualizables.includes(campo)));
+        if (alcance) camposGuardables.alcance_plataformas = alcance.alcance_plataformas;
+        const camposConCambios = obtenerCambiosUsuario(usuarioActual, camposGuardables);
 
-        if (camposConCambios.length === 0) {
+        if (camposConCambios.length === 0 && !alcance) {
             await client.query('COMMIT');
             return usuarioActual;
         }
@@ -330,10 +404,11 @@ const actualizarUsuarioParcial = async (idUsuario, campos, usuarioAutenticado) =
         const camposActualizados = {};
 
         camposConCambios.forEach((campo) => {
-            camposActualizados[campo] = campos[campo];
+            camposActualizados[campo] = camposGuardables[campo];
         });
 
-        await actualizarUsuarioConDb(client, idUsuario, camposActualizados);
+        if (camposConCambios.length) await actualizarUsuarioConDb(client, idUsuario, camposActualizados);
+        if (alcance) await guardarPlataformasUsuario(client, idUsuario, alcance.platform_ids);
 
         const usuarioActualizado = await obtenerUsuarioPorIdConDb(client, idUsuario);
 

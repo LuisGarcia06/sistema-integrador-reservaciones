@@ -1,3 +1,5 @@
+// Rama conservada de la integracion, con HTTP simulado y habilitacion solo en Jest.
+jest.mock('../config/whatsapp', () => ({ habilitado: true }));
 const { enviarMensajeTextoWhatsapp } = require('../services/whatsappMessage.service');
 
 const ENV_ORIGINAL = process.env;

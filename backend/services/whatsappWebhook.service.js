@@ -1,3 +1,4 @@
+const whatsappConfig = require('../config/whatsapp');
 const PROVIDER = 'whatsapp';
 const EVENT_TYPES = {
     MESSAGE: 'message',
@@ -68,6 +69,8 @@ const normalizarPayloadWebhookWhatsapp = (payload = {}) => {
 };
 
 const procesarPayloadWebhookWhatsapp = (payload = {}) => {
+    if (!whatsappConfig.habilitado) return [];
+
     const eventosNormalizados = normalizarPayloadWebhookWhatsapp(payload);
 
     if (eventosNormalizados.length > 0) {

@@ -4,7 +4,7 @@ Aplicacion de escritorio para Community Tours Sian Ka'an. Centraliza la captura,
 
 ## Estado Actual
 
-El sistema ya cuenta con modulos funcionales para autenticacion, Dashboard operativo, reservaciones, operaciones por grupos, transportes, Daily, historial, bitacora, usuarios y catalogos operativos. Las integraciones con FareHarbor, GetYourGuide y WhatsApp Business siguen pendientes de documentacion, credenciales y autorizacion tecnica.
+El sistema ya cuenta con modulos funcionales para autenticacion, Dashboard operativo, reservaciones, operaciones por grupos, transportes, Daily, historial, bitacora, usuarios y catalogos operativos. El codigo incluye recepcion y procesamiento de eventos FareHarbor y sincronizacion GetYourGuide mediante Gmail. WhatsApp Cloud API no se utilizara: su codigo se conserva deshabilitado, sin rutas montadas ni envios a Meta. Una variable de entorno no puede reactivarlo. Las credenciales y la configuracion real se mantienen fuera de Git.
 
 El instalador existente en `dist/` puede estar desactualizado respecto al codigo fuente actual. Para validacion tecnica se debe ejecutar el proyecto desde el repositorio hasta generar un nuevo build.
 
@@ -119,7 +119,7 @@ npm run desktop
 - `npm run pack:win`: empaqueta una carpeta Windows sin instalador final.
 - `npm run dist:win`: genera instalador Windows con `electron-builder`.
 
-No hay script de pruebas automatizadas configurado actualmente.
+`npm test` ejecuta Jest e incluye pruebas que requieren una base PostgreSQL de pruebas y pueden modificar sus datos. Para verificaciones sin PostgreSQL, seleccionar explicitamente suites aisladas y cargar `backend/__tests__/helpers/noPostgres.js`; no ejecutar la suite `backend/__tests__/api.test.js` contra una base existente.
 
 ## Pendientes de Pruebas Reales
 
@@ -131,6 +131,54 @@ No hay script de pruebas automatizadas configurado actualmente.
 - Reconstruir installer final despues del cierre y pruebas reales.
 
 ## Documentacion
+
+Alcance de reservaciones por plataforma: [ACCESS-SCOPE-02](docs/ACCESS-SCOPE-02.md)
+y [ACCESS-SCOPE-03A](docs/ACCESS-SCOPE-03A.md). La administracion y la interfaz
+se documentan en [ACCESS-SCOPE-03B](docs/ACCESS-SCOPE-03B.md). El estado mas reciente
+registrado en [PROD-ACCESS-02B](docs/PROD-ACCESS-02B.md) documenta la aplicacion
+autorizada de 016 y pruebas locales en principal. Ese informe es evidencia de una
+fase anterior; GITHUB-01 no abre conexiones ni verifica o modifica bases de datos.
+Una base nueva creada con schema.sql ya incluye ACCESS-SCOPE y no requiere volver
+a ejecutar 016. La aceptacion y la distribucion productiva siguen pendientes.
+
+La migracion y las API fueron verificadas en PostgreSQL independiente con
+datos sinteticos: [ACCESS-SCOPE-04A](docs/ACCESS-SCOPE-04A.md). La base de la
+empresa no fue modificada. La validacion integral con Electron, Express y PostgreSQL
+reales paso 57 verificaciones en [ACCESS-SCOPE-04B](docs/ACCESS-SCOPE-04B.md),
+con correcciones de autorizacion de impresion/PDF. Ese informe conserva los
+pendientes de su fase; el avance posterior en principal esta en PROD-ACCESS-02B.
+Instalacion real y aceptacion funcional siguen pendientes.
+
+El payload Windows x64 extraido del instalador paso 64 verificaciones reales y
+617 regresiones en [ACCESS-SCOPE-05A](docs/ACCESS-SCOPE-05A.md). Se corrigio el
+manejo de errores de conexiones PostgreSQL inactivas y se excluyeron pruebas
+del paquete. Instalacion, actualizacion, desinstalacion y aceptacion humana
+siguen pendientes: [matriz de aceptacion](docs/ACCESS-SCOPE-05A-aceptacion.md).
+El instalador de prueba no esta firmado ni declarado apto para produccion.
+
+Los arranques protegidos de desarrollo se documentan en [DEV-DB-02](docs/DEV-DB-02.md),
+[DEV-DB-03](docs/DEV-DB-03.md) y [su correccion](docs/DEV-DB-03-FIX.md).
+La preparacion y los ensayos previos a principal se conservan en
+[PROD-ACCESS-01](docs/PROD-ACCESS-01.md) y [PROD-ACCESS-02A](docs/PROD-ACCESS-02A.md).
+Los informes anteriores describen el estado de cada fase, no el estado actual
+de una base que se conecte posteriormente.
+
+## Publicacion segura en GitHub
+
+La revision inicial esta en [GITHUB-01](docs/GITHUB-01.md) y la continuacion en
+[GITHUB-02](docs/GITHUB-02.md). En GITHUB-02 se deshabilito WhatsApp en codigo y
+se vacio exclusivamente WHATSAPP_VERIFY_TOKEN del .env local. Para GITHUB-03,
+el usuario confirmo que elimino la aplicacion de Meta for Developers; esa
+eliminacion se conoce por su declaracion, sin verificacion directa de Codex.
+El codigo permanece deshabilitado y se conserva el historial existente.
+La auditoria final, las pruebas y el resultado de publicacion estan en
+[GITHUB-03](docs/GITHUB-03.md). Los informes anteriores conservan los resultados
+y bloqueos de cada fase. El valor del token no se reproduce en la documentacion.
+
+`.gitignore` excluye variables de entorno reales, `secrets/`, `.access-scope-lab/`,
+respaldos PostgreSQL, credenciales DPAPI, dependencias y binarios generados.
+Solo `.env.example`, con valores vacios o de ejemplo, debe versionarse.
+Estas exclusiones no retiran archivos ni secretos de commits anteriores.
 
 La documentacion historica se conserva en `docs/`. Para generar la arquitectura tecnica implementada actualizada:
 

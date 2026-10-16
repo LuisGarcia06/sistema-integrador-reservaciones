@@ -202,6 +202,9 @@
   }
 
   App.pages.bitacora = {
+    resetSession: function () {
+      requestId += 1;
+    },
     adminOnly: true,
     title: "Bitácora",
     subtitle: "Registro de auditoría del sistema",

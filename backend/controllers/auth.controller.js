@@ -34,6 +34,17 @@ const login = async (req, res) => {
     }
 };
 
+const consultarSesion = async (req, res) => {
+    try {
+        const usuario = await authService.obtenerSesionUsuario(req.usuario);
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(200).json({ usuario });
+    } catch (error) {
+        return res.status(error.statusCode === 403 ? 403 : 500).json({ mensaje: 'No fue posible verificar los permisos de la sesión' });
+    }
+};
+
 module.exports = {
-    login
+    login,
+    consultarSesion
 };

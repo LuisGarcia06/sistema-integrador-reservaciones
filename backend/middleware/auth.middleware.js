@@ -1,5 +1,6 @@
 const jwt = require('jsonwebtoken');
 const authService = require('../services/auth.service');
+const { autorizarLecturaPorAlcance } = require('./alcanceReservaciones.middleware');
 
 const MENSAJE_NO_AUTORIZADO = 'No autorizado';
 const MENSAJE_ERROR_AUTENTICACION = 'Error de autenticación';
@@ -83,7 +84,7 @@ const autenticarUsuario = async (req, res, next) => {
     }
 };
 
-const autorizarRoles = (...rolesPermitidos) => (req, res, next) => {
+const autorizarRoles = (...rolesPermitidos) => async (req, res, next) => {
     if (!req.usuario) {
         return responderNoAutorizado(res);
     }
@@ -92,6 +93,10 @@ const autorizarRoles = (...rolesPermitidos) => (req, res, next) => {
         return res.status(403).json({
             mensaje: 'No tiene permisos para realizar esta acción'
         });
+    }
+
+    if (req.method === 'GET' || req.method === 'HEAD') {
+        return autorizarLecturaPorAlcance(req, res, next);
     }
 
     return next();

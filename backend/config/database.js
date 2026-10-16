@@ -15,6 +15,12 @@ const pool = new Pool({
     password: process.env.DB_PASSWORD
 });
 
+// pg emite errores de conexiones inactivas fuera de las promesas de query.
+// Mantener Express disponible; la siguiente consulta fallara o reconectara normalmente.
+pool.on('error', (error) => {
+    console.error('Conexion PostgreSQL inactiva interrumpida.', error.code || 'PG_CONNECTION_ERROR');
+});
+
 module.exports = pool;
 
 

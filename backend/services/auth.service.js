@@ -1,6 +1,7 @@
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
+const alcanceService = require('./alcanceReservaciones.service');
 
 const MENSAJE_CREDENCIALES_INVALIDAS = 'Correo o contraseña incorrectos';
 
@@ -55,6 +56,15 @@ const obtenerUsuarioSeguro = (usuario) => ({
     rol: usuario.rol
 });
 
+const obtenerSesionUsuario = async (usuario) => {
+    const alcance = await alcanceService.obtenerAlcanceReservacionesUsuario(usuario.id_usuario);
+    return {
+        ...obtenerUsuarioSeguro(usuario),
+        alcance_plataformas: alcance.all ? 'all' : 'selected',
+        platform_ids: alcance.all ? [] : alcance.platform_ids
+    };
+};
+
 const generarToken = (usuario) => {
     const jwtSecret = process.env.JWT_SECRET;
 
@@ -104,14 +114,17 @@ const iniciarSesion = async ({ correo, password }) => {
         };
     }
 
+    const usuarioSesion = await obtenerSesionUsuario(usuario);
+
     return {
         autenticado: true,
         token: generarToken(usuario),
-        usuario: obtenerUsuarioSeguro(usuario)
+        usuario: usuarioSesion
     };
 };
 
 module.exports = {
     iniciarSesion,
-    obtenerUsuarioAutenticadoPorId
+    obtenerUsuarioAutenticadoPorId,
+    obtenerSesionUsuario
 };

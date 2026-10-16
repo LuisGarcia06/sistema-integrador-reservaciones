@@ -1,4 +1,5 @@
 const pool = require('../config/database');
+const { validarAlcanceReservaciones, construirFiltroAlcanceReservaciones } = require('../utils/alcanceReservaciones');
 const operacionesService = require('./operaciones.service');
 
 const ESTADOS_RESERVACION_VIGENTE = [
@@ -23,17 +24,20 @@ const normalizarHoraResultado = (hora) => {
     return hora.split('.')[0];
 };
 
-const consultarMetricasReservaciones = async (fecha) => {
+const consultarMetricasReservaciones = async (fecha, alcance) => {
+    const values = [fecha, ESTADOS_RESERVACION_VIGENTE];
+    const filtroAlcance = construirFiltroAlcanceReservaciones(alcance, 'r.id_plataforma', values);
     const query = `
         SELECT
             COUNT(*)::int AS reservaciones_vigentes,
             COALESCE(SUM(pax), 0)::int AS pax_vigentes
-        FROM reservaciones
-        WHERE fecha = $1
-            AND estado = ANY($2::varchar[])
+        FROM reservaciones r
+        WHERE r.fecha = $1
+            AND r.estado = ANY($2::varchar[])
+            ${filtroAlcance ? `AND ${filtroAlcance}` : ''}
     `;
 
-    const result = await pool.query(query, [fecha, ESTADOS_RESERVACION_VIGENTE]);
+    const result = await pool.query(query, values);
 
     return {
         reservaciones_vigentes: Number(result.rows[0]?.reservaciones_vigentes) || 0,
@@ -53,7 +57,9 @@ const consultarGruposPreparados = async (fecha) => {
     return Number(result.rows[0]?.total) || 0;
 };
 
-const consultarReservacionesRecientes = async () => {
+const consultarReservacionesRecientes = async (alcance) => {
+    const values = [];
+    const filtroAlcance = construirFiltroAlcanceReservaciones(alcance, 'r.id_plataforma', values);
     const query = `
         SELECT
             r.id_reservacion,
@@ -74,11 +80,12 @@ const consultarReservacionesRecientes = async () => {
             ON t.id_tour = r.id_tour
         INNER JOIN plataformas pl
             ON pl.id_plataforma = r.id_plataforma
+        ${filtroAlcance ? `WHERE ${filtroAlcance}` : ''}
         ORDER BY r.fecha_registro DESC, r.id_reservacion DESC
         LIMIT 10
     `;
 
-    const result = await pool.query(query);
+    const result = await pool.query(query, values);
 
     return result.rows.map((reservacion) => ({
         ...reservacion,
@@ -135,17 +142,36 @@ const construirSalidasDashboard = async (fecha) => {
     };
 };
 
-const obtenerResumenDashboard = async (fecha) => {
+const obtenerResumenDashboard = async (fecha, alcance) => {
+    validarAlcanceReservaciones(alcance);
+
+    if (!alcance.all) {
+        // Proyeccion parcial: no consultar operaciones, grupos ni capacidad
+        // global para luego ocultarlos; esa informacion nunca se obtiene.
+        const [metricas, reservacionesRecientes] = await Promise.all([
+            consultarMetricasReservaciones(fecha, alcance),
+            consultarReservacionesRecientes(alcance)
+        ]);
+
+        return {
+            fecha,
+            alcance_parcial: true,
+            metricas,
+            alertas: {},
+            reservaciones_recientes: reservacionesRecientes,
+            salidas_hoy: []
+        };
+    }
     const [
         metricasReservaciones,
         gruposPreparados,
         resumenSalidas,
         reservacionesRecientes
     ] = await Promise.all([
-        consultarMetricasReservaciones(fecha),
+        consultarMetricasReservaciones(fecha, alcance),
         consultarGruposPreparados(fecha),
         construirSalidasDashboard(fecha),
-        consultarReservacionesRecientes()
+        consultarReservacionesRecientes(alcance)
     ]);
 
     return {

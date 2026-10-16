@@ -1,6 +1,9 @@
 const whatsappWebhookService = require('../services/whatsappWebhook.service');
+const whatsappConfig = require('../config/whatsapp');
 
 const verificarWebhook = (req, res) => {
+    if (!whatsappConfig.habilitado) return res.sendStatus(404);
+
     const mode = req.query['hub.mode'];
     const verifyToken = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
@@ -13,6 +16,8 @@ const verificarWebhook = (req, res) => {
 };
 
 const recibirWebhook = (req, res) => {
+    if (!whatsappConfig.habilitado) return res.sendStatus(404);
+
     res.sendStatus(200);
 
     setImmediate(() => {

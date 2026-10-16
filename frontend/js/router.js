@@ -3,6 +3,7 @@
   const DEFAULT_ROUTE = "dashboard";
   const LOGIN_ROUTE = "login";
   const PUBLIC_ROUTES = [LOGIN_ROUTE];
+  let renderId = 0;
 
   function getRouteFromHash() {
     const hash = window.location.hash || "";
@@ -41,7 +42,7 @@
       '<section class="page">',
       App.ui.emptyState(
         "Acceso no autorizado",
-        "Esta sección está disponible solo para Administrador."
+        "Tu alcance de visualización no permite abrir esta sección."
       ),
       '<a class="btn btn-primary" href="#/dashboard">Volver a Dashboard</a>',
       "</section>"
@@ -52,7 +53,8 @@
     return PUBLIC_ROUTES.includes(routeId);
   }
 
-  function renderRoute() {
+  async function renderRoute() {
+    const activeRenderId = ++renderId;
     const routeId = getRouteFromHash();
     const page = App.pages && App.pages[routeId];
     const pageRoot = document.getElementById("page-root");
@@ -68,12 +70,17 @@
       return;
     }
 
+    if (isAuthenticated && !isPublicRoute(routeId)) {
+      try { await App.auth.refrescarSesion(); } catch (error) { return; }
+      if (activeRenderId !== renderId || routeId !== getRouteFromHash()) return;
+    }
+
     if (!page) {
       renderUnknown(routeId);
       return;
     }
 
-    if (page.adminOnly && (!App.auth || !App.auth.esAdministrador())) {
+    if (!isPublicRoute(routeId) && (!App.auth.puedeAccederPagina(routeId) || (page.adminOnly && !App.auth.esAdministrador()))) {
       renderUnauthorized();
       pageRoot.focus({ preventScroll: true });
       return;
@@ -112,6 +119,7 @@
 
   function init() {
     window.addEventListener("hashchange", renderRoute);
+    window.addEventListener("permisosactualizados", renderRoute);
 
     if (!window.location.hash) {
       navigate(DEFAULT_ROUTE);

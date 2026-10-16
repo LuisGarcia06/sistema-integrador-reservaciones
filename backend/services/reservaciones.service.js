@@ -1,5 +1,6 @@
 const crypto = require('node:crypto');
 const pool = require('../config/database');
+const { construirFiltroAlcanceReservaciones } = require('../utils/alcanceReservaciones');
 const bitacoraService = require('./bitacora.service');
 const capacidadService = require('./capacidad.service');
 const { ACCIONES_BITACORA } = require('../constants/bitacora.actions');
@@ -597,9 +598,14 @@ const validarCapacidadAsignacion = async (
     return null;
 };
 
-const construirFiltrosReservaciones = (filtros = {}) => {
+const construirFiltrosReservaciones = (filtros = {}, alcance) => {
     const condiciones = [];
     const values = [];
+    const filtroAlcance = construirFiltroAlcanceReservaciones(alcance, 'r.id_plataforma', values);
+
+    if (filtroAlcance) {
+        condiciones.push(filtroAlcance);
+    }
 
     if (filtros.codigo) {
         values.push(filtros.codigo);
@@ -656,8 +662,8 @@ const construirFiltrosReservaciones = (filtros = {}) => {
     };
 };
 
-const obtenerReservaciones = async (filtros = {}) => {
-    const { where, values } = construirFiltrosReservaciones(filtros);
+const obtenerReservaciones = async (filtros = {}, alcance) => {
+    const { where, values } = construirFiltrosReservaciones(filtros, alcance);
 
     const query = `
         SELECT
@@ -678,8 +684,8 @@ const obtenerReservaciones = async (filtros = {}) => {
     return result.rows;
 };
 
-const contarReservaciones = async (filtros = {}) => {
-    const { where, values } = construirFiltrosReservaciones(filtros);
+const contarReservaciones = async (filtros = {}, alcance) => {
+    const { where, values } = construirFiltrosReservaciones(filtros, alcance);
     const query = `
         SELECT COUNT(*)::int AS total
         FROM reservaciones r
@@ -691,8 +697,8 @@ const contarReservaciones = async (filtros = {}) => {
     return Number(result.rows[0]?.total) || 0;
 };
 
-const obtenerResumenToursReservaciones = async (filtros = {}) => {
-    const { where, values } = construirFiltrosReservaciones(filtros);
+const obtenerResumenToursReservaciones = async (filtros = {}, alcance) => {
+    const { where, values } = construirFiltrosReservaciones(filtros, alcance);
     const query = `
         SELECT
             r.id_tour,
@@ -742,12 +748,12 @@ const construirRespuestaReservacionesPaginadas = ({
     return respuesta;
 };
 
-const obtenerReservacionesPaginadas = async (filtros = {}, paginacion = {}, opciones = {}) => {
+const obtenerReservacionesPaginadas = async (filtros = {}, paginacion = {}, opciones = {}, alcance) => {
     const page = paginacion.page;
     const limit = paginacion.limit;
     const [total, resumenTours] = await Promise.all([
-        contarReservaciones(filtros),
-        opciones.incluirResumenTours ? obtenerResumenToursReservaciones(filtros) : Promise.resolve(null)
+        contarReservaciones(filtros, alcance),
+        opciones.incluirResumenTours ? obtenerResumenToursReservaciones(filtros, alcance) : Promise.resolve(null)
     ]);
     const totalPages = total === 0
         ? 0
@@ -764,7 +770,7 @@ const obtenerReservacionesPaginadas = async (filtros = {}, paginacion = {}, opci
         });
     }
 
-    const { where, values } = construirFiltrosReservaciones(filtros);
+    const { where, values } = construirFiltrosReservaciones(filtros, alcance);
     const queryValues = [...values, limit, (page - 1) * limit];
     const limitParam = queryValues.length - 1;
     const offsetParam = queryValues.length;
@@ -796,8 +802,22 @@ const obtenerReservacionesPaginadas = async (filtros = {}, paginacion = {}, opci
     });
 };
 
-const obtenerReservacionPorId = async (idReservacion) => {
-    return obtenerReservacionPorIdConDb(pool, idReservacion);
+// Lectura publica autorizada. Las transacciones administrativas conservan
+// obtenerReservacionPorIdConDb y sus bloqueos/validaciones sin este filtro.
+const obtenerReservacionPorId = async (idReservacion, alcance) => {
+    const values = [idReservacion];
+    const filtroAlcance = construirFiltroAlcanceReservaciones(alcance, 'id_plataforma', values);
+    const query = `
+        SELECT
+            ${columnasReservacionBase}
+        FROM reservaciones
+        WHERE id_reservacion = $1
+            ${filtroAlcance ? `AND ${filtroAlcance}` : ''}
+        LIMIT 1
+    `;
+
+    const result = await pool.query(query, values);
+    return result.rows[0];
 };
 
 const crearReservacionConDb = async (db, reservacion, idUsuario) => {

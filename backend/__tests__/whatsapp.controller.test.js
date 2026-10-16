@@ -1,3 +1,5 @@
+// Mantener cubierta la implementacion conservada, sin activarla en el producto.
+jest.mock('../config/whatsapp', () => ({ habilitado: true }));
 jest.mock('../services/whatsappWebhook.service', () => ({
     procesarPayloadWebhookWhatsapp: jest.fn()
 }));

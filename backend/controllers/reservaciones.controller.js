@@ -30,13 +30,14 @@ const listarReservaciones = async (req, res) => {
             const resultado = await reservacionesService.obtenerReservacionesPaginadas(
                 filtros,
                 paginacion,
-                opciones
+                opciones,
+                req.alcanceReservaciones
             );
 
             return res.status(200).json(resultado);
         }
 
-        const reservaciones = await reservacionesService.obtenerReservaciones(filtros);
+        const reservaciones = await reservacionesService.obtenerReservaciones(filtros, req.alcanceReservaciones);
 
         return res.status(200).json({
             mensaje: 'Reservaciones consultadas correctamente',
@@ -287,7 +288,7 @@ const obtenerReservacionPorId = async (req, res) => {
     }
 
     try {
-        const reservacion = await reservacionesService.obtenerReservacionPorId(idReservacion);
+        const reservacion = await reservacionesService.obtenerReservacionPorId(idReservacion, req.alcanceReservaciones);
 
         if (!reservacion) {
             return res.status(404).json({

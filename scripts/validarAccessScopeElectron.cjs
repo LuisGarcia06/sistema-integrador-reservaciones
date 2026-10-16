@@ -1,0 +1,64 @@
+// E2E real: PostgreSQL nuevo + servidor normal + electron/main.js sin cambios.
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),net=require('node:net'),cp=require('node:child_process'),assert=require('node:assert/strict');
+const {Client}=require('pg'),bcrypt=require('bcryptjs');
+const ROOT=path.resolve(__dirname,'..'),RUN=crypto.randomBytes(6).toString('hex');
+const LAB=path.join(ROOT,'.access-scope-lab','04b-'+RUN),DATA=path.join(LAB,'data');
+const BIN=process.env.ACCESS_SCOPE_PG_BIN||'C:\\Program Files\\PostgreSQL\\18\\bin';
+const DB='access_scope_04b_'+RUN+'_test',USER='access_scope_lab',PASSWORD=crypto.randomBytes(32).toString('hex');
+const report={run:RUN,phase:'ACCESS-SCOPE-04B',checks:[],failures:[],previous_lab_exists:fs.existsSync(path.join(ROOT,'.access-scope-lab/bc7083039a6c/data/PG_VERSION')),company_writes:false};
+let port,started=false,client,backend,electron,companyConfig;
+const children=[];
+function binary(name,args){const r=cp.spawnSync(path.join(BIN,name+'.exe'),args,{windowsHide:true,encoding:'utf8',timeout:30000,env:{...process.env,PGHOST:'127.0.0.1',PGPORT:String(port),PGUSER:USER,PGPASSWORD:PASSWORD,PGDATABASE:DB}});if(r.status!==0)throw Error(name+': '+(r.stderr||r.error||r.stdout));return r.stdout;}
+async function freePort(fixed){const s=net.createServer();await new Promise((ok,no)=>{s.once('error',no);s.listen(fixed||0,'127.0.0.1',ok);});const p=s.address().port;await new Promise(ok=>s.close(ok));return p;}
+async function verify(c,database){const v=(await c.query("SELECT current_database() db,current_user username,host(inet_server_addr()) host,inet_server_port() port,current_setting('data_directory') data_directory,system_identifier::text system_identifier,current_setting('server_version') version FROM pg_control_system()")).rows[0];assert.equal(v.db,database);assert.equal(v.username,USER);assert.equal(v.host,'127.0.0.1');assert.equal(v.port,port);assert.equal(path.resolve(v.data_directory).toLowerCase(),DATA.toLowerCase());return v;}
+async function companySnapshot(){const c=new Client({...companyConfig,options:'-c default_transaction_read_only=on'});try{await c.connect();assert.equal((await c.query('SHOW default_transaction_read_only')).rows[0].default_transaction_read_only,'on');const identity=(await c.query('SELECT current_database() db,current_user username,inet_server_port() port,current_schema() schema')).rows[0];const schema=(await c.query("SELECT table_name,column_name,data_type FROM information_schema.columns WHERE table_schema='public' ORDER BY table_name,ordinal_position")).rows;const tables=[...new Set(schema.map(r=>r.table_name))];const counts={};for(const t of tables){assert(/^[a-z_]+$/.test(t));counts[t]=(await c.query('SELECT COUNT(*)::int n FROM public."'+t+'"')).rows[0].n;}return {identity,schema,counts};}finally{await c.end();}}
+function launch(file,args,env,log){const stream=fs.createWriteStream(path.join(LAB,log));const child=cp.spawn(file,args,{cwd:ROOT,windowsHide:true,env,stdio:['ignore','pipe','pipe']});children.push(child);child.stdout.pipe(stream,{end:false});child.stderr.pipe(stream,{end:false});child.on('close',()=>stream.end());return child;}
+async function stop(child){if(!child||child.exitCode!==null)return;if(child.killed)return;child.kill();await Promise.race([new Promise(ok=>child.once('close',ok)),new Promise(ok=>setTimeout(ok,5000))]);}
+async function waitHealth(){for(let i=0;i<80;i++){if(backend.exitCode!==null)throw Error('Backend termino antes de health');try{const r=await fetch('http://127.0.0.1:3000/');if(r.ok&&(await r.text()).trim()==='API del Sistema Integrador de Reservaciones funcionando')return;}catch{}await new Promise(ok=>setTimeout(ok,150));}throw Error('Backend no disponible');}
+async function main(){
+ fs.mkdirSync(LAB,{recursive:true});
+ // Leer config exclusivamente para SELECT. Nunca reutilizar este pool en el laboratorio.
+ process.env.PGOPTIONS='-c default_transaction_read_only=on';
+ const originalPool=require('../backend/config/database');companyConfig={...originalPool.options,password:originalPool.options.password};await originalPool.end();delete process.env.PGOPTIONS;
+ const before=await companySnapshot();report.company_before={...before.identity,schema_sha256:crypto.createHash('sha256').update(JSON.stringify(before.schema)).digest('hex'),row_counts_sha256:crypto.createHash('sha256').update(JSON.stringify(before.counts)).digest('hex')};
+ await freePort(3000); // El arranque real tiene puerto fijo: abortar si hay otro backend.
+ port=await freePort();const pw=path.join(LAB,'password.tmp');fs.writeFileSync(pw,PASSWORD+'\n');try{binary('initdb',['-D',DATA,'-U',USER,'--encoding=UTF8','--locale=C','--auth=scram-sha-256','--pwfile='+pw]);}finally{fs.unlinkSync(pw);}
+ try{binary('pg_ctl',['-D',DATA,'-l',path.join(LAB,'postgres.log'),'-o','-p '+port+' -h 127.0.0.1','-w','start']);}finally{started=fs.existsSync(path.join(DATA,'postmaster.pid'));}
+ client=new Client({host:'127.0.0.1',port,user:USER,password:PASSWORD,database:'postgres'});await client.connect();report.environment=await verify(client,'postgres');await client.query('CREATE DATABASE "'+DB+'"');await client.end();client=new Client({host:'127.0.0.1',port,user:USER,password:PASSWORD,database:DB});await client.connect();report.environment=await verify(client,DB);
+ await client.query(fs.readFileSync(path.join(ROOT,'database/schema.sql'),'utf8'));
+ assert((await client.query("SELECT to_regclass('public.usuario_plataformas_visibles') bridge")).rows[0].bridge);
+ const roles=Object.fromEntries((await client.query("INSERT INTO roles(nombre) VALUES('Administrador'),('Consulta') RETURNING id_rol,nombre")).rows.map(r=>[r.nombre,r.id_rol]));
+ const platforms=Object.fromEntries((await client.query("INSERT INTO plataformas(nombre) VALUES('GetYourGuide'),('FareHarbor'),('WhatsApp Business'),('Externa'),('Booking Directo') RETURNING id_plataforma,nombre")).rows.map(r=>[r.nombre,r.id_plataforma]));
+ const password='AccessScopeSynthetic!123',hash=await bcrypt.hash(password,10),users={};
+ for(const [key,role,scope] of [['admin','Administrador','all'],['admin2','Administrador','all'],['all','Consulta','all'],['selected','Consulta','selected'],['empty','Consulta','selected']]){users[key]=(await client.query('INSERT INTO usuarios(id_rol,nombre,correo,password,estado,alcance_plataformas) VALUES($1,$2,$3,$4,true,$5) RETURNING id_usuario',[roles[role],'Sintetico '+key,key+'@example.test',hash,scope])).rows[0].id_usuario;}
+ await client.query('INSERT INTO usuario_plataformas_visibles SELECT $1,unnest($2::int[])',[users.selected,[platforms.GetYourGuide,platforms.FareHarbor]]);
+ const tours=[];for(let i=0;i<16;i++)tours.push((await client.query("INSERT INTO tours(nombre,descripcion,activo) VALUES($1,'Solo laboratorio',true) RETURNING id_tour",['Tour sintetico '+i])).rows[0].id_tour);
+ const pais=(await client.query("INSERT INTO paises(nombre) VALUES('Pais sintetico') RETURNING id_pais")).rows[0].id_pais;
+ const today=new Date();const fecha=[today.getFullYear(),String(today.getMonth()+1).padStart(2,'0'),String(today.getDate()).padStart(2,'0')].join('-');
+ const reservations=[];for(let i=0;i<42;i++){const visible=i<30,platform=visible?(i%2?platforms.FareHarbor:platforms.GetYourGuide):[platforms['WhatsApp Business'],platforms.Externa,platforms['Booking Directo']][i%3];const code=(visible?'VISIBLE-':'OCULTA-')+i;const r=(await client.query(`INSERT INTO reservaciones(codigo,fecha,id_tour,id_pais,id_plataforma,nombre_cliente,pax,ninos,pickup_place,pickup_time,turno,precio_total,deposito,saldo,estado,observaciones,fecha_registro,ultima_actualizacion) VALUES($1,$2,$3,$4,$5,$6,$7,0,'Hotel sintetico','08:00','Mañana',100,0,100,$8,$9,$10,$10) RETURNING id_reservacion`,[code,i===0?'2020-01-05':fecha,tours[visible?i%5:5+(i-30)%6],pais,platform,visible?'Cliente visible '+i:'Cliente OCULTO '+i,visible?2:10,i===1?'Cancelada':'Pendiente',visible?'NOTA VISIBLE '+i:'NOTA OCULTA '+i,visible?'2025-01-01':'2026-01-01'])).rows[0];reservations.push({...r,visible,platform,code});}
+ // Un transporte preparado para probar el Daily real, sin sobrepasar capacidad.
+ const op=(await client.query("INSERT INTO operaciones_tour(fecha,id_tour,hora_inicio,turno,numero_grupo,estado) VALUES($1,$2,'08:00','Mañana',1,'Activa') RETURNING id_operacion_tour",[fecha,tours[2]])).rows[0].id_operacion_tour;
+ const tr=(await client.query("INSERT INTO transportes_operacion(id_operacion_tour,estado) VALUES($1,'Activa') RETURNING id_transporte_operacion",[op])).rows[0].id_transporte_operacion;
+ await client.query('UPDATE reservaciones SET id_transporte_operacion=$1 WHERE id_reservacion=$2',[tr,reservations[2].id_reservacion]);
+ const fixture={roles,platforms,users,tours,pais,fecha,reservations,password,transport:tr,operation:op,environment:report.environment};fs.writeFileSync(path.join(LAB,'fixture.json'),JSON.stringify(fixture));fs.writeFileSync(path.join(LAB,'backend.env'),'');
+ const env={...process.env,APP_CONFIG_PATH:path.join(LAB,'backend.env'),DB_HOST:'127.0.0.1',DB_PORT:String(port),DB_NAME:DB,DB_USER:USER,DB_PASSWORD:PASSWORD,JWT_SECRET:crypto.randomBytes(32).toString('hex'),GETYOURGUIDE_GMAIL_SYNC_ENABLED:'false',NODE_ENV:'test',ACCESS_SCOPE_LAB:LAB};delete env.ELECTRON_RUN_AS_NODE;
+ env.NODE_OPTIONS='--require "'+path.join(ROOT,'scripts/accessScopeNetworkGuard.cjs').split(path.sep).join('/')+'"';
+ await verify(client,DB);binary('pg_dump',['--format=custom','--no-owner','--file='+path.join(LAB,'before-e2e.dump'),'--dbname='+DB]);
+ backend=launch(process.execPath,['backend/server.js'],env,'backend.log');await waitHealth();
+ electron=launch(require('electron'),['scripts/validarAccessScopeElectronHarness.cjs'],{...env,NODE_OPTIONS:''},'electron.log');
+ await new Promise((ok,no)=>{const timeout=setTimeout(()=>{stop(electron).then(()=>no(Error('Electron E2E timeout')));},240000);electron.once('error',no);electron.once('close',code=>{clearTimeout(timeout);report.electron_exit_code=code;ok();});});
+ const result=JSON.parse(fs.readFileSync(path.join(LAB,'electron-report.json'),'utf8'));report.electron=result;report.checks.push(...result.checks);report.failures.push(...result.failures);
+ const python=process.env.ACCESS_SCOPE_PYTHON||'C:/Users/luisg/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/python.exe';
+ const audit=cp.spawnSync(python,['scripts/revisarAccessScopePdf.py',LAB],{cwd:ROOT,windowsHide:true,encoding:'utf8',timeout:30000});
+ if(audit.status===0){report.pdf_audit=JSON.parse(fs.readFileSync(path.join(LAB,'pdf-audit.json')));report.checks.push('Contenido real de PDF y renderizado automatico sin informacion excluida');}else{report.failures.push({name:'Inspeccion PDF',message:audit.stderr||String(audit.error)});}
+
+ await verify(client,DB);binary('pg_dump',['--format=custom','--no-owner','--file='+path.join(LAB,'after-e2e.dump'),'--dbname='+DB]);
+ const after=await companySnapshot();assert.deepEqual(after,before);report.company_readonly_unchanged=true;
+}
+main().catch(e=>{report.failures.push({name:'Preparacion/E2E',message:e.message});console.error(e.message);}).finally(async()=>{
+ for(const child of children.reverse())await stop(child);report.processes_stopped=children.every(c=>c.exitCode!==null||c.signalCode!==null);
+ if(client)await client.end();if(started){try{binary('pg_ctl',['-D',DATA,'-w','stop','-m','fast']);report.cluster_stopped=true;}catch(e){report.failures.push({name:'stop PG',message:e.message});}}
+ if(companyConfig&&!report.company_readonly_unchanged){try{const after=await companySnapshot();report.company_after={...after.identity,schema_sha256:crypto.createHash('sha256').update(JSON.stringify(after.schema)).digest('hex'),row_counts_sha256:crypto.createHash('sha256').update(JSON.stringify(after.counts)).digest('hex')};report.company_readonly_unchanged=JSON.stringify(report.company_before)===JSON.stringify(report.company_after);}catch(e){report.failures.push({name:'Verificacion empresa',message:e.message});}}
+ if(fs.existsSync(path.join(LAB,'electron-report.json'))&&!report.electron){report.electron=JSON.parse(fs.readFileSync(path.join(LAB,'electron-report.json')));report.checks=report.electron.checks;report.failures.push(...report.electron.failures);}
+ fs.writeFileSync(path.join(LAB,'report.json'),JSON.stringify(report,null,2));console.log(JSON.stringify({checks:report.checks.length,failures:report.failures.length,report:path.join(LAB,'report.json'),cluster_stopped:report.cluster_stopped,company_readonly_unchanged:report.company_readonly_unchanged}));if(report.failures.length)process.exitCode=1;
+});

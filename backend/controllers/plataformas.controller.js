@@ -4,7 +4,7 @@ const { obtenerRespuestaErrorPostgres } = require('../utils/dbErrors');
 
 const listarPlataformas = async (req, res) => {
     try {
-        const plataformas = await plataformasService.obtenerPlataformas();
+        const plataformas = await plataformasService.obtenerPlataformas(req.alcanceReservaciones);
 
         return res.status(200).json({
             mensaje: 'Plataformas consultadas correctamente',

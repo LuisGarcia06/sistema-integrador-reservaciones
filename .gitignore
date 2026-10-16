@@ -4,6 +4,9 @@ node_modules/
 # Variables de entorno
 .env
 .env.test
+.env.*
+!.env.example
+*.env
 
 # Logs
 *.log
@@ -23,3 +26,49 @@ Thumbs.db
 referencias/stitch/*.zip
 
 secrets/
+# Entornos PostgreSQL aislados, credenciales temporales y respaldos sinteticos
+/.access-scope-lab/
+
+# Respaldos y directorios locales de PostgreSQL (conservar SQL fuente)
+*.dump
+*.backup
+*.bak
+*.sql.gz
+*.sql.zip
+/backups/
+/respaldos/
+/Respaldos_PostgreSQL/
+/pgdata/
+/postgres-data/
+**/pg_wal/
+**/pg_tblspc/
+
+# Credenciales locales, almacenes DPAPI y claves privadas
+*.clixml
+*.dpapi
+*.pfx
+*.p12
+*.pem
+*.key
+.pgpass
+pgpass.conf
+credentials*.json
+client_secret*.json
+token.json
+tokens.json
+*.local.json
+/.npmrc
+
+# Binarios e instaladores generados
+*.exe
+*.msi
+*.msix
+*.appx
+*.asar
+*.blockmap
+
+# Resultados locales de pruebas
+/coverage/
+/test-results/
+__pycache__/
+*.pyc

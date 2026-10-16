@@ -1993,6 +1993,32 @@
   }
 
   App.pages.reservaciones = {
+    resetSession: function () {
+      clearReservacionPrint();
+      requestId += 1;
+      catalogRequestId += 1;
+      reservaciones = [];
+      tours = [];
+      paises = [];
+      plataformas = [];
+      estadosConocidos = new Set([ESTADO_PENDIENTE, ESTADO_CONFIRMADA, ESTADO_ACTIVA, ESTADO_CANCELADA, ESTADO_COMPLETADA]);
+      selectedReservacion = null;
+      selectedCancelReservacion = null;
+      submitLoading = false;
+      cancelLoading = false;
+      actionLoadingId = null;
+      printCleanupTimer = null;
+      printAfterPrintHandler = null;
+      catalogsLoaded = false;
+      pagination = {
+    page: 1,
+    limit: 25,
+    total: 0,
+    totalPages: 0
+  };
+      savedState = null;
+      savedStateUserId = null;
+    },
     title: "Reservaciones",
     subtitle: "Listado operativo y captura manual",
     render: function () {

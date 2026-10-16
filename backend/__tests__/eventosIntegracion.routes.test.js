@@ -2,6 +2,10 @@ const express = require('express');
 const jwt = require('jsonwebtoken');
 const request = require('supertest');
 
+jest.mock('../services/alcanceReservaciones.service', () => ({
+    obtenerAlcanceReservacionesUsuario: jest.fn(async () => ({ all: true }))
+}));
+
 jest.mock('../services/auth.service', () => ({
     obtenerUsuarioAutenticadoPorId: jest.fn(),
 }));

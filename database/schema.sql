@@ -27,10 +27,14 @@ CREATE TABLE usuarios (
     correo VARCHAR(100) NOT NULL UNIQUE,
     password VARCHAR(255) NOT NULL,
     estado BOOLEAN NOT NULL,
+    alcance_plataformas VARCHAR(20) NOT NULL DEFAULT 'selected',
 
     CONSTRAINT fk_usuarios_roles
         FOREIGN KEY (id_rol)
-        REFERENCES roles(id_rol)
+        REFERENCES roles(id_rol),
+
+    CONSTRAINT chk_usuarios_alcance_plataformas
+        CHECK (alcance_plataformas IN ('all', 'selected'))
 );
 
 
@@ -70,6 +74,29 @@ CREATE TABLE plataformas (
 
 CREATE UNIQUE INDEX uq_plataformas_nombre_normalizado
 ON plataformas (LOWER(TRIM(nombre)));
+
+
+-- =========================================================
+-- TABLA: usuario_plataformas_visibles
+-- Preparacion interna ACCESS-SCOPE-02; requiere ACCESS-SCOPE-03
+-- para aplicar restricciones en los endpoints.
+-- =========================================================
+
+CREATE TABLE usuario_plataformas_visibles (
+    id_usuario INTEGER NOT NULL,
+    id_plataforma INTEGER NOT NULL,
+
+    CONSTRAINT pk_usuario_plataformas_visibles
+        PRIMARY KEY (id_usuario, id_plataforma),
+
+    CONSTRAINT fk_usuario_plataformas_visibles_usuarios
+        FOREIGN KEY (id_usuario)
+        REFERENCES usuarios(id_usuario),
+
+    CONSTRAINT fk_usuario_plataformas_visibles_plataformas
+        FOREIGN KEY (id_plataforma)
+        REFERENCES plataformas(id_plataforma)
+);
 
 
 -- =========================================================

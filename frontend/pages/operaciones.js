@@ -2330,6 +2330,38 @@
   }
 
   App.pages.operaciones = {
+    resetSession: function () {
+      operacionesRequestId += 1;
+      catalogosRequestId += 1;
+      transportesRequestId += 1;
+      transporteCatalogosRequestId += 1;
+      organizacionRequestId += 1;
+      currentFecha = "";
+      operaciones = [];
+      salidasSugeridas = [];
+      reservacionesSinTurno = 0;
+      tours = [];
+      guias = [];
+      transportes = [];
+      organizacionDaily = null;
+      operacionesDailyById = new Map();
+      operadores = [];
+      vehiculos = [];
+      catalogosCargados = false;
+      catalogosLoading = false;
+      transporteCatalogosCargados = false;
+      transporteCatalogosLoading = false;
+      transportesLoading = false;
+      organizacionReservacionesAbierta = false;
+      organizacionReservacionesLoading = false;
+      selectedTransportOperacion = null;
+      selectedTransporte = null;
+      selectedOperacion = null;
+      selectedSugerencia = null;
+      submitLoading = false;
+      transporteSubmitLoading = false;
+      reservacionTransporteLoadingId = null;
+    },
     title: "Operaciones",
     subtitle: "Planificación diaria de tours",
     render: function () {

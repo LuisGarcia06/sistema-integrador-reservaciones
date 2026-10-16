@@ -14,7 +14,7 @@ const transportesRoutes = require('./routes/transportes.routes');
 const toursRoutes = require('./routes/tours.routes');
 const usuariosRoutes = require('./routes/usuarios.routes');
 const vehiculosRoutes = require('./routes/vehiculos.routes');
-const whatsappRoutes = require('./routes/whatsapp.routes');
+// WhatsApp deshabilitado por decision del proyecto; no cargar ni montar sus rutas.
 const fareharborWebhookRoutes = require('./routes/fareharborWebhook.routes');
 const eventosIntegracionRoutes = require('./routes/eventosIntegracion.routes');
 const {
@@ -85,7 +85,6 @@ app.use('/api/transportes', transportesRoutes);
 app.use('/api/tours', toursRoutes);
 app.use('/api/usuarios', usuariosRoutes);
 app.use('/api/vehiculos', vehiculosRoutes);
-app.use('/api/webhooks/whatsapp', whatsappRoutes);
 
 app.get('/', (req, res) => {
     res.send('API del Sistema Integrador de Reservaciones funcionando');

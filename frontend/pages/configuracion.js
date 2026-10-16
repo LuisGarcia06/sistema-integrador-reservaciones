@@ -873,6 +873,16 @@
   }
 
   App.pages.configuracion = {
+    resetSession: function () {
+      activeCatalogKey = CATALOG_TOURS;
+      records = [];
+      searchText = "";
+      loadRequestId += 1;
+      loading = false;
+      saving = false;
+      selectedRecord = null;
+      selectedMode = FORM_CREATE;
+    },
     title: "Configuración",
     subtitle: "Catálogos operativos del sistema",
     render: function () {

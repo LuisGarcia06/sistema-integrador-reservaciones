@@ -49,7 +49,18 @@
       "!referencias/**/*",
       "!scripts/**/*",
       "!.git/**/*",
-      "!dist/**/*"
+      "!dist/**/*",
+      "!backend/**/__tests__/**/*",
+      "!backend/**/*.test.js",
+      "!**/config.env",
+      "!**/*.dump",
+      "!**/*.log",
+      "!secrets/**/*",
+      "!.access-scope-lab/**/*",
+      "!**/*.test.js",
+      "!**/*.test.js.map",
+      "!**/__tests__/**/*",
+      "!**/__fixtures__/**/*"
     ],
     "asar": true,
     "asarUnpack": [

@@ -9,7 +9,9 @@ const camposUsuarioPermitidos = [
     'nombre',
     'correo',
     'id_rol',
-    'estado'
+    'estado',
+    'alcance_plataformas',
+    'platform_ids'
 ];
 
 const camposCrearUsuarioPermitidos = [
@@ -98,6 +100,22 @@ const validarCampoUsuario = (campo, valor) => {
 
     if (campo === 'estado') {
         return validarBooleano(valor, campo);
+    }
+
+    if (campo === 'alcance_plataformas') {
+        return ['all', 'selected'].includes(valor)
+            ? { valido: true, valor }
+            : { valido: false, mensaje: 'El alcance debe ser all o selected' };
+    }
+
+    if (campo === 'platform_ids') {
+        if (!Array.isArray(valor) || valor.some((id) => !Number.isInteger(id) || id <= 0 || id > 2147483647)) {
+            return { valido: false, mensaje: 'platform_ids debe ser una lista de enteros positivos' };
+        }
+        if (new Set(valor).size !== valor.length) {
+            return { valido: false, mensaje: 'No se permiten plataformas duplicadas' };
+        }
+        return { valido: true, valor: [...valor].sort((a, b) => a - b) };
     }
 
     if (campo === 'password') {

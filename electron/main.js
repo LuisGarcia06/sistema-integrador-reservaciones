@@ -14,6 +14,21 @@ const STARTUP_TIMEOUT_MS = 15000;
 const RETRY_INTERVAL_MS = 350;
 const EXPORT_DAILY_PDF_CHANNEL = 'daily:export-pdf';
 const PACKAGED_CONFIG_FILE = 'config.env';
+const DEV_DB02 = process.env.APP_DEV_DB02 === '1';
+const PRINCIPAL_TEST = process.env.APP_PRINCIPAL_TEST === '1';
+if (PRINCIPAL_TEST) {
+    if (DEV_DB02 || app.isPackaged) throw new Error('Pruebas de principal requieren fuentes y modo exclusivo.');
+    const principal = require('../scripts/prodAccessTest.cjs');
+    if (process.env.APP_CONFIG_PATH !== principal.CONFIG) throw new Error('Configuracion de pruebas principal no verificada.');
+    principal.readConfig();
+    app.setPath('userData', path.join(principal.LAB, 'electron-profile'));
+}
+if (DEV_DB02) {
+    if (app.isPackaged) throw new Error('DEV-DB-02 requiere las fuentes de desarrollo.');
+    const dev = require('../scripts/devDb02.cjs');
+    app.setPath('userData', path.join(dev.LAB, 'electron-profile'));
+}
+
 const REQUIRED_CONFIG_KEYS = [
     'DB_HOST',
     'DB_PORT',
@@ -34,7 +49,7 @@ if (!gotSingleInstanceLock) {
     app.quit();
 }
 
-function requestLocalPath(pathname, timeoutMs = 1200) {
+function requestLocalPath(pathname, timeoutMs = 1200, token = null) {
     return new Promise((resolve) => {
         let body = '';
         const request = http.get(
@@ -42,6 +57,7 @@ function requestLocalPath(pathname, timeoutMs = 1200) {
                 host: BACKEND_HOST,
                 port: BACKEND_PORT,
                 path: pathname,
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
                 timeout: timeoutMs
             },
             (response) => {
@@ -213,6 +229,25 @@ async function startBackend() {
 }
 
 async function ensureBackend() {
+    if (PRINCIPAL_TEST) {
+        if (!gotSingleInstanceLock) throw new Error('La instancia de pruebas principal ya esta abierta.');
+        const principal = require('../scripts/prodAccessTest.cjs');
+        backendProcess = await principal.startOwnedBackend({
+            execPath: process.execPath,
+            onExit: () => { if (!isQuitting) app.quit(); }
+        });
+        return;
+    }
+    if (DEV_DB02) {
+        if (!gotSingleInstanceLock) throw new Error('La instancia DEV ya esta abierta.');
+        const dev = require('../scripts/devDb02.cjs');
+        backendProcess = await dev.startOwnedBackend({
+            execPath: process.execPath, env: process.env,
+            onExit: () => { if (!isQuitting) app.quit(); }
+        });
+        return;
+    }
+
     if (await waitForBackend(1200)) {
         return;
     }
@@ -264,6 +299,36 @@ function ensurePdfExtension(filePath) {
     return path.extname(filePath).toLowerCase() === '.pdf' ? filePath : `${filePath}.pdf`;
 }
 
+// La exportacion debe revalidar permisos aunque se invoque el IPC directamente.
+async function getAuthorizedDailyPdfContext(event, fecha) {
+    const context = await event.sender.executeJavaScript(`(async () => {
+        try {
+            if (!window.App || !App.auth || !App.auth.estaAutenticado()) return null;
+            await App.auth.refrescarSesion();
+            const date = document.getElementById('daily-fecha');
+            const root = document.getElementById('daily-print-root');
+            if (!App.auth.puedeAccederPagina('daily') || location.hash !== '#/daily'
+                || !date || !root || !root.innerHTML.trim()) return null;
+            return { token: App.auth.obtenerToken(), fecha: date.value,
+                version: App.auth.obtenerVersionSesion() };
+        } catch (error) { return null; }
+    })()`);
+    if (!context || !context.token || context.fecha !== fecha) return null;
+    const response = await requestLocalPath(
+        '/api/daily/operativo?fecha=' + encodeURIComponent(fecha), 5000, context.token
+    );
+    if (!response || response.statusCode !== 200) return null;
+    let daily;
+    try { daily = JSON.parse(response.body); } catch (error) { return null; }
+    if (!daily || daily.total_transportes <= 0) return null;
+    const unchanged = await event.sender.executeJavaScript(`Boolean(window.App && App.auth
+        && App.auth.estaAutenticado() && App.auth.puedeAccederPagina('daily')
+        && App.auth.obtenerVersionSesion() === ${Number(context.version)}
+        && location.hash === '#/daily'
+        && document.getElementById('daily-print-root')?.innerHTML.trim())`);
+    return unchanged ? context : null;
+}
+
 ipcMain.handle(EXPORT_DAILY_PDF_CHANNEL, async (event, payload) => {
     if (!isExpectedSender(event)) {
         return { ok: false, error: 'not_allowed' };
@@ -277,6 +342,8 @@ ipcMain.handle(EXPORT_DAILY_PDF_CHANNEL, async (event, payload) => {
 
     try {
         const fecha = normalizeDailyDate(payload && payload.fecha);
+        const context = await getAuthorizedDailyPdfContext(event, fecha);
+        if (!context) return { ok: false, error: 'not_allowed' };
         const pdfBuffer = await event.sender.printToPDF({
             printBackground: true,
             preferCSSPageSize: true
@@ -294,6 +361,10 @@ ipcMain.handle(EXPORT_DAILY_PDF_CHANNEL, async (event, payload) => {
             return { ok: false, canceled: true };
         }
 
+        const verified = await getAuthorizedDailyPdfContext(event, fecha);
+        if (!verified || verified.version !== context.version || verified.token !== context.token) {
+            return { ok: false, error: 'not_allowed' };
+        }
         await fs.writeFile(ensurePdfExtension(saveResult.filePath), pdfBuffer);
 
         return { ok: true };
@@ -321,6 +392,8 @@ function createMainWindow() {
             webviewTag: false
         }
     });
+
+    if (PRINCIPAL_TEST) require('../scripts/prodAccessTest.cjs').restrictRendererNetwork(mainWindow.webContents.session);
 
     mainWindow.setMenuBarVisibility(false);
     mainWindow.maximize();

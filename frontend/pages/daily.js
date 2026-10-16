@@ -864,12 +864,16 @@
     });
 
     if (printButton) {
-      printButton.addEventListener("click", function () {
-        if (printButton.disabled) {
-          return;
+      printButton.addEventListener("click", async function () {
+        if (printButton.disabled) return;
+        try {
+          await App.auth.refrescarSesion();
+          if (!App.auth.puedeAccederPagina("daily") || window.location.hash !== "#/daily"
+            || isDailyLoading || hasDailyError || getTotalTransportes(currentDaily) <= 0) return;
+          window.print();
+        } catch (error) {
+          setMessage("No fue posible verificar tus permisos para imprimir.", "error");
         }
-
-        window.print();
       });
     }
 
@@ -881,6 +885,14 @@
   }
 
   App.pages.daily = {
+    resetSession: function () {
+      requestId += 1;
+      currentFecha = "";
+      currentDaily = null;
+      isDailyLoading = false;
+      isPdfExportLoading = false;
+      hasDailyError = false;
+    },
     title: "Daily",
     subtitle: "Agenda operativa diaria",
     render: function () {

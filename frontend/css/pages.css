@@ -2676,3 +2676,11 @@ body.is-login-page .page-root {
     border-width: 2px;
   }
 }
+.usuarios-alcance {
+  grid-column: 1 / -1;
+  border: 1px solid var(--color-outline-variant);
+  border-radius: 8px;
+  padding: 16px;
+}
+.usuarios-alcance[hidden], #usuarios-plataformas[hidden] { display: none; }
+.usuarios-plataforma { display: flex; align-items: center; gap: 8px; margin: 10px 0; }

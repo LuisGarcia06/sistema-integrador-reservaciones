@@ -22,7 +22,7 @@
     }
 
     return NAV_ITEMS.filter(function (item) {
-      return !item.adminOnly;
+      return !item.adminOnly && App.auth.puedeAccederPagina(item.id);
     });
   }
 
