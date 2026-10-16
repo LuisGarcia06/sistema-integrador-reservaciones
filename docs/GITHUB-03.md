@@ -126,20 +126,39 @@ No se instalaron dependencias ni se modificaron credenciales.
 
 ## Publicación y trazabilidad
 
-Preparación aprobada por las comprobaciones anteriores. Se preparará el commit:
+**Publicación de avances exitosa y comprobada contra el remoto.**
 
-`feat: integrate ACCESS-SCOPE and reservation system improvements`
+| Dato | Resultado |
+| --- | --- |
+| Commit de avances | b6f820fdcc40971ee78427f8d0168358676169d9 |
+| Mensaje | feat: integrate ACCESS-SCOPE and reservation system improvements |
+| Padre y remoto anterior | 181f05cfee74e5b42180509220770f806c78b99d |
+| Árbol confirmado | 2ebb407caef4b02323084236eed2d993c4e6190c |
+| Archivos confirmados | 110; el árbol coincide con el índice auditado |
+| Destino exclusivo | origin/GYG+FRHB-implementado |
+| Hash remoto tras subir avances | b6f820fdcc40971ee78427f8d0168358676169d9 |
+| Verificación | git ls-remote devolvió el mismo hash que el commit local |
 
-Antes de confirmarlo se revisan el diff y la lista exacta del índice, su contenido
-con el escáner y git diff --cached --check. Antes del push se consulta de nuevo
-el hash remoto real y se exige que sea ancestro del nuevo commit.
-Se publica exclusivamente HEAD:refs/heads/GYG+FRHB-implementado, sin force.
+[Commit de avances publicado](https://github.com/LuisGarcia06/sistema-integrador-reservaciones/commit/b6f820fdcc40971ee78427f8d0168358676169d9).
+[Rama de destino](https://github.com/LuisGarcia06/sistema-integrador-reservaciones/tree/GYG%2BFRHB-implementado).
 
-El resultado y el hash publicado se registrarán tras comprobar la igualdad
-con git ls-remote. Se hará un commit documental posterior para conservar en Git
-el resultado real y el hash del commit de avances, sin modificar este último.
+Antes de confirmar se revisaron el diff y los nombres exactos del índice, su
+contenido con el escáner y las observaciones de formato descritas arriba. Antes
+del push se consultó de nuevo el hash remoto y se comprobó que era ancestro
+del commit. Se publicó solo HEAD:refs/heads/GYG+FRHB-implementado, sin force
+y con push.followTags=false para no incluir etiquetas adicionales.
 
-Estado en la preparación de este informe: commit y publicación pendientes.
+Este resultado se conserva en un segundo commit exclusivamente documental,
+sin modificar ni reemplazar el commit de avances. El identificador de ese cierre
+es el del commit que contiene esta versión del informe y puede consultarse con:
+
+```bash
+git log -1 --format=%H -- docs/GITHUB-03.md
+```
+
+El cierre se somete de nuevo a auditoría de contenido, avance rápido y comparación
+del hash remoto con HEAD. No se reescribió el historial, no se eliminaron ramas
+ni se efectuaron merge/rebase automáticos. No hubo fallos de autenticación.
 
 ## Límites y pendientes de producción
 
