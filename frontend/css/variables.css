@@ -1,21 +1,27 @@
 :root {
-  --color-background: #f7faf9;
-  --color-surface: #f7faf9;
-  --color-surface-lowest: #ffffff;
-  --color-surface-low: #f1f4f4;
-  --color-surface-container: #ebeeee;
-  --color-surface-high: #e6e9e8;
-  --color-outline: #6e7979;
-  --color-outline-variant: #bec9c8;
-  --color-primary: #005050;
-  --color-primary-container: #006a6a;
-  --color-on-primary: #ffffff;
-  --color-on-surface: #181c1c;
-  --color-on-surface-variant: #3e4948;
-  --color-secondary: #4a6363;
-  --color-secondary-container: #cce8e7;
-  --color-tertiary: #344b50;
-  --color-warning: #4b6267;
+  --brand-blue: #011689;
+  --brand-turquoise: #00A499;
+  --brand-aqua: #24E0CF;
+  --brand-lime: #94D000;
+  --brand-white: #FFFFFF;
+
+  --color-background: #F4F8FA;
+  --color-surface: var(--color-background);
+  --color-surface-lowest: var(--brand-white);
+  --color-surface-low: #EAF7F5;
+  --color-surface-container: #E6F0F3;
+  --color-surface-high: #E3ECF0;
+  --color-outline: #748C98;
+  --color-outline-variant: #D5E4EC;
+  --color-primary: var(--brand-blue);
+  --color-primary-container: #00116E;
+  --color-on-primary: var(--brand-white);
+  --color-on-surface: #243B50;
+  --color-on-surface-variant: #566D7D;
+  --color-secondary: #007F77;
+  --color-secondary-container: #EAF7F5;
+  --color-tertiary: var(--brand-turquoise);
+  --color-warning: #425C68;
   --color-error: #ba1a1a;
   --color-error-container: #ffdad6;
   --color-on-error: #ffffff;
@@ -45,10 +51,64 @@
 
   --radius-sm: 0.125rem;
   --radius-md: 0.375rem;
-  --radius-lg: 0.5rem;
-  --radius-xl: 0.75rem;
+  --radius-lg: 0.625rem;
+  --radius-xl: 1rem;
   --radius-full: 9999px;
 
-  --sidebar-width: 280px;
-  --header-height: 64px;
+  --sidebar-width: 238px;
+  --sidebar-compact-width: 76px;
+  --header-height: 128px;
+  --page-gutter: 42px;
+  --nav-label-size: 14px;
+  --shadow-card: 0 4px 16px rgba(1, 22, 60, 0.045);
+  --shadow-active: 0 4px 10px rgba(1, 22, 137, 0.14);
+  --overlay-backdrop: rgba(24, 28, 28, 0.42);
+  --focus-ring: var(--brand-blue);
+  --button-secondary-bg: var(--color-secondary);
+  --button-secondary-hover: #006B64;
+  --table-head-bg: #EAF7F5;
+  --table-row-hover: #F5FAFA;
+  --badge-success-bg: #E5F5EC;
+  --badge-success-text: #12613E;
+
+  /* Roles de impresion compartidos, derivados de la identidad oficial. */
+  --print-primary: var(--brand-blue);
+  --print-accent: var(--brand-turquoise);
+  --print-aqua: var(--brand-aqua);
+  --print-lime: var(--brand-lime);
+  --print-paper: var(--brand-white);
+  --print-ink: #243B50;
+  --print-muted: #435767;
+  --print-rule: #879BA6;
+  --print-header-bg: #EAF7F5;
+  --print-cancel-bg: #FFF1F0;
+  --print-danger: #BA1A1A;
+
+}
+
+/* Compatibilidad del shell impreso; los documentos usan los roles --print-*. */
+@media print {
+  :root {
+    --color-background: #f7faf9;
+    --color-surface: #f7faf9;
+    --color-surface-lowest: #ffffff;
+    --color-surface-low: #f1f4f4;
+    --color-surface-container: #ebeeee;
+    --color-surface-high: #e6e9e8;
+    --color-outline: #6e7979;
+    --color-outline-variant: #bec9c8;
+    --color-primary: #005050;
+    --color-primary-container: #006a6a;
+    --color-on-primary: #ffffff;
+    --color-on-surface: #181c1c;
+    --color-on-surface-variant: #3e4948;
+    --color-secondary: #4a6363;
+    --color-secondary-container: #cce8e7;
+    --color-tertiary: #344b50;
+    --color-warning: #4b6267;
+    --radius-lg: 0.5rem;
+    --radius-xl: 0.75rem;
+    --sidebar-width: 280px;
+    --header-height: 64px;
+  }
 }

@@ -1058,10 +1058,13 @@
     return [
       '<article class="reservacion-print-sheet">',
       '<header class="reservacion-print-header">',
+      '<div class="print-brand-lockup">',
+      '<img class="print-brand-logo" src="./assets/branding/community-tours-sian-kaan-logo.jpeg" width="1296" height="932" alt="Logotipo oficial de Community Tours Sian Ka\'an">',
       "<div>",
       '<p class="reservacion-print-company">Community Tours Sian Ka\'an</p>',
       '<h1>Reservación</h1>',
       '<p class="reservacion-print-subtitle">Sistema Integrador de Reservaciones</p>',
+      "</div>",
       "</div>",
       '<div class="reservacion-print-code-block">',
       "<span>Código</span>",
@@ -1180,6 +1183,13 @@
       if (!prepareReservacionPrint(reservacion)) {
         return;
       }
+
+      const printRoot = document.getElementById('reservacion-print-root');
+      const sessionVersion = App.auth.obtenerVersionSesion();
+      await App.ui.waitForPrintAssets(printRoot);
+      await App.auth.refrescarSesion();
+      if (App.auth.obtenerVersionSesion() !== sessionVersion || !printRoot.isConnected
+        || window.location.hash !== '#/reservaciones' || !printRoot.innerHTML.trim()) return;
 
       actionLoadingId = null;
       setLoading(false);

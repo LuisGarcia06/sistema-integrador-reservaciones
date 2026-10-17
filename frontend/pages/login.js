@@ -94,7 +94,7 @@
       return [
         '<section class="login-page" aria-labelledby="login-title">',
         '<div class="login-brand">',
-        '<div class="brand-mark">SK</div>',
+        '<img class="login-logo" src="./assets/branding/community-tours-sian-kaan-logo.jpg" width="1296" height="932" alt="Logotipo oficial de Community Tours Sian Ka\'an">',
         '<div class="login-copy">',
         '<h1 id="login-title">Community Tours Sian Ka\'an</h1>',
         '<p class="card-text">Sistema Integrador de Reservaciones</p>',

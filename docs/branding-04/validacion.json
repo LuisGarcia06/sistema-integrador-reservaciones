@@ -1,0 +1,703 @@
+{
+  "checks": [
+    "Seis formatos con los mismos textos y datos, once columnas Daily, logo decodificado, limpieza afterprint",
+    "Consulta all conserva impresion Daily",
+    "Selected rechazado por ruta e IPC",
+    "Selected imprime la reserva autorizada",
+    "Revocacion durante dialogo impide guardar",
+    "Logo roto bloquea PDF",
+    "Revocacion durante carga del logo no imprime datos anteriores",
+    "Detalle no autorizado no prepara impresion"
+  ],
+  "pdfs": [
+    {
+      "name": "daily-un-transporte",
+      "file": "A:\\sistema-integrador-reservaciones\\docs\\branding-04\\daily-un-transporte.pdf",
+      "sameData": true,
+      "logos": [
+        {
+          "loaded": true,
+          "src": "./assets/branding/community-tours-sian-kaan-logo.jpeg"
+        }
+      ],
+      "columns": [
+        11
+      ]
+    },
+    {
+      "name": "daily-varios-transportes",
+      "file": "A:\\sistema-integrador-reservaciones\\docs\\branding-04\\daily-varios-transportes.pdf",
+      "sameData": true,
+      "logos": [
+        {
+          "loaded": true,
+          "src": "./assets/branding/community-tours-sian-kaan-logo.jpeg"
+        },
+        {
+          "loaded": true,
+          "src": "./assets/branding/community-tours-sian-kaan-logo.jpeg"
+        }
+      ],
+      "columns": [
+        11,
+        11
+      ]
+    },
+    {
+      "name": "daily-observaciones-extensas",
+      "file": "A:\\sistema-integrador-reservaciones\\docs\\branding-04\\daily-observaciones-extensas.pdf",
+      "sameData": true,
+      "logos": [
+        {
+          "loaded": true,
+          "src": "./assets/branding/community-tours-sian-kaan-logo.jpeg"
+        }
+      ],
+      "columns": [
+        11
+      ]
+    },
+    {
+      "name": "reservacion-programada",
+      "file": "A:\\sistema-integrador-reservaciones\\docs\\branding-04\\reservacion-programada.pdf",
+      "sameData": true,
+      "logos": [
+        {
+          "loaded": true,
+          "src": "./assets/branding/community-tours-sian-kaan-logo.jpeg"
+        }
+      ],
+      "columns": []
+    },
+    {
+      "name": "reservacion-cancelada",
+      "file": "A:\\sistema-integrador-reservaciones\\docs\\branding-04\\reservacion-cancelada.pdf",
+      "sameData": true,
+      "logos": [
+        {
+          "loaded": true,
+          "src": "./assets/branding/community-tours-sian-kaan-logo.jpeg"
+        }
+      ],
+      "columns": []
+    },
+    {
+      "name": "reservacion-textos-extensos",
+      "file": "A:\\sistema-integrador-reservaciones\\docs\\branding-04\\reservacion-textos-extensos.pdf",
+      "sameData": true,
+      "logos": [
+        {
+          "loaded": true,
+          "src": "./assets/branding/community-tours-sian-kaan-logo.jpeg"
+        }
+      ],
+      "columns": []
+    }
+  ],
+  "requests": [
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/tours",
+      "method": "GET"
+    },
+    {
+      "path": "/api/paises",
+      "method": "GET"
+    },
+    {
+      "path": "/api/plataformas",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones/101",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/tours",
+      "method": "GET"
+    },
+    {
+      "path": "/api/plataformas",
+      "method": "GET"
+    },
+    {
+      "path": "/api/paises",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones/102",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/tours",
+      "method": "GET"
+    },
+    {
+      "path": "/api/paises",
+      "method": "GET"
+    },
+    {
+      "path": "/api/plataformas",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones/103",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/tours",
+      "method": "GET"
+    },
+    {
+      "path": "/api/paises",
+      "method": "GET"
+    },
+    {
+      "path": "/api/plataformas",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones/101",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/tours",
+      "method": "GET"
+    },
+    {
+      "path": "/api/paises",
+      "method": "GET"
+    },
+    {
+      "path": "/api/plataformas",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones/102",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/tours",
+      "method": "GET"
+    },
+    {
+      "path": "/api/paises",
+      "method": "GET"
+    },
+    {
+      "path": "/api/plataformas",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones/103",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/tours",
+      "method": "GET"
+    },
+    {
+      "path": "/api/paises",
+      "method": "GET"
+    },
+    {
+      "path": "/api/plataformas",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones/101",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/tours",
+      "method": "GET"
+    },
+    {
+      "path": "/api/paises",
+      "method": "GET"
+    },
+    {
+      "path": "/api/plataformas",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones/101",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones/101",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/tours",
+      "method": "GET"
+    },
+    {
+      "path": "/api/paises",
+      "method": "GET"
+    },
+    {
+      "path": "/api/plataformas",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/tours",
+      "method": "GET"
+    },
+    {
+      "path": "/api/paises",
+      "method": "GET"
+    },
+    {
+      "path": "/api/plataformas",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones",
+      "method": "GET"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "method": "GET"
+    },
+    {
+      "path": "/api/reservaciones/999999",
+      "method": "GET"
+    }
+  ],
+  "physicalPrinterUsed": false,
+  "realPrintToPDF": true,
+  "productionIPCSource": true,
+  "baselineCompared": true
+}

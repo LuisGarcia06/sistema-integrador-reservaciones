@@ -508,9 +508,12 @@
     return [
       '<section class="daily-print-sheet">',
       '<header class="daily-print-header">',
+      '<div class="print-brand-lockup">',
+      '<img class="print-brand-logo" src="./assets/branding/community-tours-sian-kaan-logo.jpeg" width="1296" height="932" alt="Logotipo oficial de Community Tours Sian Ka\'an">',
       '<div class="daily-print-brand-block">',
       '<p class="daily-print-company">Community Tours Sian Ka\'an</p>',
       '<p class="daily-print-subtitle">Daily operativo</p>',
+      "</div>",
       "</div>",
       '<div class="daily-print-summary-block">',
       renderPrintMeta("Fecha", formatPrintDate(fecha)),
@@ -827,6 +830,8 @@
     setMessage("", "");
 
     try {
+      await App.ui.waitForPrintAssets(document.getElementById('daily-print-root'));
+      if (currentDaily !== dailyToExport || window.location.hash !== '#/daily') return;
       const result = await window.desktopAPI.exportDailyPdf({ fecha: fechaToExport });
 
       if (result && result.canceled) {
@@ -867,9 +872,11 @@
       printButton.addEventListener("click", async function () {
         if (printButton.disabled) return;
         try {
+          const dailyToPrint = currentDaily;
+          await App.ui.waitForPrintAssets(document.getElementById('daily-print-root'));
           await App.auth.refrescarSesion();
           if (!App.auth.puedeAccederPagina("daily") || window.location.hash !== "#/daily"
-            || isDailyLoading || hasDailyError || getTotalTransportes(currentDaily) <= 0) return;
+            || currentDaily !== dailyToPrint || isDailyLoading || hasDailyError || getTotalTransportes(currentDaily) <= 0) return;
           window.print();
         } catch (error) {
           setMessage("No fue posible verificar tus permisos para imprimir.", "error");

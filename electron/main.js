@@ -309,6 +309,8 @@ async function getAuthorizedDailyPdfContext(event, fecha) {
             const root = document.getElementById('daily-print-root');
             if (!App.auth.puedeAccederPagina('daily') || location.hash !== '#/daily'
                 || !date || !root || !root.innerHTML.trim()) return null;
+            await App.ui.waitForPrintAssets(root);
+            if (!root.isConnected || !root.innerHTML.trim()) return null;
             return { token: App.auth.obtenerToken(), fecha: date.value,
                 version: App.auth.obtenerVersionSesion() };
         } catch (error) { return null; }

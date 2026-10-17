@@ -48,10 +48,44 @@
     ].join("");
   }
 
+  // Esperar la imagen local y su decodificacion antes de capturar o imprimir.
+  async function waitForPrintAssets(root) {
+    if (!root || !root.isConnected || !root.innerHTML.trim()) {
+      throw new Error("El documento de impresión ya no está disponible.");
+    }
+    const images = Array.from(root.querySelectorAll('img'));
+    await Promise.all(images.map(function (image) {
+      return new Promise(function (resolve, reject) {
+        const timeout = window.setTimeout(function () { finish(new Error('No se pudo cargar el logotipo de impresión.')); }, 8000);
+        function finish(error) {
+          window.clearTimeout(timeout);
+          image.removeEventListener('load', loaded);
+          image.removeEventListener('error', failed);
+          if (error) reject(error); else resolve();
+        }
+        async function loaded() {
+          try {
+            if (!image.naturalWidth || !image.naturalHeight) return failed();
+            if (typeof image.decode === 'function') await image.decode();
+            finish();
+          } catch (error) { failed(); }
+        }
+        function failed() { finish(new Error('No se pudo cargar el logotipo de impresión.')); }
+        if (image.complete) loaded();
+        else {
+          image.addEventListener('load', loaded, { once: true });
+          image.addEventListener('error', failed, { once: true });
+        }
+      });
+    }));
+    if (!root.isConnected || !root.innerHTML.trim()) throw new Error('El documento de impresión cambió.');
+  }
+
   App.ui = {
     escapeHtml: escapeHtml,
     emptyState: emptyState,
     table: table,
-    placeholder: placeholder
+    placeholder: placeholder,
+    waitForPrintAssets: waitForPrintAssets
   };
 })();

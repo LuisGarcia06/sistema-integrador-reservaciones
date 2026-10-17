@@ -1,3 +1,46 @@
+/* Shell de escritorio: referencia aprobada BRANDING-03. */
+@media screen {
+  #app { display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); min-height: 100vh; }
+  body.is-sidebar-collapsed #app { grid-template-columns: var(--sidebar-compact-width) minmax(0, 1fr); }
+  .sidebar { position: sticky; top: 0; z-index: 10; display: flex; flex-direction: column; height: 100vh; padding: 12px; background: var(--color-surface-lowest); border-right: 1px solid var(--color-outline-variant); overflow-y: auto; }
+  .sidebar-brand { display: flex; align-items: center; justify-content: center; min-height: 126px; margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid var(--color-outline-variant); }
+  .brand-logo { display: block; width: 158px; max-width: 100%; height: auto; object-fit: contain; }
+  .sidebar-nav { display: grid; gap: 6px; }
+  .nav-link { display: flex; align-items: center; gap: 12px; min-height: 44px; padding: 10px 12px; color: var(--color-on-surface); border-radius: var(--radius-lg); transition: background 160ms ease, color 160ms ease; }
+  .nav-link:hover { background: var(--color-surface-low); }
+  .nav-link.is-active { color: var(--color-on-primary); background: var(--brand-blue); box-shadow: var(--shadow-active); }
+  .nav-icon { display: grid; flex: 0 0 20px; width: 20px; height: 20px; place-items: center; }
+  .nav-icon svg, .sidebar-toggle svg { width: 20px; height: 20px; flex-shrink: 0; }
+  .nav-label { font-size: var(--nav-label-size); font-weight: 600; line-height: var(--line-height-body); }
+  .sidebar-controls { margin-top: auto; padding-top: 15px; border-top: 1px solid var(--color-outline-variant); }
+  .sidebar-toggle { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 42px; padding: 8px; color: var(--color-secondary); background: var(--color-surface-low); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-lg); font-weight: 600; }
+  .sidebar-toggle:hover { background: var(--color-surface-container); }
+  .is-sidebar-collapsed .nav-label, .is-sidebar-collapsed .sidebar-toggle span { display: none; }
+  .is-sidebar-collapsed .nav-link { justify-content: center; padding-inline: 8px; }
+  .is-sidebar-collapsed .sidebar-toggle svg { transform: rotate(180deg); }
+  .app-shell { display: grid; grid-template-rows: auto minmax(0, 1fr); min-width: 0; min-height: 100vh; align-content: start; }
+  .app-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; min-width: 0; min-height: var(--header-height); padding: 24px var(--page-gutter) 18px; background: var(--color-background); }
+  .header-copy { min-width: 0; }
+  .header-institution { margin-bottom: 5px; color: var(--color-secondary); font-size: 11px; line-height: 16px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; }
+  .header-title { color: var(--brand-blue); font-size: 32px; font-weight: 700; line-height: 40px; overflow-wrap: anywhere; }
+  .header-subtitle { margin-top: 6px; color: var(--color-on-surface-variant); font-size: var(--font-size-body); line-height: var(--line-height-body); }
+  .header-actions { display: flex; align-items: center; justify-content: flex-end; gap: 10px; flex-shrink: 0; }
+  .user-chip { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 5px 10px; color: var(--color-on-surface); background: var(--color-surface-lowest); border: 1px solid var(--color-outline-variant); border-radius: var(--radius-lg); }
+  .user-avatar { display: grid; width: 28px; height: 28px; color: var(--color-on-primary); background: var(--brand-blue); border-radius: var(--radius-full); font-size: 11px; font-weight: 700; place-items: center; }
+  .page-root { min-width: 0; padding: 0 var(--page-gutter) 32px; }
+  .page { display: grid; gap: var(--space-lg); width: 100%; min-width: 0; }
+  @media (max-width: 1200px) { :root { --page-gutter: 24px; } }
+  @media (max-width: 760px) {
+    :root { --page-gutter: 16px; }
+    .app-header { align-items: flex-start; flex-wrap: wrap; gap: 12px; padding-top: 20px; }
+    .header-actions { flex-wrap: wrap; justify-content: flex-start; }
+    .header-title { font-size: var(--font-size-headline); line-height: var(--line-height-headline); }
+  }
+  @media (prefers-reduced-motion: reduce) { .nav-link { transition: none; } }
+}
+
+/* Conservar las reglas anteriores para impresion. */
+@media print {
 #app {
   display: grid;
   grid-template-columns: var(--sidebar-width) minmax(0, 1fr);
@@ -241,4 +284,6 @@
   .nav-link {
     padding: var(--space-sm);
   }
+}
+
 }

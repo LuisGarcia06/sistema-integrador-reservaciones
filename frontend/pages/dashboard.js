@@ -1129,8 +1129,8 @@
     ];
 
     return [
-      '<aside class="card stack dashboard-actions-card">',
-      '<div class="card-header">',
+      '<aside class="dashboard-actions-card" aria-label="Acciones rápidas">',
+      '<div class="card-header dashboard-actions-heading">',
       "<div>",
       "<h2>Acciones rápidas</h2>",
       '<p class="card-text">' + App.ui.escapeHtml(App.auth && App.auth.esAdministrador() ? "Accesos operativos principales." : "Accesos de consulta disponibles.") + "</p>",
@@ -1151,18 +1151,20 @@
 
   function renderDashboard(data) {
     return [
+      '<div class="dashboard-toolbar">',
       renderTodayHeader(data),
+      renderQuickActions(),
+      '</div>',
       isRestricted() ? '<p class="card-text" role="status">Información limitada a las plataformas asignadas a tu usuario.</p>' : "",
       renderMetrics(data && data.metricas),
       isRestricted() ? "" : renderAlerts(data && data.alertas),
       renderEmptyToday(data && data.metricas),
+      renderRecentReservations(data && data.reservaciones_recientes),
       '<div class="dashboard-grid">',
       '<div class="stack">',
       isRestricted() ? "" : renderIntegrationPanel(),
-      renderRecentReservations(data && data.reservaciones_recientes),
       isRestricted() ? "" : renderSalidas(data && data.salidas_hoy),
       "</div>",
-      renderQuickActions(),
       "</div>"
     ].join("");
   }

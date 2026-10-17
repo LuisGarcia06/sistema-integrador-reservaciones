@@ -263,3 +263,27 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+/* Identidad compartida de pantalla; el Daily PDF conserva su cascada anterior. */
+@media screen {
+  .btn { min-height: 42px; color: var(--brand-blue); border-radius: var(--radius-lg); }
+  .btn-primary { color: var(--color-on-primary); }
+  .btn-secondary { color: var(--color-on-primary); background: var(--button-secondary-bg); border-color: var(--button-secondary-bg); }
+  .btn-secondary:hover { background: var(--button-secondary-hover); border-color: var(--button-secondary-hover); }
+  .btn-ghost { background: var(--color-surface-lowest); }
+  :is(button, a, input, select, textarea):focus-visible { outline: 2px solid var(--focus-ring); outline-offset: 3px; }
+  .card { padding: 22px; border-radius: var(--radius-xl); box-shadow: var(--shadow-card); }
+  .card-title, .empty-state-title, .page h2, .page h3 { color: var(--brand-blue); }
+  .page h2 { font-size: var(--font-size-title); line-height: var(--line-height-title); font-weight: 700; }
+  .field { min-width: 0; }
+  input, select, textarea { border-color: var(--color-outline); }
+  .table-container { border-radius: var(--radius-lg); box-shadow: none; }
+  .data-table th { padding: 12px 14px; color: var(--brand-blue); background: var(--table-head-bg); font-size: var(--font-size-body); line-height: var(--line-height-body); font-weight: 700; letter-spacing: 0; text-transform: none; }
+  .data-table td { padding: 15px 14px; }
+  .data-table tbody tr:hover { background: var(--table-row-hover); }
+  .metric-card { gap: 8px; }
+  .metric-label { order: -1; font-size: var(--font-size-body); line-height: var(--line-height-body); }
+  .metric-value { color: var(--brand-blue); font-size: 32px; line-height: 36px; }
+  .metric-value::after { display: block; width: 29px; height: 4px; margin-top: 5px; background: var(--brand-turquoise); border-radius: var(--radius-full); content: ''; }
+  .dashboard-recent-table td:last-child .badge:not(.badge-neutral):not(.badge-danger) { color: var(--badge-success-text); background: var(--badge-success-bg); }
+}

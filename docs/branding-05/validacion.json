@@ -1,0 +1,1531 @@
+{
+  "measurements": [
+    {
+      "name": "login-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1366,
+      "rootWidth": 1366,
+      "rootScroll": 1366,
+      "sidebar": 0,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "dashboard-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1356,
+      "rootWidth": 1118,
+      "rootScroll": 1118,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table dashboard-recent-table",
+          "width": 988,
+          "parentWidth": 988,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "dashboard-menu-alterno-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1356,
+      "rootWidth": 1280,
+      "rootScroll": 1280,
+      "sidebar": 76,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table dashboard-recent-table",
+          "width": 1150,
+          "parentWidth": 1150,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "reservaciones-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1356,
+      "rootWidth": 1118,
+      "rootScroll": 1118,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table reservaciones-table",
+          "width": 1260,
+          "parentWidth": 1032,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "reservacion-detalle-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1356,
+      "rootWidth": 1118,
+      "rootScroll": 1118,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table reservaciones-table",
+          "width": 1260,
+          "parentWidth": 1032,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1356,
+          "height": 768,
+          "scroll": 1614
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "reservacion-nueva-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1356,
+      "rootWidth": 1118,
+      "rootScroll": 1118,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table reservaciones-table",
+          "width": 1260,
+          "parentWidth": 1032,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1356,
+          "height": 768,
+          "scroll": 1618
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "reservacion-cancelacion-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1356,
+      "rootWidth": 1118,
+      "rootScroll": 1118,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table reservaciones-table",
+          "width": 1260,
+          "parentWidth": 1032,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1356,
+          "height": 768,
+          "scroll": 768
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "historial-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1356,
+      "rootWidth": 1118,
+      "rootScroll": 1118,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table historial-table",
+          "width": 1080,
+          "parentWidth": 1032,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "historial-detalle-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1356,
+      "rootWidth": 1118,
+      "rootScroll": 1118,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table historial-table",
+          "width": 1080,
+          "parentWidth": 1032,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1356,
+          "height": 768,
+          "scroll": 768
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "usuarios-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1366,
+      "rootWidth": 1128,
+      "rootScroll": 1128,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table usuarios-table",
+          "width": 1042,
+          "parentWidth": 1042,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "usuario-consulta-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1366,
+      "rootWidth": 1128,
+      "rootScroll": 1128,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table usuarios-table",
+          "width": 1042,
+          "parentWidth": 1042,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1366,
+          "height": 768,
+          "scroll": 768
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "operaciones-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1356,
+      "rootWidth": 1118,
+      "rootScroll": 1118,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table operaciones-table",
+          "width": 1180,
+          "parentWidth": 1032,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "operacion-nueva-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1356,
+      "rootWidth": 1118,
+      "rootScroll": 1118,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table operaciones-table",
+          "width": 1180,
+          "parentWidth": 1032,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1356,
+          "height": 768,
+          "scroll": 768
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "transportes-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1356,
+      "rootWidth": 1118,
+      "rootScroll": 1118,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table operaciones-table",
+          "width": 1180,
+          "parentWidth": 1032,
+          "parentOverflow": "auto"
+        },
+        {
+          "className": "data-table transportes-table",
+          "width": 988,
+          "parentWidth": 988,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1356,
+          "height": 768,
+          "scroll": 768
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "transporte-editar-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1356,
+      "rootWidth": 1118,
+      "rootScroll": 1118,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table operaciones-table",
+          "width": 1180,
+          "parentWidth": 1032,
+          "parentOverflow": "auto"
+        },
+        {
+          "className": "data-table transportes-table",
+          "width": 978,
+          "parentWidth": 978,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1356,
+          "height": 768,
+          "scroll": 768
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "daily-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1356,
+      "rootWidth": 1118,
+      "rootScroll": 1118,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table daily-data-table daily-reservaciones-table",
+          "width": 1160,
+          "parentWidth": 604,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "configuracion-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1366,
+      "rootWidth": 1128,
+      "rootScroll": 1128,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table catalogos-table",
+          "width": 1008,
+          "parentWidth": 1008,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "vehiculo-nuevo-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1366,
+      "rootWidth": 1128,
+      "rootScroll": 1128,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table catalogos-table",
+          "width": 1008,
+          "parentWidth": 1008,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1366,
+          "height": 768,
+          "scroll": 768
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "bitacora-1366",
+      "viewport": [
+        1366,
+        768
+      ],
+      "documentWidth": 1366,
+      "rootWidth": 1128,
+      "rootScroll": 1128,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table bitacora-table",
+          "width": 1042,
+          "parentWidth": 1042,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "login-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1024,
+      "rootWidth": 1024,
+      "rootScroll": 1024,
+      "sidebar": 0,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "dashboard-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1014,
+      "rootWidth": 776,
+      "rootScroll": 776,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table dashboard-recent-table",
+          "width": 920,
+          "parentWidth": 682,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "dashboard-menu-alterno-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1014,
+      "rootWidth": 938,
+      "rootScroll": 938,
+      "sidebar": 76,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table dashboard-recent-table",
+          "width": 920,
+          "parentWidth": 844,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "reservaciones-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1014,
+      "rootWidth": 776,
+      "rootScroll": 776,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table reservaciones-table",
+          "width": 1260,
+          "parentWidth": 726,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "reservacion-detalle-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1014,
+      "rootWidth": 776,
+      "rootScroll": 776,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table reservaciones-table",
+          "width": 1260,
+          "parentWidth": 726,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1014,
+          "height": 640,
+          "scroll": 1614
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "reservacion-nueva-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1014,
+      "rootWidth": 776,
+      "rootScroll": 776,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table reservaciones-table",
+          "width": 1260,
+          "parentWidth": 726,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1014,
+          "height": 640,
+          "scroll": 1618
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "reservacion-cancelacion-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1014,
+      "rootWidth": 776,
+      "rootScroll": 776,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table reservaciones-table",
+          "width": 1260,
+          "parentWidth": 726,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1014,
+          "height": 640,
+          "scroll": 640
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "historial-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1014,
+      "rootWidth": 776,
+      "rootScroll": 776,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table historial-table",
+          "width": 1080,
+          "parentWidth": 726,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "historial-detalle-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1014,
+      "rootWidth": 776,
+      "rootScroll": 776,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table historial-table",
+          "width": 1080,
+          "parentWidth": 726,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1014,
+          "height": 640,
+          "scroll": 640
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "usuarios-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1014,
+      "rootWidth": 776,
+      "rootScroll": 776,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table usuarios-table",
+          "width": 900,
+          "parentWidth": 726,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "usuario-consulta-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1014,
+      "rootWidth": 776,
+      "rootScroll": 776,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table usuarios-table",
+          "width": 900,
+          "parentWidth": 726,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1014,
+          "height": 640,
+          "scroll": 640
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "operaciones-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1014,
+      "rootWidth": 776,
+      "rootScroll": 776,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table operaciones-table",
+          "width": 1180,
+          "parentWidth": 726,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "operacion-nueva-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1014,
+      "rootWidth": 776,
+      "rootScroll": 776,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table operaciones-table",
+          "width": 1180,
+          "parentWidth": 726,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1014,
+          "height": 640,
+          "scroll": 640
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "transportes-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1014,
+      "rootWidth": 776,
+      "rootScroll": 776,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table operaciones-table",
+          "width": 1180,
+          "parentWidth": 726,
+          "parentOverflow": "auto"
+        },
+        {
+          "className": "data-table transportes-table",
+          "width": 920,
+          "parentWidth": 914,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1014,
+          "height": 640,
+          "scroll": 640
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "transporte-editar-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1014,
+      "rootWidth": 776,
+      "rootScroll": 776,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table operaciones-table",
+          "width": 1180,
+          "parentWidth": 726,
+          "parentOverflow": "auto"
+        },
+        {
+          "className": "data-table transportes-table",
+          "width": 920,
+          "parentWidth": 904,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1014,
+          "height": 640,
+          "scroll": 640
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "daily-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1014,
+      "rootWidth": 776,
+      "rootScroll": 776,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table daily-data-table daily-reservaciones-table",
+          "width": 1160,
+          "parentWidth": 642,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "configuracion-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1024,
+      "rootWidth": 786,
+      "rootScroll": 786,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table catalogos-table",
+          "width": 760,
+          "parentWidth": 702,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    },
+    {
+      "name": "vehiculo-nuevo-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1024,
+      "rootWidth": 786,
+      "rootScroll": 786,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table catalogos-table",
+          "width": 760,
+          "parentWidth": 702,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [
+        {
+          "width": 1024,
+          "height": 640,
+          "scroll": 640
+        }
+      ],
+      "overflowElements": []
+    },
+    {
+      "name": "bitacora-1024",
+      "viewport": [
+        1024,
+        640
+      ],
+      "documentWidth": 1024,
+      "rootWidth": 786,
+      "rootScroll": 786,
+      "sidebar": 238,
+      "font": "Inter, Arial, sans-serif",
+      "errors": [],
+      "tables": [
+        {
+          "className": "data-table bitacora-table",
+          "width": 920,
+          "parentWidth": 736,
+          "parentOverflow": "auto"
+        }
+      ],
+      "dialog": [],
+      "overflowElements": []
+    }
+  ],
+  "checks": [
+    "Hover y foco emulados 1366",
+    "Paginacion real de frontend 1366",
+    "Filtro codigo 1366",
+    "Nueve pantallas y dialogos 1366x768",
+    "Hover y foco emulados 1024",
+    "Paginacion real de frontend 1024",
+    "Filtro codigo 1024",
+    "Nueve pantallas y dialogos 1024x640",
+    "Menu y acceso all",
+    "Menu y acceso selected"
+  ],
+  "errors": [],
+  "requests": [
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/dashboard/resumen",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/eventos-integracion",
+      "query": "?review_status=pending_review&limit=50&operational_only=true"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/eventos-integracion",
+      "query": "?review_status=approved&limit=50&operational_only=true"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/tours",
+      "query": ""
+    },
+    {
+      "path": "/api/paises",
+      "query": ""
+    },
+    {
+      "path": "/api/plataformas",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/reservaciones",
+      "query": "?page=1&limit=25"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/reservaciones/101",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/reservaciones",
+      "query": "?page=2&limit=25"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/reservaciones",
+      "query": "?page=1&limit=25&codigo=SYN-B05-101"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/tours",
+      "query": ""
+    },
+    {
+      "path": "/api/plataformas",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/reservaciones",
+      "query": "?page=1&limit=25&include_resumen_tours=1&fecha_hasta=2026-10-15"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/usuarios",
+      "query": ""
+    },
+    {
+      "path": "/api/usuarios/roles",
+      "query": ""
+    },
+    {
+      "path": "/api/plataformas",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/tours",
+      "query": ""
+    },
+    {
+      "path": "/api/guias",
+      "query": ""
+    },
+    {
+      "path": "/api/operaciones/sugeridas",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/operaciones",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/operadores",
+      "query": ""
+    },
+    {
+      "path": "/api/vehiculos",
+      "query": ""
+    },
+    {
+      "path": "/api/transportes",
+      "query": "?id_operacion_tour=1"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/tours",
+      "query": ""
+    },
+    {
+      "path": "/api/guias",
+      "query": ""
+    },
+    {
+      "path": "/api/operaciones/sugeridas",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/operaciones",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/daily/operativo",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/tours",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/vehiculos",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/bitacora",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/dashboard/resumen",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/eventos-integracion",
+      "query": "?review_status=pending_review&limit=50&operational_only=true"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/eventos-integracion",
+      "query": "?review_status=approved&limit=50&operational_only=true"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/tours",
+      "query": ""
+    },
+    {
+      "path": "/api/plataformas",
+      "query": ""
+    },
+    {
+      "path": "/api/paises",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/reservaciones",
+      "query": "?page=1&limit=25"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/reservaciones/101",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/reservaciones",
+      "query": "?page=2&limit=25"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/reservaciones",
+      "query": "?page=1&limit=25&codigo=SYN-B05-101"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/tours",
+      "query": ""
+    },
+    {
+      "path": "/api/plataformas",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/reservaciones",
+      "query": "?page=1&limit=25&include_resumen_tours=1&fecha_hasta=2026-10-15"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/usuarios",
+      "query": ""
+    },
+    {
+      "path": "/api/usuarios/roles",
+      "query": ""
+    },
+    {
+      "path": "/api/plataformas",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/tours",
+      "query": ""
+    },
+    {
+      "path": "/api/guias",
+      "query": ""
+    },
+    {
+      "path": "/api/operaciones/sugeridas",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/operaciones",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/operadores",
+      "query": ""
+    },
+    {
+      "path": "/api/vehiculos",
+      "query": ""
+    },
+    {
+      "path": "/api/transportes",
+      "query": "?id_operacion_tour=1"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/tours",
+      "query": ""
+    },
+    {
+      "path": "/api/guias",
+      "query": ""
+    },
+    {
+      "path": "/api/operaciones/sugeridas",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/operaciones",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/daily/operativo",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/daily/operativo",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/tours",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/vehiculos",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/bitacora",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/dashboard/resumen",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/eventos-integracion",
+      "query": "?review_status=pending_review&limit=50&operational_only=true"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/eventos-integracion",
+      "query": "?review_status=approved&limit=50&operational_only=true"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    },
+    {
+      "path": "/api/dashboard/resumen",
+      "query": "?fecha=2026-10-16"
+    },
+    {
+      "path": "/api/auth/sesion",
+      "query": ""
+    }
+  ]
+}

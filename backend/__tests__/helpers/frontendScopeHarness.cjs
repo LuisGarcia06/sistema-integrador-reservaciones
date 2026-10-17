@@ -27,7 +27,7 @@ const server = http.createServer(async (req, res) => {
  if (!url.pathname.startsWith('/api/')) {
   const file = path.resolve(root, 'frontend', '.' + url.pathname);
   if (!file.startsWith(path.join(root, 'frontend') + path.sep) || !fs.existsSync(file)) { res.writeHead(404); res.end(); return; }
-  res.setHeader('Content-Type', file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : 'text/html'); res.end(fs.readFileSync(file)); return;
+  res.setHeader('Content-Type', file.endsWith('.js') ? 'text/javascript' : file.endsWith('.css') ? 'text/css' : file.endsWith('.jpg') ? 'image/jpeg' : 'text/html'); res.end(fs.readFileSync(file)); return;
  }
  let raw = ''; for await (const chunk of req) raw += chunk;
  const body = raw ? JSON.parse(raw) : null;
@@ -76,6 +76,20 @@ async function run() {
  await win.loadURL('http://127.0.0.1:' + server.address().port + '/index.html');
  await evaluate("App.auth.iniciarSesion('consulta@example.test','PasswordSintetico!').then(() => App.router.navigate('dashboard'))");
  await wait("document.body.innerText.includes('Información limitada')");
+ await check('Logo oficial completo y menu compacto accesible con preferencia persistente', async () => {
+  await wait("document.querySelector('.brand-logo')?.complete && document.querySelector('.brand-logo').naturalWidth === 1296");
+  assert.equal(await evaluate("document.querySelector('.brand-logo').naturalHeight"), 932);
+  await evaluate("document.getElementById('sidebar-toggle').click()");
+  const collapsed = await evaluate("document.body.classList.contains('is-sidebar-collapsed')");
+  assert.equal(await evaluate("document.getElementById('sidebar-toggle').getAttribute('aria-expanded')"), String(!collapsed));
+  assert.equal(await evaluate("Array.from(document.querySelectorAll('.nav-link')).every(a => a.getAttribute('aria-label') && a.getAttribute('title'))"), true);
+  await evaluate("App.router.navigate('reservaciones')");
+  await wait("document.body.innerText.includes('VISIBLE-1')");
+  assert.equal(await evaluate("document.body.classList.contains('is-sidebar-collapsed')"), collapsed);
+  await evaluate("App.router.navigate('dashboard')");
+  await wait("document.body.innerText.includes('Información limitada')");
+  assert.equal(await evaluate("document.querySelectorAll('.dashboard-metric-card').length"), 2);
+ });
  await check('Menu reducido, Dashboard parcial y ausencia de consultas de integracion', async () => {
   assert.deepEqual(await evaluate("Array.from(document.querySelectorAll('.nav-link')).map(el => el.dataset.routeId)"), ['dashboard','reservaciones']);
   assert.equal(await evaluate("document.body.innerText.includes('Grupos preparados')"), false);
@@ -135,6 +149,11 @@ async function run() {
  });
  await change({ id_usuario: 7, nombre: 'Consulta all', rol: 'Consulta', alcance_plataformas: 'all', platform_ids: [] });
  await wait("document.body.innerText.includes('Grupos preparados')");
+ await check('Dashboard conserva cuatro indicadores, ocho columnas y acciones reales', async () => {
+  assert.equal(await evaluate("document.querySelectorAll('.dashboard-metric-card').length"), 4);
+  assert.equal(await evaluate("document.querySelectorAll('.dashboard-recent-table th').length"), 8);
+  assert.deepEqual(await evaluate("Array.from(document.querySelectorAll('.dashboard-actions a')).map(a => a.hash)"), ['#/reservaciones', '#/operaciones', '#/daily']);
+ });
  await check('Consulta all conserva menu y Dashboard operativo', async () => {
   assert.equal(await evaluate("Array.from(document.querySelectorAll('.nav-link')).some(el => el.dataset.routeId === 'historial')"),true);
   assert.equal(await evaluate("document.body.innerText.includes('Pendientes de integración')"),true);
