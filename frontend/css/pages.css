@@ -1675,6 +1675,14 @@ body.is-login-page .page-root {
   min-width: 920px;
 }
 
+.transporte-identidad {
+  display: grid;
+  gap: var(--space-xs);
+  min-width: 0;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
 .transportes-table td strong,
 .transportes-table td span {
   display: block;

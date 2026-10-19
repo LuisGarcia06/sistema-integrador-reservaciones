@@ -1,0 +1,153 @@
+const { app, BrowserWindow } = require('electron');
+const fs = require('node:fs');
+const path = require('node:path');
+const os = require('node:os');
+const assert = require('node:assert/strict');
+const origin = process.env.PRE_RELEASE_02_ORIGIN;
+if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin || '')) throw Error('Solo simulador en loopback');
+const output = process.env.PRE_RELEASE_02_OUTPUT;
+const phase = process.env.PRE_RELEASE_02_PHASE;
+app.disableHardwareAcceleration();
+app.commandLine.appendSwitch('in-process-gpu');
+app.commandLine.appendSwitch('force-device-scale-factor', '1');
+app.setPath('userData', fs.mkdtempSync(path.join(os.tmpdir(), 'pre-release-02-profile-')));
+const checks = [], errors = [];
+async function run() {
+  await app.whenReady();
+  const win = new BrowserWindow({ show: false, width: 1366, height: 900, webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false } });
+  win.setContentSize(1366, 900);
+  win.webContents.session.webRequest.onBeforeRequest((details, cb) => {
+    const u = new URL(details.url), allowed = u.origin === origin || u.protocol === 'data:';
+    if (!allowed) errors.push('Intento de red ajena al simulador');
+    cb({ cancel: !allowed });
+  });
+  win.webContents.on('console-message', (_event, ...args) => { if (args[0] === 3) errors.push(String(args[1])); });
+  const e = s => win.webContents.executeJavaScript(s);
+  const wait = async s => {
+    for (let i = 0; i < 240; i++) { if (await e('Boolean(' + s + ')')) return; await new Promise(r => setTimeout(r, 25)); }
+    throw Error('DOM: ' + s + '\n' + await e('document.body.innerText'));
+  };
+  const click = selector => e(`document.querySelector(${JSON.stringify(selector)}).click()`);
+  const value = (id, val) => e(`document.getElementById(${JSON.stringify(id)}).value=${JSON.stringify(String(val))}`);
+  const submit = id => e(`document.getElementById('${id}').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}))`);
+  const control = body => e(`fetch('/__synthetic/control',{method:'POST',headers:{'Content-Type':'application/json'},body:${JSON.stringify(JSON.stringify(body))}}).then(r=>r.json())`);
+  const capture = async (name, target) => {
+    if (target) await e(`document.querySelector(${JSON.stringify(target)}).scrollIntoView({block:'start'})`);
+    await e('new Promise(r=>requestAnimationFrame(()=>requestAnimationFrame(r)))');
+    await new Promise(r => setTimeout(r, 100)); // Permitir que capturePage reciba el frame pintado del renderer oculto.
+    const m = await e(`(()=>{const visible=x=>x.getBoundingClientRect().width>0;return {width:innerWidth,documentWidth:document.documentElement.scrollWidth,controls:[...document.querySelectorAll('input,select,textarea,button')].filter(visible).filter(x=>x.getBoundingClientRect().right>innerWidth+1&&!x.closest('.table-container')).map(x=>x.id)}})()`);
+    assert.ok(m.documentWidth <= m.width, 'Desborde global: ' + name);
+    assert.deepEqual(m.controls, [], 'Controles fuera de ventana: ' + name);
+    fs.writeFileSync(path.join(output, name + '.png'), (await win.webContents.capturePage()).toPNG());
+    checks.push({ capture: name, ...m });
+  };
+  const admin = { id_usuario: 5, nombre: 'Administrador sintético', rol: 'Administrador', alcance_plataformas: 'all', platform_ids: [] };
+  await win.loadURL(origin + '/index.html');
+  await wait("document.getElementById('login-form')");
+  await e(`App.auth.establecerSesion('token-sintetico',${JSON.stringify(admin)});App.router.navigate('operaciones')`);
+  await wait("document.getElementById('operaciones-fecha') && document.getElementById('operaciones-content').getAttribute('aria-busy')==='false'");
+  const date = async fecha => {
+    await value('operaciones-fecha', fecha);
+    await e("document.getElementById('operaciones-fecha').dispatchEvent(new Event('change'))");
+    await wait("document.getElementById('operaciones-content').getAttribute('aria-busy')==='false'");
+  };
+  const open = async id => {
+    await click('[data-manage-transportes="' + id + '"]');
+    await wait("document.querySelector('.transportes-table') && document.getElementById('transportes-list').getAttribute('aria-busy')==='false' && (!document.getElementById('transporte-new') || !document.getElementById('transporte-new').disabled)");
+  };
+  const identity = expected => wait(`document.getElementById('transportes-identidad')?.innerText.includes(${JSON.stringify(expected)}) && document.getElementById('transportes-list').getAttribute('aria-busy')==='false'`);
+  const vehicle = async id => {
+    await click('[data-edit-transporte]'); await wait("document.getElementById('transporte-vehiculo')");
+    assert.deepEqual(await e("[...document.getElementById('transporte-vehiculo').options].map(x=>x.value)"), ['', '6202', '6203']);
+    await value('transporte-vehiculo', id); await submit('transporte-form');
+    await wait("!document.getElementById('transporte-form') && document.getElementById('transportes-list').getAttribute('aria-busy')==='false'");
+  };
+  await date('2027-05-20');
+  if (phase === 'reapertura') {
+    assert.ok((await e("document.getElementById('operaciones-content').innerText")).includes('Grupo 1 · Unidad 3 · 6/8 PAX'));
+    await open(8101); await identity('Grupo 1 · Unidad 3 · 6/8 PAX');
+    await capture('reapertura-estado-actual-1366');
+    checks.push('Nuevo proceso Electron, sin estado del renderer anterior, consulta el mismo API sintético actualizado');
+  } else {
+    await wait("document.getElementById('operaciones-content').innerText.includes('Grupo 1 · Unidad 2 · 2/12 PAX')");
+    await capture('resumen-operacion-existente-1366', '.operaciones-preparadas-section');
+    await open(8101); await identity('Grupo 1 · Unidad 2 · 2/12 PAX');
+    await click('#reservaciones-organizar'); await wait("document.querySelector('.reservas-asignadas-table') && !document.getElementById('reservaciones-organizar').disabled");
+    await capture('grupo-1-unidad-2-1366');
+    assert.ok((await e("document.querySelector('.reservas-asignadas-table').innerText")).includes('No cuenta en capacidad'));
+    assert.equal(await e("document.getElementById('reservas-asignar-7102').options[1].value"), '9401');
+    await value('reservas-asignar-7102', 9401);
+    await capture('selector-transporte-1366', '#reservas-asignar-7102');
+    await click('[data-assign-reserva="7102"]');
+    await identity('Grupo 1 · Unidad 2 · 4/12 PAX');
+    await wait("document.querySelector('.reservas-transporte-header').innerText.includes('4/12 PAX')");
+    assert.ok((await e("document.getElementById('operaciones-content').innerText")).includes('4/12 PAX'));
+    await capture('reservaciones-asignadas-1366', '.reservas-transporte-panel');
+    await vehicle(6203); await identity('Grupo 1 · Unidad 3 · 4/8 PAX');
+    await capture('cambio-unidad-capacidad-8-1366');
+    await vehicle(''); await identity('Grupo 1 · Vehículo pendiente · 4/12 PAX');
+    await capture('vehiculo-pendiente-1366');
+    await control({ missingPax: true }); await click('#transportes-refresh');
+    await identity('Grupo 1 · Vehículo pendiente · PAX por consultar');
+    assert.equal((await e("document.getElementById('transportes-identidad').innerText")).includes('0/12'), false);
+    await capture('pax-por-consultar-1366');
+    await control({ missingPax: false, delay: 600 });
+    await click('#reservaciones-organizar'); await click('#reservaciones-organizar');
+    await wait("document.getElementById('transportes-identidad').innerText.includes('Actualizando')");
+    await capture('carga-api-1366');
+    await identity('Grupo 1 · Vehículo pendiente · 4/12 PAX');
+    await control({ delay: 0 });
+    await vehicle(6202); await identity('Grupo 1 · Unidad 2 · 4/12 PAX');
+    await control({ cancel: 7102 });
+    await e("window.dispatchEvent(new Event('focus'))");
+    await identity('Grupo 1 · Unidad 2 · 2/12 PAX');
+    checks.push('Cambio externo simulado y cancelación: foco relee API; canceladas no suman');
+    await click('#transportes-close');
+    await click('#operaciones-new'); await wait("document.getElementById('operacion-form')");
+    await value('operacion-tour', 501); await value('operacion-turno', 'Mañana'); await value('operacion-grupo', 2);
+    await value('operacion-hora', '07:15'); await submit('operacion-form');
+    await wait("document.querySelector('[data-manage-transportes=\"8102\"]')");
+    await click('[data-manage-transportes="8102"]');
+    await wait("document.querySelector('[data-open-transporte-create]') && !document.getElementById('transporte-new').disabled");
+    await click('#transporte-new'); await wait("document.getElementById('transporte-form')");
+    assert.equal(await e("Boolean(document.getElementById('transporte-vehiculo'))"), false);
+    await value('transporte-estado', 'Preparado'); await submit('transporte-form');
+    await identity('Grupo 2 · Vehículo pendiente · 0/12 PAX');
+    await click('#reservaciones-organizar'); await wait("document.getElementById('reservas-asignar-7104')");
+    await value('reservas-asignar-7104', 9402); await click('[data-assign-reserva="7104"]');
+    await identity('Grupo 2 · Vehículo pendiente · 2/12 PAX');
+    await vehicle(6203); await identity('Grupo 2 · Unidad 3 · 2/8 PAX');
+    await capture('grupo-2-operacion-nueva-1366');
+    win.setContentSize(1024, 768); await capture('grupo-2-operacion-nueva-1024');
+    await click('#transportes-close');
+    await capture('resumen-dos-grupos-1024', '.operaciones-preparadas-section');
+    await date('2020-01-05'); await wait("document.querySelector('[data-manage-transportes=\"8100\"]')");
+    checks.push('Consulta de operación anterior por fecha, sin crear datos');
+    await e("App.router.navigate('dashboard')");
+    await wait("document.querySelector('[data-integration-id=\"9001\"]')");
+    await click('[data-integration-id="9001"]'); await wait("document.getElementById('fareharbor-preview-status')");
+    const status = await e("document.getElementById('fareharbor-preview-status').innerText");
+    assert.ok(status.includes('actividad ya inició'), status);
+    assert.ok(status.includes('No se puede aplicar'), status);
+    assert.equal(await e("document.querySelector('[data-dialog-action=\"apply-fareharbor\"]').disabled"), true);
+    assert.ok((await e('document.body.innerText')).includes('La aprobación no significa'));
+    await capture('integracion-aprobada-actividad-iniciada-1024');
+    // La prueba de permisos en backend sigue en ACCESS-SCOPE; aquí se comprueba la UI.
+    const all = { ...admin, rol: 'Consulta' };
+    await control({ user: all });
+    await e(`App.auth.establecerSesion('token-consulta',${JSON.stringify(all)});App.router.navigate('operaciones')`);
+    await wait("document.getElementById('operaciones-fecha') && document.getElementById('operaciones-content').getAttribute('aria-busy')==='false'");
+    await date('2027-05-20'); await open(8101);
+    assert.equal(await e("Boolean(document.getElementById('transporte-new') || document.querySelector('[data-edit-transporte]'))"), false);
+    const selected = { ...all, alcance_plataformas: 'selected', platform_ids: [17] };
+    await control({ user: selected });
+    await e(`App.auth.establecerSesion('token-selected',${JSON.stringify(selected)});App.router.navigate('operaciones')`);
+    await wait("document.body.innerText.includes('Acceso no autorizado')");
+    await control({ user: admin });
+  }
+  assert.deepEqual(errors, []);
+  fs.writeFileSync(path.join(output, 'validacion-' + phase + '.json'), JSON.stringify({ checks, errors }, null, 2));
+  console.log('PRE_RELEASE_02_OK ' + phase);
+  win.destroy(); app.exit(0);
+}
+run().catch(error => { console.error(error); fs.writeFileSync(path.join(output, 'fallo-' + phase + '.json'), JSON.stringify({ message: error.message, checks, errors }, null, 2)); app.exit(1); });

@@ -181,16 +181,27 @@
   }
 
   function getPaxActivosGrupo(operacion) {
-    const total = Number(operacion && operacion.total_pax_activos);
+    const raw = operacion && operacion.total_pax_activos;
+    const total = Number(raw);
 
-    return Number.isFinite(total) ? total : 0;
+    return raw !== null && raw !== undefined && raw !== "" && Number.isFinite(total) ? total : null;
   }
 
   function getPaxGrupoText(operacion) {
-    return toMetric(getPaxActivosGrupo(operacion)) + " / " + MAX_PAX_GRUPO;
+    const transporte = getArray(operacion && operacion.transportes)[0];
+    if (transporte) return App.transportesUi.describir(transporte, operacion).paxTexto;
+    if (operacion && Object.prototype.hasOwnProperty.call(operacion, "id_transporte_operacion")) {
+      return App.transportesUi.describir(operacion).paxTexto;
+    }
+    const pax = getPaxActivosGrupo(operacion);
+    return pax === null ? "PAX por consultar" : pax + "/" + MAX_PAX_GRUPO + " PAX";
   }
 
   function isGrupoCompleto(operacion) {
+    const transporte = getArray(operacion && operacion.transportes)[0];
+    if (transporte || (operacion && Object.prototype.hasOwnProperty.call(operacion, "id_transporte_operacion"))) {
+      return App.transportesUi.describir(transporte || operacion, operacion).completo;
+    }
     return getPaxActivosGrupo(operacion) >= MAX_PAX_GRUPO;
   }
 
@@ -200,13 +211,36 @@
     return getArray(dailyOperacion && dailyOperacion.transportes);
   }
 
-  function findDailyTransporte(transporte) {
+  function findDailyTransporte(transporte, contexto) {
     const idTransporte = getTransporteId(transporte);
-    const operacion = getOperacionOrganizacion();
+    const operacion = contexto || getOperacionOrganizacion();
 
-    return getArray(operacion && operacion.transportes).find(function (item) {
+    const actual = getArray(operacion && operacion.transportes).find(function (item) {
       return getTransporteId(item) === idTransporte;
-    }) || transporte;
+    });
+    return actual ? Object.assign({}, transporte, actual) : transporte;
+  }
+
+  function actualizarDaily(daily) {
+    organizacionDaily = daily || { operaciones: [], reservaciones_sin_asignar: [] };
+    operacionesDailyById = new Map();
+    getArray(organizacionDaily.operaciones).forEach(function (operacion) {
+      operacionesDailyById.set(getOperacionId(operacion), operacion);
+    });
+    if (selectedTransportOperacion) {
+      const actual = getDailyOperacion(selectedTransportOperacion);
+      if (actual) {
+        selectedTransportOperacion = Object.assign({}, selectedTransportOperacion, actual);
+        transportes = getArray(actual.transportes).map(function (item) {
+          return Object.assign({}, findTransporteById(getTransporteId(item)), item, {
+            id_operacion_tour: getOperacionId(actual)
+          });
+        });
+      } else {
+        transportes = [];
+      }
+    }
+    renderOperaciones();
   }
 
   function sortReservacionesByPickup(reservaciones) {
@@ -358,6 +392,9 @@
         list.innerHTML = renderTransportesLoading();
       }
     }
+    const identidad = document.getElementById("transportes-identidad");
+    if (isLoading && identidad) identidad.textContent = "Actualizando transporte y PAX…";
+    updateTransportePrimaryButton();
   }
 
   function setTransporteCatalogosLoading(isLoading) {
@@ -372,7 +409,7 @@
     if (newButton) {
       const hasTransporte = transportes.length > 0;
 
-      newButton.disabled = transporteCatalogosLoading || !transporteCatalogosCargados;
+      newButton.disabled = transportesLoading || organizacionReservacionesLoading || transporteCatalogosLoading || !transporteCatalogosCargados;
       newButton.textContent = transporteCatalogosLoading
         ? "Cargando catálogos..."
         : (hasTransporte ? "Gestionar transporte" : "Agregar transporte");
@@ -415,6 +452,13 @@
         content.innerHTML = renderOrganizacionLoading();
       }
     }
+    if (isLoading) {
+      const list = document.getElementById("transportes-list");
+      const identidad = document.getElementById("transportes-identidad");
+      if (list) list.innerHTML = renderTransportesLoading();
+      if (identidad) identidad.textContent = "Actualizando transporte y PAX…";
+    }
+    updateTransportePrimaryButton();
   }
 
   function setOrganizacionMessage(message, type) {
@@ -645,7 +689,7 @@
       "<td><strong>" + escapeHtml(formatTime(operacion && operacion.hora_inicio)) + "</strong></td>",
       "<td>" + escapeHtml(operacion && operacion.guia ? operacion.guia : "Sin guía asignada") + "</td>",
       '<td><span class="badge">' + escapeHtml(operacion && operacion.estado) + "</span></td>",
-      "<td>" + (hasTransporte ? '<span class="badge">Asignado</span>' : '<span class="badge badge-neutral">Pendiente</span>') + "</td>",
+      "<td>" + (hasTransporte ? renderTransporteIdentidad(transportesOperacion[0], dailyOperacion || operacion) : '<span class="badge badge-neutral">Sin transporte preparado</span>') + "</td>",
       '<td><div class="daily-badges">' + paxBadges + "</div></td>",
       '<td><div class="operaciones-row-actions">' + actionButtons + "</div></td>",
       "</tr>"
@@ -699,13 +743,6 @@
   }
 
   function renderVehiculoDetalle(transporte) {
-    if (!transporte || transporte.id_vehiculo === null || transporte.id_vehiculo === undefined) {
-      return [
-        '<strong>Vehículo pendiente</strong>',
-        '<span class="card-text">Sin vehículo asignado</span>'
-      ].join("");
-    }
-
     const detalles = [
       transporte.placas ? "Placas " + transporte.placas : "",
       transporte.color || "",
@@ -713,7 +750,7 @@
     ].filter(Boolean).join(" · ");
 
     return [
-      "<strong>" + escapeHtml(transporte.vehiculo) + "</strong>",
+      renderTransporteIdentidad(transporte, selectedTransportOperacion),
       '<span class="card-text">' + escapeHtml(detalles || "Datos de vehículo pendientes") + "</span>"
     ].join("");
   }
@@ -728,7 +765,7 @@
 
     return [
       "<tr>",
-      "<td>" + renderVehiculoDetalle(transporte) + "</td>",
+      "<td>" + renderVehiculoDetalle(transporteDaily) + "</td>",
       "<td>" + escapeHtml(transporte && transporte.operador ? transporte.operador : "Operador pendiente") + "</td>",
       '<td class="transportes-observaciones-cell">' + escapeHtml(transporte && transporte.observaciones_operador) + "</td>",
       '<td><span class="badge">' + escapeHtml(transporte && transporte.estado) + "</span></td>",
@@ -740,17 +777,14 @@
     ].join("");
   }
 
-  function getTransporteLabel(transporte) {
-    const idTransporte = getTransporteId(transporte);
+  function getTransporteLabel(transporte, operacion) {
+    return App.transportesUi.describir(findDailyTransporte(transporte, operacion), operacion || selectedTransportOperacion).principal;
+  }
 
-    if (transporte && transporte.vehiculo) {
-      return [
-        transporte.vehiculo,
-        transporte.operador || "Operador pendiente"
-      ].join(" · ");
-    }
-
-    return "Transporte #" + idTransporte + " · Vehículo pendiente";
+  function renderTransporteIdentidad(transporte, operacion) {
+    const descripcion = App.transportesUi.describir(findDailyTransporte(transporte, operacion), operacion || selectedTransportOperacion);
+    return '<div class="transporte-identidad"><strong>' + App.ui.escapeHtml(descripcion.principal) +
+      '</strong><span class="card-text">' + App.ui.escapeHtml(descripcion.secundaria) + '</span></div>';
   }
 
   function renderTransporteDestinoOptions(currentTransporteId) {
@@ -768,7 +802,7 @@
         const idTransporte = getTransporteId(transporte);
 
         return '<option value="' + App.ui.escapeHtml(idTransporte) + '">' +
-          App.ui.escapeHtml(getTransporteLabel(transporte)) +
+          App.ui.escapeHtml(getTransporteLabel(transporte) + " · " + App.transportesUi.describir(transporte).secundaria) +
           "</option>";
       }).join("")
     ].join("");
@@ -921,7 +955,7 @@
       '<section class="reservas-transporte-panel">',
       '<div class="reservas-transporte-header">',
       "<div>",
-      "<h4>" + escapeHtml(getTransporteLabel(transporte)) + "</h4>",
+      renderTransporteIdentidad(transporte, getOperacionOrganizacion()),
       '<p class="card-text">' + escapeHtml(transporte && transporte.estado) + "</p>",
       "</div>",
       '<div class="daily-badges">',
@@ -980,6 +1014,7 @@
 
     content.innerHTML = [
       '<div class="reservas-summary">',
+      getArray(operacion.transportes).length ? renderTransporteIdentidad(operacion.transportes[0], operacion) : "",
       '<span class="daily-transport-meta"><span>Grupo</span><strong>' + App.ui.escapeHtml(getOperacionTitle(selectedTransportOperacion)) + "</strong></span>",
       '<span class="daily-transport-meta"><span>Primera hora de pickup</span><strong>' + escapeHtml(formatTime(selectedTransportOperacion && selectedTransportOperacion.hora_inicio)) + "</strong></span>",
       '<span class="daily-transport-meta"><span>PAX activos</span><strong>' + escapeHtml(getPaxGrupoText(operacion)) + "</strong></span>",
@@ -1050,6 +1085,8 @@
     }
 
     list.innerHTML = transportes.length ? renderTransportesTable() : renderTransportesEmpty();
+    const identidad = document.getElementById("transportes-identidad");
+    if (identidad) identidad.innerHTML = transportes.length ? renderTransporteIdentidad(transportes[0], getOperacionOrganizacion()) : "";
     updateTransportePrimaryButton();
   }
 
@@ -1068,9 +1105,11 @@
       "<div>",
       '<p class="field-label">Grupo operativo</p>',
       '<h2 id="transportes-dialog-title">Transporte</h2>',
+      '<div id="transportes-identidad" aria-live="polite"></div>',
       '<p class="card-text">' + App.ui.escapeHtml(getOperacionContext(operacion)) + "</p>",
       "</div>",
       '<div class="transportes-panel-actions">',
+      '<button class="btn btn-ghost" id="transportes-refresh" type="button">Actualizar</button>',
       organizarButton,
       adminButton,
       '<button class="btn btn-ghost" id="transportes-close" type="button" aria-label="Cerrar transportes">Cerrar</button>',
@@ -1173,6 +1212,7 @@
       '<div class="transporte-form-header">',
       "<div>",
       "<h3>" + App.ui.escapeHtml(title) + "</h3>",
+      isEdit ? renderTransporteIdentidad(transporte, getOperacionOrganizacion()) : "",
       '<p class="card-text">Grupo: ' + App.ui.escapeHtml(operacionText) + "</p>",
       "</div>",
       "</div>",
@@ -1848,10 +1888,6 @@
       setTransporteSubmitLoading(false);
       closeTransporteForm();
       await loadTransportes(selectedTransportOperacion);
-
-      if (organizacionReservacionesAbierta) {
-        await loadOrganizacionReservaciones(selectedTransportOperacion);
-      }
     } catch (error) {
       setTransporteFormMessage(getBackendMessage(error, "No fue posible guardar el transporte. Intenta nuevamente."), "error");
       setTransporteSubmitLoading(false);
@@ -1877,6 +1913,7 @@
     const organizarButton = document.getElementById("reservaciones-organizar");
     const list = document.getElementById("transportes-list");
     const organizacionHost = document.getElementById("reservas-organizacion-host");
+    document.getElementById("transportes-refresh").addEventListener("click", actualizarVista);
 
     if (closeButton) {
       closeButton.addEventListener("click", closeTransportesPanel);
@@ -1964,7 +2001,8 @@
         return;
       }
 
-      organizacionDaily = daily || { fecha: fecha, operaciones: [], reservaciones_sin_asignar: [] };
+      actualizarDaily(daily);
+      renderTransportesList();
       renderOrganizacionReservaciones();
     } catch (error) {
       if (activeRequestId !== organizacionRequestId || getOperacionId(selectedTransportOperacion) !== getOperacionId(operacion)) {
@@ -1972,6 +2010,10 @@
       }
 
       organizacionDaily = null;
+      operacionesDailyById = new Map();
+      transportes = transportes.map(function (item) { return Object.assign({}, item, { total_pax_activos: null }); });
+      renderOperaciones();
+      renderTransportesList();
       const message = getBackendMessage(error, "No fue posible cargar las reservaciones de la operación.");
       setOrganizacionMessage(message, "error");
 
@@ -1983,6 +2025,7 @@
     } finally {
       if (activeRequestId === organizacionRequestId && getOperacionId(selectedTransportOperacion) === getOperacionId(operacion)) {
         setOrganizacionLoading(false);
+        updateTransportePrimaryButton();
       }
     }
   }
@@ -1996,14 +2039,12 @@
 
     if (organizacionReservacionesAbierta) {
       organizacionReservacionesAbierta = false;
-      organizacionDaily = null;
       host.innerHTML = "";
       setOrganizacionLoading(false);
       return;
     }
 
     organizacionReservacionesAbierta = true;
-    organizacionDaily = null;
     host.innerHTML = renderOrganizacionShell();
     loadOrganizacionReservaciones(selectedTransportOperacion);
   }
@@ -2126,8 +2167,9 @@
       }
 
       transportes = getArrayResponse(responses[0]);
-      organizacionDaily = responses[1] || { fecha: fecha, operaciones: [], reservaciones_sin_asignar: [] };
+      actualizarDaily(responses[1]);
       renderTransportesList();
+      renderOrganizacionReservaciones();
     } catch (error) {
       if (activeRequestId !== transportesRequestId || getOperacionId(selectedTransportOperacion) !== getOperacionId(operacion)) {
         return;
@@ -2136,6 +2178,11 @@
       const message = getBackendMessage(error, "No fue posible cargar el transporte. Intenta nuevamente.");
 
       transportes = [];
+      organizacionDaily = null;
+      operacionesDailyById = new Map();
+      renderOperaciones();
+      const identidad = document.getElementById("transportes-identidad");
+      if (identidad) identidad.textContent = "Datos por consultar";
       setTransportesMessage(message, "error");
 
       const list = document.getElementById("transportes-list");
@@ -2143,9 +2190,12 @@
       if (list) {
         list.innerHTML = renderTransportesError(message);
       }
+      const organizacion = document.getElementById("reservas-organizacion-content");
+      if (organizacion) organizacion.innerHTML = renderOrganizacionError(message);
     } finally {
       if (activeRequestId === transportesRequestId && getOperacionId(selectedTransportOperacion) === getOperacionId(operacion)) {
         setTransportesLoading(false);
+        updateTransportePrimaryButton();
       }
     }
   }
@@ -2242,13 +2292,7 @@
       salidasSugeridas = getArrayResponse(sugeridas);
       reservacionesSinTurno = Number(sugeridas.reservaciones_sin_turno) || 0;
       operaciones = getArrayResponse(responses[1]).slice().sort(compareOperaciones);
-      operacionesDailyById = new Map();
-
-      getArray(daily.operaciones).forEach(function (operacionDaily) {
-        operacionesDailyById.set(getOperacionId(operacionDaily), operacionDaily);
-      });
-
-      renderOperaciones();
+      actualizarDaily(daily);
     } catch (error) {
       if (activeRequestId !== operacionesRequestId) {
         return;
@@ -2278,6 +2322,7 @@
     const dateInput = document.getElementById("operaciones-fecha");
     const newButton = document.getElementById("operaciones-new");
     const content = document.getElementById("operaciones-content");
+    document.getElementById("operaciones-refresh").addEventListener("click", actualizarVista);
 
     if (dateInput) {
       dateInput.addEventListener("change", function () {
@@ -2329,6 +2374,28 @@
     }
   }
 
+  // Reconsultar el API al pedir actualización o volver a la ventana; no persistir etiquetas.
+  let refreshLoading = false;
+  async function actualizarVista() {
+    if (window.location.hash !== "#/operaciones" || refreshLoading || !App.auth.puedeAccederPagina("operaciones")
+      || submitLoading || transporteSubmitLoading || transportesLoading || organizacionReservacionesLoading
+      || reservacionTransporteLoadingId !== null || document.getElementById("transporte-form") || document.getElementById("operacion-form")) return;
+    refreshLoading = true;
+    const version = App.auth.obtenerVersionSesion();
+    try {
+      await loadOperaciones(currentFecha);
+      if (version !== App.auth.obtenerVersionSesion() || window.location.hash !== "#/operaciones") return;
+      if (selectedTransportOperacion) {
+        const actual = findOperacionById(getOperacionId(selectedTransportOperacion));
+        if (!actual) { closeTransportesPanel(); return; }
+        selectedTransportOperacion = actual;
+        await loadTransportes(actual);
+        await loadTransporteCatalogos();
+      }
+    } finally { refreshLoading = false; }
+  }
+  window.addEventListener("focus", function () { actualizarVista(); });
+
   App.pages.operaciones = {
     resetSession: function () {
       operacionesRequestId += 1;
@@ -2376,7 +2443,7 @@
         '<span class="field-label">Fecha</span>',
         '<input class="input" id="operaciones-fecha" type="date">',
         "</label>",
-        '<div class="operaciones-actions">' + adminControls + "</div>",
+        '<div class="operaciones-actions"><button class="btn" id="operaciones-refresh" type="button">Actualizar</button>' + adminControls + "</div>",
         "</div>",
         '<p class="form-message operaciones-message" id="operaciones-message" role="status" aria-live="polite"></p>',
         '<section id="operaciones-content" aria-live="polite">',

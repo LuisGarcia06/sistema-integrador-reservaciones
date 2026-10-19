@@ -39,6 +39,7 @@ const server=http.createServer(async(req,res)=>{
   case '/api/auth/sesion':data={usuario:current};break;
   case '/api/dashboard/resumen':data={fecha:'2026-10-16',metricas:{},reservaciones_recientes:[],alertas:{}};break;
   case '/api/eventos-integracion':data={data:[]};break;
+  case '/api/eventos-integracion/resumen':data=require('./resumenNotificacionesSintetico.cjs').resumenNotificacionesSintetico([]);break;
   case '/api/daily/operativo':if(restricted){res.writeHead(403);data={mensaje:'Acceso no autorizado'};}else data=active.daily||daily();break;
   case '/api/tours':data={datos:[{id_tour:501,nombre:reservation.tour,activo:true}]};break;
   case '/api/paises':data={datos:[{id_pais:8,nombre:reservation.pais}]};break;
@@ -65,7 +66,12 @@ async function run(){
  const prepare=async scenario=>{
   active=scenario;current=admin;await win.loadURL(origin+'/app/index.html');
   await e(`window.printCalls=0;window.print=()=>{window.printCalls++};App.auth.establecerSesion('token-sintetico',${JSON.stringify(admin)});App.router.navigate('${scenario.daily?'daily':'reservaciones'}')`);
-  if(scenario.daily){await wait("document.querySelector('.daily-print-table') && !document.getElementById('daily-print-button').disabled");}
+  if(scenario.daily){
+   await wait("document.querySelector('.daily-print-table') && !document.getElementById('daily-print-button').disabled");
+   // El fixture tiene fecha fija: no permitir un selector de hoy y una respuesta de otro día.
+   await e(`document.getElementById('daily-fecha').value=${JSON.stringify(scenario.daily.fecha)};document.getElementById('daily-fecha').dispatchEvent(new Event('change'))`);
+   await wait("document.querySelector('.daily-print-table') && !document.getElementById('daily-print-button').disabled");
+  }
   else {await wait("document.querySelector('[data-reservacion-action=print]') && !document.querySelector('[data-reservacion-action=print]').disabled");await e("document.querySelector('[data-reservacion-action=print]').click()");await wait('window.printCalls===1');}
  };
  const text=()=>e(`document.getElementById('${active.daily?'daily':'reservacion'}-print-root').textContent`);

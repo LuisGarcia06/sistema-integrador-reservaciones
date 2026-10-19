@@ -103,6 +103,8 @@
       page.afterRender();
     }
 
+    if (App.notificaciones) App.notificaciones.onRouteRendered(routeId);
+
     pageRoot.focus({ preventScroll: true });
   }
 

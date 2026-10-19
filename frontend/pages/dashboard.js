@@ -4,7 +4,6 @@
 
   const EMPTY_VALUE = "--";
   const TURNO_SIN_CLASIFICAR = "Sin clasificar";
-  const INTEGRATION_REFRESH_MS = 60000;
   const MANUAL_NEW_BOOKING_FIELDS = ["id_tour", "turno", "pickup_place", "pickup_time"];
   const FAREHARBOR_MANUAL_FIELDS = ["id_tour", "turno", "pickup_place", "pickup_time", "ninos", "nombre_cliente"];
   const TURNOS_VALIDOS = ["Mañana", "Tarde"];
@@ -62,12 +61,18 @@
 
   let requestId = 0;
   let currentFecha = "";
+  let integrationRequestId = 0;
+  let dialogRequestId = 0;
   const integrationState = {
     events: [],
+    archiveView: false,
+    archivePage: 1,
+    archivePagination: null,
+    archiveForm: false,
+    archiveReason: "",
     loading: false,
     error: "",
     message: "",
-    timer: null,
     hashListenerBound: false,
     modalEvent: null,
     modalDiff: null,
@@ -442,6 +447,13 @@
   }
 
   function resetIntegrationState() {
+    integrationRequestId += 1;
+    dialogRequestId += 1;
+    integrationState.archiveView = false;
+    integrationState.archivePage = 1;
+    integrationState.archivePagination = null;
+    integrationState.archiveForm = false;
+    integrationState.archiveReason = "";
     integrationState.events = [];
     integrationState.loading = false;
     integrationState.error = "";
@@ -462,15 +474,7 @@
 
   function startIntegrationRefresh() {
     stopIntegrationRefresh();
-
-    integrationState.timer = window.setInterval(function () {
-      if (!isDashboardActive()) {
-        stopIntegrationRefresh();
-        return;
-      }
-
-      loadIntegrationPendientes({ silent: true });
-    }, INTEGRATION_REFRESH_MS);
+    window.addEventListener('integracionesactualizadas', refreshIntegrationPanel);
 
     if (!integrationState.hashListenerBound) {
       window.addEventListener("hashchange", handleDashboardHashChange);
@@ -479,10 +483,11 @@
   }
 
   function stopIntegrationRefresh() {
-    if (integrationState.timer) {
-      window.clearInterval(integrationState.timer);
-      integrationState.timer = null;
-    }
+    window.removeEventListener('integracionesactualizadas', refreshIntegrationPanel);
+  }
+
+  function refreshIntegrationPanel() {
+    if (isDashboardActive() && !isRestricted()) loadIntegrationPendientes({ silent: true });
   }
 
   function getNewBookingPreview(evento) {
@@ -947,6 +952,7 @@
       money.currency ? '<span>' + escapeHtml(String(money.currency).toUpperCase()) + "</span>" : "",
       "</div>",
       '<div class="daily-badges">',
+      evento && evento.archived_at ? '<span class="badge badge-neutral">Archivado</span>' : '',
       '<span class="' + getReviewBadgeClass(evento && evento.review_status) + '">' + escapeHtml(getReviewStatusLabel(evento && evento.review_status)) + "</span>",
       '<span class="' + getApplicationBadgeClass(evento && evento.application_status) + '">' + escapeHtml(getApplicationStatusLabel(evento && evento.application_status)) + "</span>",
       "</div>",
@@ -976,22 +982,26 @@
       '<span>' + escapeHtml(formatDateTime(receivedAt)) + "</span>",
       "</div>",
       '<div class="daily-badges">',
+      evento && evento.archived_at ? '<span class="badge badge-neutral">Archivado</span>' : '',
       '<span class="' + getReviewBadgeClass(evento && evento.review_status) + '">' + escapeHtml(getReviewStatusLabel(evento && evento.review_status)) + "</span>",
       '<span class="' + getApplicationBadgeClass(evento && evento.application_status) + '">' + escapeHtml(getApplicationStatusLabel(evento && evento.application_status)) + "</span>",
       "</div>",
       "</div>",
       '<div class="dashboard-integration-actions">',
-      '<button class="btn btn-ghost" type="button" data-integration-action="review" data-integration-id="' + App.ui.escapeHtml(id) + '">Revisar</button>',
+      '<button class="btn btn-ghost" type="button" data-integration-action="review" data-integration-id="' + App.ui.escapeHtml(id) + '">' + (evento && evento.archived_at ? "Ver" : "Revisar") + '</button>',
       "</div>",
       "</article>"
     ].join("");
   }
 
   function renderIntegrationPanel() {
-    const count = integrationState.events.length;
+    const history = integrationState.archiveView;
+    const pagination = integrationState.archivePagination || {};
+    const globalSummary = App.notificaciones && App.notificaciones.obtenerResumen();
+    const count = history ? (pagination.total || 0) : (globalSummary ? globalSummary.counts.pending : integrationState.events.length);
     let body = "";
 
-    if (integrationState.loading && count === 0) {
+    if (integrationState.loading && integrationState.events.length === 0) {
       body = [
         '<div class="dashboard-integration-loading">',
         '<span class="daily-spinner" aria-hidden="true"></span>',
@@ -1006,7 +1016,8 @@
         "</div>"
       ].join("");
     } else if (count === 0) {
-      body = App.ui.emptyState("No hay pendientes de integración", "Los eventos por revisar o registrar aparecerán aquí.");
+      body = history ? App.ui.emptyState("No hay eventos archivados", "Los eventos archivados permanecen disponibles en este historial.")
+        : App.ui.emptyState("No hay pendientes de integración", "Los eventos por revisar o registrar aparecerán aquí.");
     } else {
       body = '<div class="dashboard-integration-list">' + integrationState.events.map(renderIntegrationEvent).join("") + "</div>";
     }
@@ -1015,13 +1026,19 @@
       '<section class="card stack dashboard-section dashboard-integration-card" id="dashboard-integration-section">',
       '<div class="card-header dashboard-integration-header">',
       "<div>",
-      "<h2>Pendientes de integración</h2>",
-      '<p class="card-text">Eventos externos que requieren revision o registro.</p>',
+      "<h2>" + (history ? "Historial de eventos archivados" : "Pendientes de integración") + "</h2>",
+      '<p class="card-text">' + (history ? "Información conservada; sin aplicación ni restauración desde este historial." : "Eventos externos que requieren revisión o registro.") + '</p>',
+      history ? '' : '<p class="card-text">Aprobado significa revisado. La reservación interna se registra al aplicar el evento.</p>',
+      !history && globalSummary ? '<p class="card-text">Total global: ' + count + '. En este listado: ' + integrationState.events.length + ' eventos. Todos los pendientes están disponibles en Avisos.</p>' : '',
       "</div>",
       '<span class="badge badge-neutral dashboard-integration-count">' + App.ui.escapeHtml(count) + "</span>",
       "</div>",
+      '<label class="field"><span class="field-label">Mostrar eventos</span><select class="input" id="dashboard-integration-filter">',
+      '<option value="active"' + (!history ? ' selected' : '') + '>Pendientes activos</option>',
+      '<option value="archived"' + (history ? ' selected' : '') + '>Archivados</option></select></label>',
       '<div class="form-message is-info dashboard-integration-message">' + App.ui.escapeHtml(integrationState.message) + "</div>",
       body,
+      history && pagination.totalPages > 1 ? '<div class="dashboard-actions"><button class="btn" id="integration-archive-prev"' + (integrationState.archivePage <= 1 || integrationState.loading ? ' disabled' : '') + '>Anterior</button><span>Página ' + App.ui.escapeHtml(integrationState.archivePage) + ' de ' + App.ui.escapeHtml(pagination.totalPages) + '</span><button class="btn" id="integration-archive-next"' + (integrationState.archivePage >= pagination.totalPages || integrationState.loading ? ' disabled' : '') + '>Siguiente</button></div>' : '',
       "</section>"
     ].join("");
   }
@@ -1182,6 +1199,8 @@
     const receivedAt = evento && (evento.source_received_at || evento.received_at || evento.created_at);
 
     return [
+      evento && !evento.archived_at && evento.review_status === "approved" && evento.application_status === "not_applied"
+        ? '<p class="form-message is-info">Aprobado, pendiente de aplicar. La aprobación no significa que la reservación esté registrada.</p>' : "",
       '<div class="dashboard-integration-detail-grid">',
       renderDetailItem("Proveedor", evento && evento.provider),
       renderDetailItem("Booking externo", evento && evento.external_booking_id),
@@ -2223,6 +2242,7 @@
 
     const validation = getFareHarborApplyValidation(evento);
     const missing = getFareHarborManualMissingFields(evento);
+    const blocking = getFareHarborBlockingIssues(evento);
 
     if (validation.valid) {
       status.className = "form-message is-info";
@@ -2231,8 +2251,8 @@
     }
 
     status.className = "form-message is-info";
-    status.textContent = missing.length
-      ? "Faltan datos: " + missing.map(getFieldLabel).join(", ") + "."
+    status.textContent = blocking.length
+      ? "No se puede aplicar: " + blocking.join(" ") + (missing.length ? " Faltan datos: " + missing.map(getFieldLabel).join(", ") + "." : "")
       : validation.errors.join(" ");
   }
 
@@ -2301,7 +2321,7 @@
       "<h3>Datos externos FareHarbor</h3>",
       evento.review_status === "pending_review"
         ? '<p class="form-message is-info">Aprueba esta reserva FareHarbor antes de aplicarla.</p>'
-        : '<p class="form-message is-info">Completa los datos manuales requeridos para aplicar la reserva.</p>',
+        : '<p class="form-message is-info">La aprobación está guardada. Revisa los requisitos y bloqueos antes de registrar la reservación.</p>',
       '<div class="dashboard-integration-detail-grid">',
       renderDetailItem("Actividad externa", external.activity_title),
       renderDetailItem("Opción externa", external.option_title),
@@ -2655,7 +2675,7 @@
     return [
       '<section class="dashboard-integration-block">',
       "<h3>Reserva FareHarbor</h3>",
-      evento.review_status === "pending_review"
+      evento.archived_at ? '' : evento.review_status === "pending_review"
         ? '<p class="form-message is-info">Aprueba esta reserva FareHarbor antes de aplicarla.</p>'
         : '<p class="form-message is-info">Completa los datos manuales requeridos para aplicar la reserva.</p>',
       '<div class="dashboard-integration-detail-grid">',
@@ -2696,13 +2716,33 @@
   }
 
 
+  function canArchive(evento) {
+    return Boolean(App.auth && App.auth.esAdministrador() && evento && !evento.archived_at
+      && evento.application_status === "not_applied" && ["pending_review", "approved"].indexOf(evento.review_status) !== -1);
+  }
+
+  function renderArchiveButton() {
+    return '<button class="btn btn-ghost" type="button" data-dialog-action="archive"' + (integrationState.actionLoading ? ' disabled' : '') + '>Archivar evento</button>';
+  }
+
+  function renderArchiveMetadata(evento) {
+    return '<section class="dashboard-integration-block"><h3>Evento archivado</h3><div class="dashboard-integration-detail-grid">' +
+      renderDetailItem("Fecha de archivo", formatDateTimeLocal(evento.archived_at)) +
+      renderDetailItem("Responsable", (evento.archived_by_name ? evento.archived_by_name + " · " : "") + "Usuario #" + evento.archived_by) +
+      renderDetailItem("Motivo", evento.archive_reason) + '</div><p class="card-text">Se conserva la revisión original. Este evento no puede aplicarse.</p></section>';
+  }
+
   function renderDialogActions(evento, diff) {
+    if (!evento) return '<button class="btn" type="button" data-dialog-action="close">Cerrar</button>';
+    if (evento && evento.archived_at) return '<button class="btn" type="button" data-dialog-action="close">Cerrar</button>';
+    if (integrationState.archiveForm) return '<button class="btn" type="button" data-dialog-action="cancel-archive"' + (integrationState.actionLoading ? ' disabled' : '') + '>Volver</button><button class="btn btn-primary" type="button" data-dialog-action="confirm-archive"' + (integrationState.actionLoading || !integrationState.archiveReason.trim() ? ' disabled' : '') + '>Confirmar archivo</button>';
     if (isFareHarborEvent(evento)) {
       const isAdmin = App.auth && App.auth.esAdministrador();
       const reviewStatus = evento && evento.review_status;
       const applicationStatus = evento && evento.application_status;
       const disabled = integrationState.actionLoading ? " disabled" : "";
       const actions = ['<button class="btn" type="button" data-dialog-action="close">Cerrar</button>'];
+      if (canArchive(evento)) actions.unshift(renderArchiveButton());
 
       if (isFareHarborModificationEvent(evento)) {
         if (!isAdmin) {
@@ -2755,6 +2795,7 @@
     const type = evento && evento.event_type;
     const disabled = integrationState.actionLoading ? " disabled" : "";
     const actions = ['<button class="btn" type="button" data-dialog-action="close">Cerrar</button>'];
+    if (canArchive(evento)) actions.unshift(renderArchiveButton());
 
     if (!isAdmin) {
       actions.unshift('<span class="card-text dashboard-integration-readonly">Modo consulta: solo lectura.</span>');
@@ -2795,7 +2836,7 @@
       return;
     }
 
-    if (!integrationState.modalLoading && !evento) {
+    if (!integrationState.modalLoading && !evento && !integrationState.modalError) {
       host.innerHTML = "";
       return;
     }
@@ -2807,6 +2848,13 @@
         '<p class="card-text">Cargando evento de integración.</p>',
         "</div>"
       ].join("");
+    } else if (!evento) {
+      content = '<p class="card-text">No se muestra información anterior del evento. Consulta nuevamente los pendientes.</p>';
+    } else if (integrationState.archiveForm) {
+      content = renderCommonIntegrationDetails(evento) + '<section class="dashboard-integration-block"><h3>Archivar evento</h3><p class="dashboard-integration-warning">Este evento dejará de aparecer entre los pendientes activos. Su información permanecerá disponible en el historial. Esta acción no modifica reservaciones ni datos del proveedor.</p><label class="field"><span>Motivo obligatorio (hasta 500 caracteres)</span><textarea class="dashboard-integration-textarea" id="integration-archive-reason" maxlength="500" required>' + App.ui.escapeHtml(integrationState.archiveReason) + '</textarea></label></section>';
+    } else if (evento && evento.archived_at) {
+      content = renderCommonIntegrationDetails(evento) + renderArchiveMetadata(evento) +
+        (isFareHarborEvent(evento) ? renderFareHarborReadOnly(evento) : renderNormalizedData(evento));
     } else if (isFareHarborModificationEvent(evento)) {
       content = renderFareHarborModificationDiff(evento, diff);
     } else if (isFareHarborCancellationEvent(evento)) {
@@ -2871,6 +2919,23 @@
   function bindIntegrationPanelEvents() {
     const retry = document.getElementById("dashboard-integration-retry");
     const buttons = document.querySelectorAll("[data-integration-action='review']");
+    const filter = document.getElementById("dashboard-integration-filter");
+    if (filter) filter.addEventListener("change", function () {
+      integrationState.archiveView = filter.value === "archived";
+      integrationState.archivePage = 1;
+      integrationState.events = [];
+      integrationState.archivePagination = null;
+      integrationState.message = "";
+      closeIntegrationDialog();
+      loadIntegrationPendientes({ silent: false });
+    });
+    [["integration-archive-prev", -1], ["integration-archive-next", 1]].forEach(function (item) {
+      const button = document.getElementById(item[0]);
+      if (button) button.addEventListener("click", function () {
+        integrationState.archivePage += item[1];
+        loadIntegrationPendientes({ silent: false });
+      });
+    });
 
     if (retry) {
       retry.addEventListener("click", function () {
@@ -2891,6 +2956,12 @@
     if (!host) {
       return;
     }
+    const reason = document.getElementById("integration-archive-reason");
+    if (reason) reason.addEventListener("input", function () {
+      integrationState.archiveReason = reason.value;
+      const button = host.querySelector('[data-dialog-action="confirm-archive"]');
+      if (button) button.disabled = integrationState.actionLoading || !reason.value.trim() || Array.from(reason.value.trim()).length > 500;
+    });
 
     host.querySelectorAll("[data-dialog-action]").forEach(function (button) {
       button.addEventListener("click", function () {
@@ -2959,34 +3030,53 @@
     updateFareHarborModificationApplyButtonState();
     updateFareHarborCancellationApplyButtonState();
   }
-  async function loadIntegrationPendientes(options) {
+  let integrationListPromise = null, integrationListKey = '';
+  function loadIntegrationPendientes(options) {
+    const key = String(integrationState.archiveView) + ':' + integrationState.archivePage;
+    if (integrationListPromise && key === integrationListKey) return integrationListPromise;
+    integrationListKey = key;
+    const pending = fetchIntegrationPendientes(options);
+    integrationListPromise = pending;
+    pending.finally(function () { if (integrationListPromise === pending) integrationListPromise = null; });
+    return pending;
+  }
+  async function fetchIntegrationPendientes(options) {
     const config = options || {};
 
     if (!isDashboardActive() || isRestricted()) {
       return;
     }
 
+    const activeId = ++integrationRequestId;
+
     integrationState.loading = !config.silent;
     integrationState.error = "";
     renderIntegrationSection();
 
     try {
-      const pendingResponse = await App.api.apiFetch(getOperationalListPath("pending_review"));
-      const approvedResponse = await App.api.apiFetch(getOperationalListPath("approved"));
+      if (integrationState.archiveView) {
+        const response = await App.api.apiFetch('/api/eventos-integracion?archived=true&limit=25&page=' + integrationState.archivePage);
+        if (activeId !== integrationRequestId || !isDashboardActive() || isRestricted()) return;
+        integrationState.events = getIntegrationList(response);
+        integrationState.archivePagination = response.pagination;
+      } else {
+        const pendingResponse = await App.api.apiFetch(getOperationalListPath("pending_review"));
+        const approvedResponse = await App.api.apiFetch(getOperationalListPath("approved"));
 
-      if (!isDashboardActive()) {
+      if (activeId !== integrationRequestId || !isDashboardActive() || isRestricted()) {
         return;
       }
 
       integrationState.events = buildPendingIntegrationEvents(pendingResponse, approvedResponse);
+      }
     } catch (error) {
-      if (!isDashboardActive()) {
+      if (activeId !== integrationRequestId || !isDashboardActive()) {
         return;
       }
 
       integrationState.error = getIntegrationErrorMessage(error, "No fue posible cargar los pendientes de integración.");
     } finally {
-      if (isDashboardActive()) {
+      if (activeId === integrationRequestId && isDashboardActive()) {
         integrationState.loading = false;
         renderIntegrationSection();
       }
@@ -3014,6 +3104,10 @@
 
   async function openIntegrationDialog(id, options) {
     const config = options || {};
+    if (!isDashboardActive() || isRestricted()) return;
+    const activeDialog = ++dialogRequestId;
+    integrationState.archiveForm = false;
+    integrationState.archiveReason = "";
 
     if (!config.preserveFareHarborManualValues) {
       resetFareHarborManualValues();
@@ -3038,31 +3132,51 @@
       const evento = getIntegrationDetail(detailResponse);
       let diff = null;
 
-      if (evento && (evento.event_type === "modification" || isFareHarborCancellationEvent(evento))) {
+      if (config.fromNotification && (!evento || evento.archived_at || evento.application_status === 'applied'
+        || !['pending_review', 'approved'].includes(evento.review_status))) {
+        if (App.notificaciones) App.notificaciones.refresh();
+        const changed = new Error('Evento actualizado');
+        changed.data = { mensaje: 'Este evento ya no está pendiente. Actualiza los avisos para consultar su estado actual.' };
+        throw changed;
+      }
+
+      if (evento && !evento.archived_at && (evento.event_type === "modification" || isFareHarborCancellationEvent(evento))) {
         const diffResponse = await App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/diff");
         diff = getIntegrationDetail(diffResponse);
       }
 
-      if (evento && evento.event_type === "new_booking" && needsManualField(evento, "id_tour")) {
+      if (evento && !evento.archived_at && evento.event_type === "new_booking" && needsManualField(evento, "id_tour")) {
         await loadIntegrationToursIfNeeded();
       }
 
-      if (isFareHarborModificationEvent(evento)) {
+      if (evento && !evento.archived_at && isFareHarborModificationEvent(evento)) {
         await loadIntegrationToursIfNeeded();
         preserveFareHarborModificationStateForDiff(diff);
       }
 
+      if (activeDialog !== dialogRequestId || !isDashboardActive() || isRestricted()) return;
       integrationState.modalEvent = evento;
       integrationState.modalDiff = diff;
     } catch (error) {
+      if (activeDialog !== dialogRequestId) return;
       integrationState.modalError = getIntegrationErrorMessage(error, "No fue posible cargar el evento.");
     } finally {
-      integrationState.modalLoading = false;
-      renderIntegrationDialog();
+      if (activeDialog === dialogRequestId) {
+        integrationState.modalLoading = false;
+        renderIntegrationDialog();
+        if (config.fromNotification) document.querySelector('#dashboard-integration-dialog-host [data-dialog-action="close"]')?.focus({ preventScroll: true });
+        if (integrationState.modalEvent && !integrationState.modalEvent.archived_at
+          && integrationState.modalEvent.application_status !== 'applied'
+          && ['pending_review', 'approved'].includes(integrationState.modalEvent.review_status)
+          && App.notificaciones) App.notificaciones.markSeen(Number(id));
+      }
     }
   }
 
   function closeIntegrationDialog() {
+    dialogRequestId += 1;
+    integrationState.archiveForm = false;
+    integrationState.archiveReason = "";
     const host = document.getElementById("dashboard-integration-dialog-host");
 
     integrationState.modalEvent = null;
@@ -3079,8 +3193,13 @@
     }
   }
 
+  async function integrationMutation(path, options) {
+    const response = await App.api.apiFetch(path, options);
+    if (App.notificaciones) App.notificaciones.refresh();
+    return response;
+  }
   async function approveIntegrationEvent(id) {
-    return App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/revision", {
+    return integrationMutation("/api/eventos-integracion/" + encodeURIComponent(id) + "/revision", {
       method: "PATCH",
       body: {
         accion: "approve",
@@ -3090,7 +3209,7 @@
   }
 
   async function dismissIntegrationEvent(id) {
-    return App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/revision", {
+    return integrationMutation("/api/eventos-integracion/" + encodeURIComponent(id) + "/revision", {
       method: "PATCH",
       body: {
         accion: "dismiss",
@@ -3100,7 +3219,7 @@
   }
 
   async function applyIntegrationEvent(id, completar) {
-    return App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/aplicar", {
+    return integrationMutation("/api/eventos-integracion/" + encodeURIComponent(id) + "/aplicar", {
       method: "POST",
       body: {
         completar: completar || {}
@@ -3109,14 +3228,14 @@
   }
 
   async function applyFareHarborModificationEvent(id, body) {
-    return App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/aplicar", {
+    return integrationMutation("/api/eventos-integracion/" + encodeURIComponent(id) + "/aplicar", {
       method: "POST",
       body: body
     });
   }
 
   async function applyFareHarborCancellationEvent(id, body) {
-    return App.api.apiFetch("/api/eventos-integracion/" + encodeURIComponent(id) + "/aplicar", {
+    return integrationMutation("/api/eventos-integracion/" + encodeURIComponent(id) + "/aplicar", {
       method: "POST",
       body: body
     });
@@ -3619,10 +3738,54 @@
     }
   }
 
+  async function archiveCurrentEvent() {
+    const evento = integrationState.modalEvent;
+    const motivo = integrationState.archiveReason.trim();
+    if (!canArchive(evento) || !motivo || Array.from(motivo).length > 500) return;
+    const id = getIntegrationId(evento);
+    const version = App.auth.obtenerVersionSesion();
+    const dialog = dialogRequestId;
+    integrationState.actionLoading = true;
+    integrationState.modalError = "";
+    renderIntegrationDialog();
+    try {
+      await integrationMutation('/api/eventos-integracion/' + encodeURIComponent(id) + '/archivo', { method: 'PATCH', body: { motivo: motivo } });
+      if (version !== App.auth.obtenerVersionSesion() || dialog !== dialogRequestId || !isDashboardActive()) return;
+      closeIntegrationDialog();
+      integrationState.events = integrationState.events.filter(function (item) { return String(getIntegrationId(item)) !== String(id); });
+      integrationState.message = "Evento archivado. Puedes consultarlo en Archivados.";
+      await loadIntegrationPendientes({ silent: true });
+    } catch (error) {
+      if (version !== App.auth.obtenerVersionSesion() || dialog !== dialogRequestId || !isDashboardActive()) return;
+      if (error.status === 409) {
+        closeIntegrationDialog();
+        integrationState.message = getIntegrationErrorMessage(error, "El evento cambió. Se actualizaron los pendientes.");
+        await loadIntegrationPendientes({ silent: true });
+        return;
+      }
+      integrationState.modalError = getIntegrationErrorMessage(error, "No fue posible archivar el evento.");
+    } finally {
+      if (version === App.auth.obtenerVersionSesion() && dialog === dialogRequestId) {
+        integrationState.actionLoading = false;
+        renderIntegrationDialog();
+      }
+    }
+  }
+
   function handleIntegrationDialogAction(action) {
     if (integrationState.actionLoading) {
       return;
     }
+
+    if (action === "archive" && canArchive(integrationState.modalEvent)) {
+      integrationState.archiveForm = true;
+      integrationState.archiveReason = "";
+      renderIntegrationDialog();
+      document.getElementById('integration-archive-reason').focus();
+      return;
+    }
+    if (action === "cancel-archive") { integrationState.archiveForm = false; renderIntegrationDialog(); return; }
+    if (action === "confirm-archive") { archiveCurrentEvent(); return; }
 
     if (action === "close") {
       closeIntegrationDialog();
@@ -3711,7 +3874,9 @@
   }
 
   App.pages.dashboard = {
+    openNotificationEvent: function (id) { return openIntegrationDialog(id, { fromNotification: true }); },
     resetSession: function () {
+      integrationListPromise = null;
       requestId += 1;
       currentFecha = '';
       stopIntegrationRefresh();

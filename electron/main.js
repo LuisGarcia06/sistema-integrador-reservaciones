@@ -1,5 +1,4 @@
 const { app, BrowserWindow, dialog, ipcMain } = require('electron');
-const { spawn } = require('child_process');
 const fs = require('fs/promises');
 const http = require('http');
 const path = require('path');
@@ -8,14 +7,14 @@ const BACKEND_PORT = 3000;
 const BACKEND_HOST = '127.0.0.1';
 const APP_ORIGIN = `http://${BACKEND_HOST}:${BACKEND_PORT}`;
 const APP_URL = `${APP_ORIGIN}/app/`;
-const HEALTH_URL_PATH = '/';
-const HEALTH_RESPONSE_TEXT = 'API del Sistema Integrador de Reservaciones funcionando';
-const STARTUP_TIMEOUT_MS = 15000;
-const RETRY_INTERVAL_MS = 350;
 const EXPORT_DAILY_PDF_CHANNEL = 'daily:export-pdf';
 const PACKAGED_CONFIG_FILE = 'config.env';
-const DEV_DB02 = process.env.APP_DEV_DB02 === '1';
-const PRINCIPAL_TEST = process.env.APP_PRINCIPAL_TEST === '1';
+const explicitDev = (process.argv || []).includes('--ctsk-mode=dev');
+const explicitPrincipalTest = (process.argv || []).includes('--ctsk-mode=principal-test');
+const modeConflict = explicitDev !== (process.env.APP_DEV_DB02 === '1') ||
+    explicitPrincipalTest !== (process.env.APP_PRINCIPAL_TEST === '1') || (explicitDev && explicitPrincipalTest);
+const DEV_DB02 = explicitDev && !modeConflict;
+const PRINCIPAL_TEST = explicitPrincipalTest && !modeConflict;
 if (PRINCIPAL_TEST) {
     if (DEV_DB02 || app.isPackaged) throw new Error('Pruebas de principal requieren fuentes y modo exclusivo.');
     const principal = require('../scripts/prodAccessTest.cjs');
@@ -29,17 +28,11 @@ if (DEV_DB02) {
     app.setPath('userData', path.join(dev.LAB, 'electron-profile'));
 }
 
-const REQUIRED_CONFIG_KEYS = [
-    'DB_HOST',
-    'DB_PORT',
-    'DB_NAME',
-    'DB_USER',
-    'DB_PASSWORD',
-    'JWT_SECRET'
-];
-
 let mainWindow = null;
 let backendProcess = null;
+let ownedBackend = null;
+let backendVerified = false;
+let startupAbort = null;
 let isQuitting = false;
 let isExportingDailyPdf = false;
 
@@ -87,30 +80,6 @@ function requestLocalPath(pathname, timeoutMs = 1200, token = null) {
     });
 }
 
-async function isExpectedBackendAvailable() {
-    const response = await requestLocalPath(HEALTH_URL_PATH);
-
-    return Boolean(
-        response &&
-        response.statusCode === 200 &&
-        response.body.trim() === HEALTH_RESPONSE_TEXT
-    );
-}
-
-async function waitForBackend(timeoutMs = STARTUP_TIMEOUT_MS) {
-    const startedAt = Date.now();
-
-    while (Date.now() - startedAt < timeoutMs) {
-        if (await isExpectedBackendAvailable()) {
-            return true;
-        }
-
-        await new Promise((resolve) => setTimeout(resolve, RETRY_INTERVAL_MS));
-    }
-
-    return false;
-}
-
 function getRuntimeRoot() {
     if (app.isPackaged) {
         return path.join(process.resourcesPath, 'app.asar.unpacked');
@@ -119,116 +88,8 @@ function getRuntimeRoot() {
     return path.join(__dirname, '..');
 }
 
-function getBackendServerPath() {
-    return path.join(getRuntimeRoot(), 'backend', 'server.js');
-}
-
-function getPackagedConfigPath() {
-    return path.join(app.getPath('userData'), PACKAGED_CONFIG_FILE);
-}
-
-function createConfigError(code, message, configPath) {
-    const error = new Error(message);
-    error.code = code;
-    error.configPath = configPath;
-    return error;
-}
-
-function parseEnvKeys(content) {
-    const keys = new Map();
-
-    content.split(/\r?\n/).forEach((line) => {
-        const trimmedLine = line.trim();
-
-        if (!trimmedLine || trimmedLine.startsWith('#')) {
-            return;
-        }
-
-        const separatorIndex = trimmedLine.indexOf('=');
-
-        if (separatorIndex <= 0) {
-            return;
-        }
-
-        const key = trimmedLine.slice(0, separatorIndex).trim();
-        const value = trimmedLine.slice(separatorIndex + 1).trim();
-
-        keys.set(key, value);
-    });
-
-    return keys;
-}
-
-async function validatePackagedConfig() {
-    const configPath = getPackagedConfigPath();
-    let content;
-
-    try {
-        content = await fs.readFile(configPath, 'utf8');
-    } catch (error) {
-        throw createConfigError(
-            'config_missing',
-            'La aplicacion no esta configurada para conectarse a la base de datos.',
-            configPath
-        );
-    }
-
-    const keys = parseEnvKeys(content);
-    const missingKeys = REQUIRED_CONFIG_KEYS.filter((key) => !keys.get(key));
-
-    if (missingKeys.length > 0) {
-        throw createConfigError(
-            'config_invalid',
-            'La configuracion de la aplicacion esta incompleta.',
-            configPath
-        );
-    }
-
-    return configPath;
-}
-
-async function buildBackendEnvironment() {
-    const env = Object.assign({}, process.env, {
-        ELECTRON_RUN_AS_NODE: '1'
-    });
-
-    if (app.isPackaged) {
-        env.APP_CONFIG_PATH = await validatePackagedConfig();
-    }
-
-    return env;
-}
-
-async function startBackend() {
-    const runtimeRoot = getRuntimeRoot();
-    const serverPath = getBackendServerPath();
-    const backendEnv = await buildBackendEnvironment();
-
-    backendProcess = spawn(process.execPath, [serverPath], {
-        cwd: runtimeRoot,
-        env: backendEnv,
-        stdio: ['ignore', 'pipe', 'pipe'],
-        windowsHide: true
-    });
-
-    backendProcess.stdout.on('data', (data) => {
-        console.log(`[backend] ${data.toString().trim()}`);
-    });
-
-    backendProcess.stderr.on('data', (data) => {
-        console.error(`[backend] ${data.toString().trim()}`);
-    });
-
-    backendProcess.on('exit', (code, signal) => {
-        if (!isQuitting) {
-            console.error(`Backend finalizo inesperadamente. code=${code} signal=${signal}`);
-        }
-
-        backendProcess = null;
-    });
-}
-
 async function ensureBackend() {
+    if (modeConflict) require(path.join(__dirname, '../backend/config/desktopPolicy')).fail('ENV_CONFLICT');
     if (PRINCIPAL_TEST) {
         if (!gotSingleInstanceLock) throw new Error('La instancia de pruebas principal ya esta abierta.');
         const principal = require('../scripts/prodAccessTest.cjs');
@@ -248,17 +109,25 @@ async function ensureBackend() {
         return;
     }
 
-    if (await waitForBackend(1200)) {
-        return;
-    }
-
-    await startBackend();
-
-    if (await waitForBackend()) {
-        return;
-    }
-
-    throw new Error('No se pudo iniciar el backend local.');
+    if (!gotSingleInstanceLock || isQuitting) throw new Error('Inicio cancelado.');
+    startupAbort = new AbortController();
+    const runtimeRoot = getRuntimeRoot();
+    ownedBackend = await require('./ownedBackend').startOwnedBackend({
+        execPath: process.execPath, root: runtimeRoot,
+        configPath: app.isPackaged ? path.join(app.getPath('userData'), PACKAGED_CONFIG_FILE)
+            : path.join(runtimeRoot, '.env'),
+        signal: startupAbort.signal,
+        onExit: () => {
+            backendVerified = false;
+            if (!isQuitting) {
+                showStartupError({ code: 'CHILD_EXIT' });
+                isQuitting = true;
+                mainWindow?.destroy();
+                app.quit();
+            }
+        }
+    });
+    backendProcess = ownedBackend.process;
 }
 
 function isAllowedAppUrl(targetUrl) {
@@ -379,6 +248,7 @@ ipcMain.handle(EXPORT_DAILY_PDF_CHANNEL, async (event, payload) => {
 });
 
 function createMainWindow() {
+    if (!backendVerified || isQuitting) return;
     mainWindow = new BrowserWindow({
         width: 1366,
         height: 768,
@@ -396,6 +266,15 @@ function createMainWindow() {
     });
 
     if (PRINCIPAL_TEST) require('../scripts/prodAccessTest.cjs').restrictRendererNetwork(mainWindow.webContents.session);
+    if (!PRINCIPAL_TEST && !DEV_DB02) {
+        mainWindow.webContents.session.webRequest.onBeforeRequest((details, callback) => {
+            let allowed = false;
+            try { allowed = new URL(details.url).origin === APP_ORIGIN; } catch (_) {}
+            callback({ cancel: !allowed });
+        });
+        mainWindow.webContents.session.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
+        mainWindow.webContents.session.setPermissionCheckHandler(() => false);
+    }
 
     mainWindow.setMenuBarVisibility(false);
     mainWindow.maximize();
@@ -428,23 +307,19 @@ function createMainWindow() {
 }
 
 function showStartupError(error) {
-    console.error(error);
-
-    if (error && (error.code === 'config_missing' || error.code === 'config_invalid')) {
-        dialog.showErrorBox(
-            'Configuracion requerida',
-            `${error.message}\n\nArchivo esperado:\n${error.configPath}`
-        );
-        return;
-    }
-
-    dialog.showErrorBox(
-        'No se pudo abrir la aplicacion',
-        'El backend local no esta disponible. Revisa PostgreSQL y vuelve a intentar.'
-    );
+    const { MESSAGES, safeCode } = require(path.join(__dirname, '../backend/config/desktopPolicy'));
+    const code = safeCode(error);
+    console.error('Arranque detenido:', code);
+    dialog.showErrorBox('No se pudo abrir la aplicación', MESSAGES[code]);
 }
 
 function stopOwnedBackend() {
+    backendVerified = false;
+    startupAbort?.abort();
+    if (ownedBackend) {
+        ownedBackend.stop(); ownedBackend = null; backendProcess = null;
+        return;
+    }
     if (!backendProcess) {
         return;
     }
@@ -469,9 +344,11 @@ app.on('second-instance', () => {
     mainWindow.focus();
 });
 
-app.whenReady()
+if (gotSingleInstanceLock) app.whenReady()
     .then(async () => {
         await ensureBackend();
+        if (isQuitting) { stopOwnedBackend(); return; }
+        backendVerified = true;
         createMainWindow();
     })
     .catch((error) => {

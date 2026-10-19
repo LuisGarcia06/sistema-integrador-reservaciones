@@ -28,6 +28,7 @@ const server=http.createServer(async(req,res)=>{
  case '/api/auth/sesion':data={usuario:user};break;
  case '/api/dashboard/resumen':data={fecha:'2026-10-16',alcance_parcial:restricted,metricas:{reservaciones_vigentes:7,pax_vigentes:19,grupos_preparados:1,grupos_pendientes:1},alertas:{},reservaciones_recientes:rows.filter(r=>!restricted||r.id_plataforma===17).slice(0,3),salidas_hoy:[]};break;
  case '/api/eventos-integracion':data={data:[]};break;
+ case '/api/eventos-integracion/resumen':data=require('./resumenNotificacionesSintetico.cjs').resumenNotificacionesSintetico();break;
  case '/api/usuarios':data={datos:users};break;
  case '/api/usuarios/roles':data={datos:[{id_rol:10,nombre:'Administrador'},{id_rol:20,nombre:'Consulta'}]};break;
  case '/api/tours':data={datos:[{id_tour:501,nombre:reservation.tour,activo:true}]};break;

@@ -1,4 +1,5 @@
 const eventosIntegracionService = require('../services/eventosIntegracion.service');
+const { obtenerResumenNotificaciones } = require('../services/notificacionesIntegracion.service');
 const {
     aplicarNuevaReservaGetYourGuide,
     obtenerPreviewNuevaReservaGetYourGuideConDb,
@@ -24,6 +25,7 @@ const responderFareHarborNoHabilitado = (res) => res.status(409).json({
 });
 
 const {
+    validarArchivoEventoIntegracion,
     validarAplicacionFareHarbor,
     validarAplicacionFareHarborCancellation,
     validarAplicacionFareHarborModification,
@@ -79,7 +81,7 @@ const obtenerEventoIntegracion = async (req, res) => {
 
         let datos = evento;
 
-        if (evento.provider === 'getyourguide' && evento.event_type === 'new_booking') {
+        if (!evento.archived_at && evento.provider === 'getyourguide' && evento.event_type === 'new_booking') {
             const preview = await obtenerPreviewNuevaReservaGetYourGuideConDb(undefined, evento, {});
             datos = {
                 ...evento,
@@ -89,6 +91,7 @@ const obtenerEventoIntegracion = async (req, res) => {
 
         if (
             esEventoFareHarbor(evento)
+            && !evento.archived_at
             && evento.event_type === 'new_booking'
             && puedeRecibirPreviewFareHarbor(req)
         ) {
@@ -158,6 +161,7 @@ const revisarEventoIntegracion = async (req, res) => {
             });
         }
 
+        if (resultado.tipo === 'evento_archivado') return responderEventoArchivado(res);
         if (resultado.tipo === 'ya_revisado') {
             return res.status(409).json({
                 mensaje: 'El evento de integracion ya fue revisado',
@@ -254,6 +258,7 @@ const obtenerDiffEventoIntegracion = async (req, res) => {
 
 
 const responderResultadoAplicacionFareHarbor = (res, resultado) => {
+    if (resultado.tipo === 'evento_archivado') return responderEventoArchivado(res);
     if (resultado.tipo === 'no_encontrado') {
         return res.status(404).json({
             mensaje: 'Evento de integracion no encontrado',
@@ -335,6 +340,7 @@ const responderResultadoAplicacionFareHarbor = (res, resultado) => {
 };
 
 const responderResultadoModificationFareHarbor = (res, resultado) => {
+    if (resultado.tipo === 'evento_archivado') return responderEventoArchivado(res);
     if (resultado.tipo === 'no_encontrado') {
         return res.status(404).json({
             mensaje: 'Evento de integracion no encontrado',
@@ -394,6 +400,7 @@ const responderResultadoModificationFareHarbor = (res, resultado) => {
 
 
 const responderResultadoCancellationFareHarbor = (res, resultado) => {
+    if (resultado.tipo === 'evento_archivado') return responderEventoArchivado(res);
     if (resultado.tipo === 'no_encontrado') {
         return res.status(404).json({
             mensaje: 'Evento de integracion no encontrado',
@@ -475,6 +482,7 @@ const aplicarEventoIntegracion = async (req, res) => {
             });
         }
 
+        if (evento.archived_at) return responderEventoArchivado(res);
         if (esEventoFareHarbor(evento)) {
             if (evento.event_type === 'new_booking') {
                 const { errores, aplicacion } = validarAplicacionFareHarbor(req.body || {});
@@ -550,6 +558,8 @@ const aplicarEventoIntegracion = async (req, res) => {
             req.usuario.id_usuario,
             aplicacion.completar
         );
+
+        if (resultado.tipo === 'evento_archivado') return responderEventoArchivado(res);
 
         if (resultado.tipo === 'no_encontrado') {
             return res.status(404).json({
@@ -634,7 +644,43 @@ const aplicarEventoIntegracion = async (req, res) => {
         });
     }
 };
+const responderEventoArchivado = (res) => res.status(409).json({ mensaje: 'El evento está archivado y no puede revisarse ni aplicarse.' });
+
+const archivarEventoIntegracion = async (req, res) => {
+    const idEventoIntegracion = validarIdEventoIntegracion(req.params.id);
+    if (idEventoIntegracion === null) return res.status(400).json({ mensaje: 'El id del evento debe ser un entero válido' });
+    const { errores, motivo } = validarArchivoEventoIntegracion(req.body);
+    if (errores.length) return res.status(400).json({ mensaje: 'Datos inválidos', errores });
+    try {
+        const resultado = await eventosIntegracionService.archivarEventoIntegracion({
+            idEventoIntegracion, idUsuario: req.usuario.id_usuario, motivo
+        });
+        if (resultado.tipo === 'no_encontrado') return res.status(404).json({ mensaje: 'Evento de integración no encontrado' });
+        if (resultado.tipo === 'motivo_invalido') return res.status(400).json({ mensaje: 'Motivo inválido' });
+        if (resultado.tipo !== 'archivado') return res.status(409).json({
+            mensaje: resultado.tipo === 'ya_archivado' ? 'El evento ya fue archivado; se conserva el archivo original.'
+                : resultado.tipo === 'ya_aplicado' ? 'No se puede archivar un evento aplicado.'
+                : 'El evento cambió o su estado no permite archivarlo. Actualiza los datos.'
+        });
+        return res.status(200).json({ mensaje: 'Evento archivado correctamente', datos: resultado.event });
+    } catch (error) {
+        console.error('Error al archivar evento de integración:', error.code || 'ARCHIVE_ERROR');
+        return res.status(500).json({ mensaje: 'No fue posible archivar el evento' });
+    }
+};
+
+const obtenerResumenEventosIntegracion = async (_req, res) => {
+    try {
+        return res.status(200).json({ datos: await obtenerResumenNotificaciones() });
+    } catch (error) {
+        console.error('Error al consultar resumen de eventos:', error.code || 'SUMMARY_ERROR');
+        return res.status(500).json({ mensaje: 'No fue posible actualizar los avisos de integración.' });
+    }
+};
+
 module.exports = {
+    obtenerResumenEventosIntegracion,
+    archivarEventoIntegracion,
     aplicarEventoIntegracion,
     obtenerDiffEventoIntegracion,
     listarEventosIntegracion,

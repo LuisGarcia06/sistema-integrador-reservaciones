@@ -573,6 +573,7 @@ async function obtenerEventoParaAplicacion(db, idEventoIntegracion) {
                 event_type,
                 review_status,
                 application_status,
+                archived_at,
                 applied_at,
                 applied_by,
                 normalized_data,
@@ -663,6 +664,7 @@ async function marcarEventoAplicado(db, { idEventoIntegracion, idUsuario }) {
                 updated_at = CURRENT_TIMESTAMP
             WHERE id_evento_integracion = $3
               AND application_status = $4
+              AND archived_at IS NULL
             RETURNING
                 id_evento_integracion,
                 review_status,
@@ -914,6 +916,11 @@ async function aplicarNuevaReservaFareHarbor(idEventoIntegracion, usuarioId, com
         if (!evento) {
             await client.query('ROLLBACK');
             return crearResultado('no_encontrado');
+        }
+
+        if (evento.archived_at) {
+            await client.query('ROLLBACK');
+            return crearResultado('evento_archivado');
         }
 
         if (evento.provider !== PROVIDER_FAREHARBOR) {

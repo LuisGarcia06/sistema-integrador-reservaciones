@@ -17,15 +17,9 @@ const vehiculosRoutes = require('./routes/vehiculos.routes');
 // WhatsApp deshabilitado por decision del proyecto; no cargar ni montar sus rutas.
 const fareharborWebhookRoutes = require('./routes/fareharborWebhook.routes');
 const eventosIntegracionRoutes = require('./routes/eventosIntegracion.routes');
-const {
-    iniciarWorkerSincronizacion,
-    detenerWorkerSincronizacion
-} = require('./integrations/getyourguide/getyourguideGmailSync.service');
 
 const app = express();
 const frontendPath = path.join(__dirname, '..', 'frontend');
-const PORT = 3000;
-const HOST = '127.0.0.1';
 const CONTENT_SECURITY_POLICY = [
     "default-src 'self'",
     "script-src 'self'",
@@ -91,20 +85,8 @@ app.get('/', (req, res) => {
 });
 
 if (require.main === module) {
-    const server = app.listen(PORT, HOST, () => {
-        console.log(`Servidor ejecutándose en http://${HOST}:${PORT}`);
-        iniciarWorkerSincronizacion();
-    });
-
-    const cerrarServidor = () => {
-        detenerWorkerSincronizacion();
-        server.close(() => {
-            process.exit(0);
-        });
-    };
-
-    process.on('SIGINT', cerrarServidor);
-    process.on('SIGTERM', cerrarServidor);
+    console.error('Inicio directo deshabilitado. Utilice Electron con su configuración autorizada y canal privado.');
+    process.exitCode = 1;
 }
 
 module.exports = app;

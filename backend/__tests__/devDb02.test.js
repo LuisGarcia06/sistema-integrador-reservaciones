@@ -56,7 +56,7 @@ describe('Electron DEV: no reutiliza salud HTTP de otro proceso',()=>{
   class Window {constructor(){windows.push(this);this.webContents={setWindowOpenHandler:jest.fn(),on:jest.fn()};this.loadURL=jest.fn();}setMenuBarVisibility(){}maximize(){}once(){}on(){}}
   Window.getAllWindows=()=>[];
   const electron={app,BrowserWindow:Window,dialog:{showErrorBox:jest.fn()},ipcMain:{handle:jest.fn()}};
-  vm.runInNewContext(fs.readFileSync(path.join(g.ROOT,'electron/main.js'),'utf8'),{require:name=>name==='electron'?electron:name==='http'?http:name==='../scripts/devDb02.cjs'?{LAB:g.LAB,startOwnedBackend}:require(name),process:{env:{APP_DEV_DB02:'1'},execPath:'electron'},console:{error:jest.fn(),log:jest.fn()},__dirname:path.join(g.ROOT,'electron'),URL,Buffer,setTimeout,clearTimeout});
+  vm.runInNewContext(fs.readFileSync(path.join(g.ROOT,'electron/main.js'),'utf8'),{require:name=>name==='electron'?electron:name==='http'?http:name==='../scripts/devDb02.cjs'?{LAB:g.LAB,startOwnedBackend}:require(name),process:{argv:['electron','.','--ctsk-mode=dev'],env:{APP_DEV_DB02:'1'},execPath:'electron'},console:{error:jest.fn(),log:jest.fn()},__dirname:path.join(g.ROOT,'electron'),URL,Buffer,setTimeout,clearTimeout});
   await new Promise(setImmediate);return {windows,app,http,electron};
  }
  test('ventana se abre solamente despues del ready privado',async()=>{const start=jest.fn().mockResolvedValue({kill:jest.fn()});const r=await run(start);expect(start).toHaveBeenCalledTimes(1);expect(r.http.get).not.toHaveBeenCalled();expect(r.windows).toHaveLength(1);expect(r.windows[0].loadURL).toHaveBeenCalledWith('http://127.0.0.1:3000/app/');});

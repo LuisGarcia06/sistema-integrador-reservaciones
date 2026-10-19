@@ -6,6 +6,20 @@ const { ROLES } = require('../constants/roles');
 const router = express.Router();
 
 router.get(
+    '/resumen',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA),
+    eventosIntegracionController.obtenerResumenEventosIntegracion
+);
+
+router.patch(
+    '/:id/archivo',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR),
+    eventosIntegracionController.archivarEventoIntegracion
+);
+
+router.get(
     '/',
     autenticarUsuario,
     autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA),

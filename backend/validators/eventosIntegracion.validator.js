@@ -13,7 +13,7 @@ const REVIEW_STATUSES_PERMITIDOS = [
 ];
 const ACCIONES_REVISION_PERMITIDAS = [ACCION_APPROVE, ACCION_DISMISS];
 const LIMITES_PAGINACION_EVENTOS = [25, 50, 100];
-const CAMPOS_FILTROS_EVENTOS = ['review_status', 'provider', 'event_type', 'urgent', 'operational_only', 'page', 'limit'];
+const CAMPOS_FILTROS_EVENTOS = ['review_status', 'provider', 'event_type', 'urgent', 'operational_only', 'archived', 'page', 'limit'];
 const CAMPOS_REVISION_EVENTOS = ['accion', 'nota'];
 const CAMPOS_APLICACION_EVENTOS = ['completar'];
 const CAMPOS_APLICACION_FAREHARBOR_MODIFICATION = ['diff_fingerprint', 'decisions', 'completar'];
@@ -158,7 +158,7 @@ const validarFiltrosEventosIntegracion = (query) => {
         filtros[campo] = resultado.valor;
     });
 
-    ['urgent', 'operational_only'].forEach((campo) => {
+    ['urgent', 'operational_only', 'archived'].forEach((campo) => {
         if (!tieneCampo(query, campo)) {
             return;
         }
@@ -171,6 +171,11 @@ const validarFiltrosEventosIntegracion = (query) => {
             filtros[campo] = resultado.valor;
         }
     });
+
+    if (filtros.archived === true) {
+        if (!tieneCampo(query, 'review_status')) delete filtros.review_status;
+        if (filtros.operational_only) errores.push('El historial archivado no admite operational_only=true');
+    }
 
     if (tieneCampo(query, 'page')) {
         const page = convertirEnteroPositivo(query.page);
@@ -590,6 +595,16 @@ const validarRevisionEventoIntegracion = (body) => {
 };
 
 module.exports = {
+    validarArchivoEventoIntegracion: (body) => {
+        const { validarMotivoArchivo } = require('../services/eventosIntegracion.service');
+        const errores = [];
+        if (!body || typeof body !== 'object' || Array.isArray(body) || Object.keys(body).some(c => c !== 'motivo')) {
+            errores.push('Solo se permite el campo motivo');
+        }
+        const motivo = validarMotivoArchivo(body?.motivo);
+        if (!motivo) errores.push('El motivo es obligatorio, debe ser texto y no exceder 500 caracteres');
+        return { errores, motivo };
+    },
     LIMITES_PAGINACION_EVENTOS,
     REVIEW_STATUSES_PERMITIDOS,
     validarAplicacionFareHarbor,

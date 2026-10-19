@@ -44,6 +44,7 @@ const server = http.createServer(async (req, res) => {
   case '/api/tours': data = { datos: [{ id_tour: 501, nombre: 'Tour general', activo: true }] }; break;
   case '/api/paises': data = { datos: [{ id_pais: 8, nombre: 'País' }] }; break;
   case '/api/eventos-integracion': data = { data: [], pagination: { total: 0 } }; break;
+  case '/api/eventos-integracion/resumen': data = require('./resumenNotificacionesSintetico.cjs').resumenNotificacionesSintetico(); break;
   case '/api/usuarios/roles': data = { datos: [{ id_rol: 10, nombre: 'Administrador' }, { id_rol: 20, nombre: 'Consulta' }] }; break;
   case '/api/usuarios': data = req.method === 'GET' ? { datos: users } : { datos: { ...body, id_usuario: 9 } }; break;
   case '/api/reservaciones': data = { data: visible, pagination: { page: 1, limit: 25, total: visible.length, totalPages: visible.length ? 1 : 0 } }; break;

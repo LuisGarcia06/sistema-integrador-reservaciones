@@ -307,6 +307,10 @@ CREATE TABLE eventos_integracion (
     reviewed_at TIMESTAMP,
     review_note TEXT,
 
+    archived_at TIMESTAMP,
+    archived_by INTEGER,
+    archive_reason TEXT,
+
     normalized_data JSONB NOT NULL DEFAULT '{}'::jsonb,
     source_subject TEXT,
     source_received_at TIMESTAMP,
@@ -328,12 +332,28 @@ CREATE TABLE eventos_integracion (
     CONSTRAINT chk_eventos_integracion_application_status
         CHECK (application_status IN ('not_applied', 'applied')),
 
+    CONSTRAINT fk_eventos_integracion_archived_by
+        FOREIGN KEY (archived_by) REFERENCES usuarios(id_usuario),
+
+    CONSTRAINT chk_eventos_integracion_archivo CHECK (
+        (archived_at IS NULL AND archived_by IS NULL AND archive_reason IS NULL)
+        OR (archived_at IS NOT NULL AND archived_by IS NOT NULL AND archive_reason IS NOT NULL
+            AND char_length(archive_reason) BETWEEN 1 AND 500
+            AND archive_reason ~ '[^[:space:]]'
+            AND application_status = 'not_applied'
+            AND review_status IN ('pending_review', 'approved'))
+    ),
+
     CONSTRAINT uq_eventos_integracion_provider_external_event
         UNIQUE (provider, external_event_id)
 );
 
 CREATE INDEX idx_eventos_integracion_provider_booking
 ON eventos_integracion (provider, external_booking_id);
+
+CREATE INDEX idx_eventos_integracion_archived_at
+ON eventos_integracion (archived_at DESC, id_evento_integracion DESC)
+WHERE archived_at IS NOT NULL;
 
 
 

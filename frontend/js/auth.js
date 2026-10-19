@@ -22,6 +22,7 @@
 
   function invalidarDatosSesion() {
     version += 1;
+    if (App.notificaciones) App.notificaciones.resetSession();
     solicitudes.forEach(function (controller) { controller.abort(); });
     solicitudes.clear();
     Object.values(App.pages || {}).forEach(function (page) {
@@ -50,6 +51,7 @@
     usuario = Object.assign({}, nuevoUsuario, { platform_ids: nuevoUsuario.platform_ids.slice() });
     mensajeSesion = "";
     iniciarRenovacionPeriodica();
+    if (App.notificaciones) App.notificaciones.start();
   }
 
   function limpiarSesion() {

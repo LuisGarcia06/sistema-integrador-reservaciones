@@ -65,6 +65,12 @@
     }
 
     const controller = new AbortController();
+    const externalSignal = requestOptions.signal;
+    const abort = function () { controller.abort(); };
+    if (externalSignal) {
+      if (externalSignal.aborted) abort();
+      else externalSignal.addEventListener('abort', abort, { once: true });
+    }
     fetchOptions.signal = controller.signal;
     const unregister = App.auth ? App.auth.registrarSolicitud(controller) : function () {};
     let response;
@@ -79,6 +85,7 @@
       if (error.status !== undefined) throw error;
       throw createNetworkError();
     } finally {
+      if (externalSignal) externalSignal.removeEventListener('abort', abort);
       unregister();
     }
 

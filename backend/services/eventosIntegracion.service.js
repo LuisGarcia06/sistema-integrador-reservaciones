@@ -25,6 +25,9 @@ const columnasEventoIntegracion = `
     reviewed_by,
     reviewed_at,
     review_note,
+    archived_at,
+    archived_by,
+    archive_reason,
     normalized_data,
     source_subject,
     source_received_at,
@@ -46,6 +49,9 @@ const columnasListadoEventoIntegracion = `
     reviewed_by,
     reviewed_at,
     review_note,
+    archived_at,
+    archived_by,
+    archive_reason,
     normalized_data,
     source_subject,
     source_received_at,
@@ -392,7 +398,7 @@ function construirCondicionesFiltrosEventosIntegracion(filtros = {}, values = []
     agregarCondicionFiltro({ filtros, campo: 'provider', condiciones, values });
     agregarCondicionFiltro({ filtros, campo: 'event_type', condiciones, values });
     agregarCondicionFiltro({ filtros, campo: 'urgent', condiciones, values });
-
+    condiciones.push(filtros.archived === true ? 'archived_at IS NOT NULL' : 'archived_at IS NULL');
 
     return {
         where: condiciones.length > 0 ? `WHERE ${condiciones.join('\n            AND ')}` : '',
@@ -420,6 +426,7 @@ function construirFuenteEventosIntegracionOperacional(filtros = {}) {
             provider: filtros.provider,
             event_type: filtros.event_type,
             urgent: filtros.urgent,
+            archived: filtros.archived,
         },
         values
     ).where.replace(/^WHERE\s+/i, '');
@@ -487,7 +494,7 @@ function construirFuenteEventosIntegracionOperacional(filtros = {}) {
 }
 
 function construirFuenteEventosIntegracion(filtros = {}) {
-    if (filtros.operational_only) {
+    if (filtros.operational_only && !filtros.archived) {
         return construirFuenteEventosIntegracionOperacional(filtros);
     }
 
@@ -497,7 +504,7 @@ function construirFuenteEventosIntegracion(filtros = {}) {
         prefix: '',
         from: `eventos_integracion ${where}`,
         values,
-        orderBy: 'created_at DESC, id_evento_integracion DESC',
+        orderBy: filtros.archived ? 'archived_at DESC, id_evento_integracion DESC' : 'created_at DESC, id_evento_integracion DESC',
     };
 }
 
@@ -571,6 +578,7 @@ async function obtenerEventoIntegracion(idEventoIntegracion, db = pool) {
         `
             SELECT
                 ${columnasEventoIntegracion}
+                , (SELECT nombre FROM usuarios WHERE usuarios.id_usuario = eventos_integracion.archived_by) AS archived_by_name
             FROM eventos_integracion
             WHERE id_evento_integracion = $1
             LIMIT 1
@@ -621,6 +629,7 @@ async function revisarEventoIntegracion({ idEventoIntegracion, accion, idUsuario
                 updated_at = CURRENT_TIMESTAMP
             WHERE id_evento_integracion = $4
               AND review_status = $5
+              AND archived_at IS NULL
             RETURNING
                 ${columnasEventoIntegracion}
         `,
@@ -649,13 +658,63 @@ async function revisarEventoIntegracion({ idEventoIntegracion, accion, idUsuario
         };
     }
 
+    if (existente.archived_at) return { tipo: 'evento_archivado', event: existente };
+
     return {
         tipo: 'ya_revisado',
         event: existente,
     };
 }
 
+function validarMotivoArchivo(motivo) {
+    if (typeof motivo !== 'string') return null;
+    const texto = motivo.trim();
+    return texto && Array.from(texto).length <= 500 ? texto : null;
+}
+
+async function archivarEventoIntegracion({ idEventoIntegracion, idUsuario, motivo }, dbPool = pool) {
+    const razon = validarMotivoArchivo(motivo);
+    if (!razon) return { tipo: 'motivo_invalido' };
+    const client = await dbPool.connect();
+    try {
+        await client.query('BEGIN');
+        const result = await client.query(`
+            SELECT id_evento_integracion, review_status, application_status, archived_at
+            FROM eventos_integracion WHERE id_evento_integracion = $1 FOR UPDATE
+        `, [idEventoIntegracion]);
+        const evento = result.rows[0];
+        const conflicto = !evento ? 'no_encontrado'
+            : evento.archived_at ? 'ya_archivado'
+            : evento.application_status !== 'not_applied' ? 'ya_aplicado'
+            : ![REVIEW_STATUS_PENDING, REVIEW_STATUS_APPROVED].includes(evento.review_status) ? 'revision_no_permitida' : null;
+        if (conflicto) {
+            await client.query('ROLLBACK');
+            return { tipo: conflicto };
+        }
+        const actualizado = await client.query(`
+            UPDATE eventos_integracion
+            SET archived_at = CURRENT_TIMESTAMP, archived_by = $2, archive_reason = $3,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id_evento_integracion = $1 AND archived_at IS NULL
+              AND application_status = 'not_applied' AND review_status IN ('pending_review', 'approved')
+            RETURNING ${columnasEventoIntegracion}
+        `, [idEventoIntegracion, idUsuario, razon]);
+        if (!actualizado.rows[0]) {
+            await client.query('ROLLBACK');
+            return { tipo: 'conflicto' };
+        }
+        await client.query('COMMIT');
+        return { tipo: 'archivado', event: prepararEventoDetalleIntegracion(actualizado.rows[0]) };
+    } catch (error) {
+        await client.query('ROLLBACK');
+        if (['40001', '40P01'].includes(error.code)) return { tipo: 'conflicto' };
+        throw error;
+    } finally { client.release(); }
+}
+
 module.exports = {
+    archivarEventoIntegracion,
+    validarMotivoArchivo,
     ACCION_APPROVE,
     ACCION_DISMISS,
     REVIEW_STATUS_APPLIED,

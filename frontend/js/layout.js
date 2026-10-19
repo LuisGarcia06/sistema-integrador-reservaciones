@@ -116,6 +116,7 @@
       subtitle ? '<p class="header-subtitle">' + App.ui.escapeHtml(subtitle) + "</p>" : "",
       "</div>",
       '<div class="header-actions">',
+      '<div id="notificaciones-root" class="notification-host"></div>',
       '<button class="btn btn-ghost" type="button" data-logout>Cerrar sesión</button>',
       '<div class="user-chip" aria-label="Usuario autenticado">',
       '<span class="user-avatar" aria-hidden="true">' + App.ui.escapeHtml(iniciales) + "</span>",
@@ -127,6 +128,7 @@
     ].join("");
 
     const logoutButton = header.querySelector("[data-logout]");
+    if (App.notificaciones) App.notificaciones.render();
 
     if (logoutButton) {
       logoutButton.addEventListener("click", function () {
