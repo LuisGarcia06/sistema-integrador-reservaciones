@@ -1,0 +1,12 @@
+'use strict';
+const config=require('../config/desktopConfiguration'),tx=require('../config/revisionApiTransactions'),C=require('../services/reservacionesCapacity023.service');
+const row={id_reservacion:7,id_tour:2,fecha:'2099-10-29',turno:'Mañana',pax:1,ninos:1,estado:'Pendiente'};let db;
+beforeEach(()=>{jest.spyOn(config,'get').mockReturnValue({APP_ENVIRONMENT:'unified023-lab'});db={query:jest.fn(async sql=>({rows:sql===C.SUM_SQL?[{total_pax:'23'}]:[]}))};jest.spyOn(tx,'assertCommandClient').mockImplementation(()=>{});});afterEach(()=>jest.restoreAllMocks());
+test('Admite exactamente24 incluyendo niños una sola vez y sin transporte',async()=>{await expect(C.verifyCreation(db,row)).resolves.toBeUndefined();expect(db.query.mock.calls.at(-1)[1]).toEqual([2,'2099-10-29','Mañana','Cancelada',null]);});
+test('Rechaza25 incluso sin transporte, usando suma decimal exacta',async()=>{db.query.mockImplementation(async sql=>({rows:sql===C.SUM_SQL?[{total_pax:'24'}]:[]}));await expect(C.verifyCreation(db,row)).rejects.toMatchObject({statusCode:400,code:'CUPO_TOUR_TURNO_EXCEDIDO'});});
+test('Al editar excluye el ID actual del conjunto destino',async()=>{await C.verifyEdit(db,{...row,pax:2},row);expect(db.query.mock.calls.at(-1)[1].at(-1)).toBe(7);});
+test('No-op y cambios de niño/nombre ajenos al cupo no consultan ni alteran filas históricas',async()=>{await C.verifyEdit(db,{...row,pax:25},{...row,pax:25,ninos:2,nombre_cliente:'Otro'});expect(db.query).not.toHaveBeenCalled();});
+test('Cancelar no incorpora contribución y reactivar sí comprueba cupo',async()=>{await C.verifyEdit(db,row,{...row,estado:'Cancelada'});expect(db.query).not.toHaveBeenCalled();await C.verifyEdit(db,{...row,estado:'Cancelada'},row);expect(db.query).toHaveBeenCalled();});
+test.each([{fecha:'2099-10-30'},{turno:'Tarde'},{id_tour:3}])('Comprueba nuevo destino %j sin contar doble',async change=>{await C.verifyEdit(db,row,{...row,...change});expect(db.query.mock.calls.at(-1)[1].at(-1)).toBe(7);});
+test('Exige el mismo cliente del comando bajo transacción antes de SQL',async()=>{tx.assertCommandClient.mockImplementation(()=>{throw Error('COMMAND_TRANSACTION_CLIENT_REQUIRED');});await expect(C.verifyCreation(db,row)).rejects.toThrow('COMMAND_TRANSACTION_CLIENT_REQUIRED');expect(db.query).not.toHaveBeenCalled();});
+test('Conserva perfiles anteriores y el comportamiento principal por defecto',async()=>{config.get.mockReturnValue({APP_ENVIRONMENT:'command-api-lab'});await C.verifyCreation(db,row);expect(db.query).not.toHaveBeenCalled();});

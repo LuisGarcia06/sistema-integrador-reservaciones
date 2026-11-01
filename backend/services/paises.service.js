@@ -1,4 +1,6 @@
 const pool = require('../config/database');
+const auditoria = require('./bitacora.service');
+const transactions = require('../config/operationalTransactions');
 
 const columnasPais = `
     id_pais,
@@ -30,9 +32,12 @@ const crearPais = async (pais) => {
             ${columnasPais}
     `;
 
-    const result = await pool.query(query, [pais.nombre]);
-
-    return result.rows[0];
+    return transactions.creation(pool, async db => {
+        const result = await db.query(query, [pais.nombre]);
+        const nuevo = result.rows[0];
+        if (auditoria.catalogosActivos()) await auditoria.registrarAuditoriaEstructurada({recurso:'paises',anterior:null,nuevo}, db);
+        return nuevo;
+    });
 };
 
 module.exports = {

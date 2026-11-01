@@ -1,0 +1,11 @@
+.operation-lab-banner { margin: 0; padding: 5px 20px; background: #fff1cb; color: #533800; font-size: 13px; text-align: center; }
+#daily-command-panel, #daily-conflict-panel { min-width: 0; }
+#daily-command-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; padding: 12px; background: #f3f6f5; }
+#daily-command-panel button, #daily-conflict-panel button { padding: 8px 12px; margin: 4px; cursor: pointer; }
+#daily-conflict-panel { overflow: auto; }
+#daily-conflict-panel table { border-collapse: collapse; width: 100%; font-size: 13px; }
+#daily-conflict-panel th, #daily-conflict-panel td { padding: 8px; border: 1px solid #ccd7d1; vertical-align: top; overflow-wrap: anywhere; }
+#daily-conflict-panel .revision-changed { background: #fff4dc; }
+#daily-command-panel h2, #daily-conflict-panel h2 { font-size: 19px; margin-top: 20px; }
+
+.daily-notes-lab {margin-bottom:20px;padding:20px} .daily-notes-lab textarea {min-height:100px;width:100%} @media print {#daily-observations-host,.operation-lab-banner {display:none!important}}

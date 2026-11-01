@@ -21,7 +21,7 @@ const listarPaises = async (req, res) => {
 };
 
 const crearPais = async (req, res) => {
-    const { errores, pais } = validarDatosPais(req.body || {});
+    const { errores, pais } = require('../validators/auditoria.validator').validate(validarDatosPais, req.body || {});
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -38,6 +38,7 @@ const crearPais = async (req, res) => {
             datos: paisCreado
         });
     } catch (error) {
+        if (error.auditoriaFallida) return res.status(500).json({mensaje:'No se pudo registrar la auditoría'});
         const respuestaErrorPostgres = obtenerRespuestaErrorPostgres(error);
 
         if (respuestaErrorPostgres) {

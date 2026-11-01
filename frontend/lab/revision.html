@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Laboratorio de conflictos · Community Tours</title>
+  <link rel="stylesheet" href="/frontend/css/variables.css">
+  <link rel="stylesheet" href="/frontend/css/base.css">
+  <link rel="stylesheet" href="/frontend/css/components.css">
+  <link rel="stylesheet" href="/frontend/lab/revision.css">
+  <script defer src="/frontend/js/api.js"></script>
+  <script defer src="/frontend/js/auth.js"></script>
+  <script defer src="/frontend/js/revisionLab.js"></script>
+  <script defer src="/frontend/js/revisionConflict.js"></script>
+  <script defer src="/frontend/lab/revisionEditor.js"></script>
+</head>
+<body>
+  <main>
+    <p class="lab-banner">LABORATORIO · Datos sintéticos · Solo loopback · Sin recuperación persistente</p>
+    <h1>Edición y conflictos entre usuarios</h1>
+    <form id="lab-login">
+      <label>Correo <input id="correo" type="email" required autocomplete="username"></label>
+      <label>Contraseña <input id="password" type="password" required autocomplete="current-password"></label>
+      <button type="submit">Iniciar sesión</button>
+    </form>
+    <button id="logout" type="button">Cerrar sesión</button>
+    <p id="lab-status" role="status" aria-live="polite"></p>
+    <form id="lab-select">
+      <label>Acción <select id="action"></select></label>
+      <label>Identificador sintético o fecha Daily <input id="target" required></label>
+      <button id="open" type="submit">Consultar precondiciones y abrir</button>
+    </form>
+    <section id="editor" aria-label="Formulario de edición"></section>
+    <section id="conflict" aria-label="Conflictos"></section>
+    <details><summary>Escrituras pendientes y bloqueadas</summary><p>Altas de reservaciones, operaciones, transportes, vehículos, guías, operadores, tours, usuarios, países y plataformas; cambio de contraseña. Requieren formularios de alta con foto ligada al cuerpo completo y tratamiento separado de secretos. Los controles de sincronización de integraciones están fuera del contrato de 25 rutas y también bloqueados. Esta página solo adapta ediciones parciales y decisiones manuales sintéticas.</p></details>
+  </main>
+</body>
+</html>

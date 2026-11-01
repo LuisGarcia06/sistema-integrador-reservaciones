@@ -763,6 +763,11 @@
   }
 
   async function loadDaily(fecha) {
+    if (App.dailyCommands && !App.dailyCommands.canRead(fecha)) {
+      const input = document.getElementById("daily-fecha");
+      if (input) input.value = currentFecha;
+      return;
+    }
     if (!isValidDateValue(fecha)) {
       setMessage("Selecciona una fecha válida para consultar el Daily.", "error");
       return;
@@ -788,6 +793,7 @@
 
       currentDaily = daily || { fecha: fecha, operaciones: [], reservaciones_sin_asignar: [] };
       renderDailyData(currentDaily);
+      if (App.dailyCommands) await App.dailyCommands.loaded(fecha);
     } catch (error) {
       if (activeRequestId !== requestId) {
         return;
@@ -827,6 +833,7 @@
     }
 
     setPdfExportLoading(true);
+    if (App.dailyCommands && !App.dailyCommands.beginOutput('ui')) { setPdfExportLoading(false); return; }
     setMessage("", "");
 
     try {
@@ -847,6 +854,7 @@
     } catch (error) {
       setMessage("No se pudo generar el PDF.", "error");
     } finally {
+      if (App.dailyCommands) App.dailyCommands.endOutput('ui');
       setPdfExportLoading(false);
     }
   }
@@ -893,6 +901,7 @@
 
   App.pages.daily = {
     resetSession: function () {
+      if (App.dailyCommands) App.dailyCommands.reset();
       requestId += 1;
       currentFecha = "";
       currentDaily = null;
@@ -917,6 +926,7 @@
         "</div>",
         '<p class="form-message daily-message" id="daily-message" role="status" aria-live="polite"></p>',
         '<p class="daily-print-warning" id="daily-print-warning" role="status" aria-live="polite" hidden></p>',
+        App.dailyCommands ? '<div id="daily-observations-host"></div>' : "",
         '<div class="daily-layout">',
         '<section class="daily-main" id="daily-content" aria-live="polite">',
         renderLoading(),
@@ -960,6 +970,7 @@
       hasDailyError = false;
 
       bindDailyEvents();
+      if (App.dailyCommands) App.dailyCommands.mount(function () { return loadDaily(currentFecha); });
       updateActionButtons();
 
       if (dateInput) {

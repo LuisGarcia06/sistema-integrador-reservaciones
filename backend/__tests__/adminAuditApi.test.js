@@ -1,0 +1,43 @@
+'use strict';
+jest.mock('../config/database',()=>({query:jest.fn(),connect:jest.fn()}));
+const fs=require('node:fs'),path=require('node:path'),P=require('../config/adminAuditApiPolicy'),B=require('../config/standalonePolicy');
+const configuration=require('../config/desktopConfiguration'),V=require('../validators/auditoria.validator');
+const root=path.resolve(__dirname,'../..'),dir=path.join(fs.realpathSync(process.env.LOCALAPPDATA),'ctsk-standalone-abcdef123456');
+const manifest=()=>({version:8,environment:P.ENVIRONMENT,purpose:P.PURPOSE,schemaVersion:'022',protocol:P.PROTOCOL,commandKeyDigest:'f'.repeat(64),etagKeyDigest:'a'.repeat(64),dataGeneration:'1a2b3c4d-1234-4567-89ab-123456789abc',root,directory:dir,dataDirectory:path.join(dir,'data'),host:'127.0.0.1',pgPort:49151,httpPort:49152,database:'ctsk_standalone_abcdef123456_test',runtime:'ctsk_standalone_runtime',cluster:'8000000000000000000',code:'b'.repeat(64),configDigest:'c'.repeat(64)});
+const config=m=>({APP_ENVIRONMENT:P.ENVIRONMENT,DB_HOST:'localhost',DB_PORT:String(m.pgPort),DB_NAME:m.database,DB_USER:m.runtime,DB_PASSWORD:'d'.repeat(64),DB_CLUSTER_ID:m.cluster,DB_SERVER_VERSION:'18.3',DB_SCHEMA_VERSION:'022',JWT_SECRET:'e'.repeat(64),JWT_EXPIRES_IN:'8h',GYG_GMAIL_SYNC_ENABLED:'false'});
+afterEach(()=>jest.restoreAllMocks());
+test.each(P.CATALOGS.flatMap(r=>[['POST','/api/'+r],...(['paises','plataformas'].includes(r)?[]:[['PATCH','/api/'+r+'/123']])]))('permite escritor exacto %s %s',(m,u)=>{expect(P.command(m,u,{}).url).toBe(u);expect(P.allowHttp(m,u)).toBe(true);});
+test.each([
+    ['POST','/api/usuarios'],['PATCH','/api/usuarios/1'],['PATCH','/api/usuarios/1/password'],['POST','/api/reservaciones'],['PATCH','/api/operaciones/1'],['POST','/api/transportes'],['PUT','/api/daily/observaciones?fecha=2099-01-01'],['POST','/api/bitacora'],['POST','/api/eventos-integracion/1/aplicar'],['PATCH','/api/paises/1'],['PATCH','/api/plataformas/1'],['DELETE','/api/tours/1'],['POST','/api/tours/'],['POST','/api/tours?x=1'],['PATCH','/api/guias/0'],['PATCH','/api/guias/2147483648'],['PATCH','/api/guias/%31'],['PATCH','/api/guias/01'],['PATCH','/api/guias/1?x=1'],['PATCH','/api/guias/1/'],['post','/api/tours']
+])('rechaza escritor ajeno %s %s',(m,u)=>{expect(()=>P.command(m,u,{})).toThrow();expect(P.allowHttp(m,u)).toBe(false);});
+test.each(['/api/usuarios','/api/bitacora','/api/dashboard/resumen','/api/operaciones/1','/api/reservaciones','/api/tours?x=1','/api/tours/','/api/paises/1','/api/auth/logout','/index.html'])('bloquea lectura no declarada %s',u=>expect(P.allowHttp('GET',u)).toBe(false));
+test.each(['/api/tours','/api/guias','/api/operadores','/api/vehiculos','/api/paises','/api/plataformas','/api/tours/1','/api/auth/sesion','/api/comandos/1a2b3c4d-1234-4567-89ab-123456789abc'])('lectura exacta %s',u=>{expect(P.allowHttp('GET',u)).toBe(true);expect(P.allowHttp('HEAD',u)).toBe(true);});
+test('perfil HTTP propio valido; ningun perfil anterior ni solo-esquema lo acepta',()=>{
+    const m=manifest(),c=config(m);expect(P.validateManifest(m,root)).toBe(m);expect(P.validateConfig(c,m)).toEqual(c);expect(require('../config/operationalTransactions').isOperationalLab(c)).toBe(true);
+    for(const name of ['standalonePolicy','revisionLabPolicy','revisionApiPolicy','commandApiPolicy','auditApiPolicy','auditSchemaPolicy','adminAuditSchemaPolicy'])expect(()=>require('../config/'+name).validateManifest(m,root)).toThrow();
+});
+test.each([{version:7},{purpose:'schema-tests-only'},{environment:'admin-audit-schema-lab'},{schemaVersion:'021'},{protocol:'ctsk-audit-api-v1'},{commandKeyDigest:'bad'},{dataGeneration:'bad'},{database:'sian_kaan_reservaciones'},{pgPort:5432},{httpPort:5432},{host:'0.0.0.0'},{cluster:B.PROTECTED_CLUSTER},{runtime:'postgres'},{extra:true}])('manifiesto inseguro %j',p=>expect(()=>P.validateManifest({...manifest(),...p},root)).toThrow());
+test.each([{APP_ENVIRONMENT:'principal'},{DB_SCHEMA_VERSION:'021'},{DB_HOST:'192.168.0.2'},{DB_PORT:'5432'},{DB_NAME:'sian_kaan_reservaciones'},{DB_USER:'postgres'},{DB_CLUSTER_ID:B.PROTECTED_CLUSTER},{DB_SERVER_VERSION:'18.4'},{DB_PASSWORD:'short'},{JWT_SECRET:'short'},{GYG_GMAIL_SYNC_ENABLED:'true'},{EXTRA:'1'}])('configuracion insegura %j',p=>expect(()=>P.validateConfig({...config(manifest()),...p},manifest())).toThrow());
+test('destino principal se rechaza antes de conectar',async()=>{const pool={connect:jest.fn()},m={...manifest(),database:'sian_kaan_reservaciones'};await expect(P.verify(pool,{manifest:m,config:config(m)})).rejects.toThrow();expect(pool.connect).not.toHaveBeenCalled();});
+test.each(['command-api-lab','audit-api-lab','admin-audit-api-lab'])('cada perfil exige su esquema propio %s',environment=>{
+    let tx;jest.isolateModules(()=>{tx=require('../config/revisionApiTransactions');});expect(()=>tx.install({}, {APP_ENVIRONMENT:environment,DB_SCHEMA_VERSION:environment==='admin-audit-api-lab'?'021':'022'})).toThrow('COMMAND_API_SCHEMA_REQUIRED');
+});
+test('contexto 022 vinculado a cliente autorizado; rechaza Usuarios y no escapa de la transaccion',async()=>{
+    let tx;jest.isolateModules(()=>{tx=require('../config/revisionApiTransactions');});
+    const raw={processID:123,query:jest.fn(async()=>({rows:[]})),release:jest.fn()},pool={connect:async()=>raw};tx.install(pool,config(manifest()));let escaped;
+    await tx.transaction(pool,async db=>{escaped=db;expect(()=>tx.auditContext(db)).toThrow();tx.authorizeWrites();const actor={id_usuario:1,nombre:'Actor de DB',rol:'Administrador',estado:true};expect(()=>tx.establishAudit({actor,generation:'g',key:'k',spec:{resource:'usuarios',body:{}}})).toThrow('ADMIN_AUDIT_RESOURCE_REQUIRED');tx.establishAudit({actor,generation:'g',key:'k',spec:{resource:'tours',body:{motivo:'Humano'}}});expect(tx.auditContext(db)).toMatchObject({version:3,resource:'tours',actor:{id:1,name:'Actor de DB'}});expect(()=>tx.auditContext({processID:123})).toThrow();});
+    expect(()=>tx.auditContext(escaped)).toThrow();expect(raw.query.mock.calls.filter(c=>c[0]==='COMMIT')).toHaveLength(1);
+});
+test.each(['tours','guias','operadores','vehiculos','paises','plataformas'])('motivo separado por validador original de %s',resource=>{
+    jest.spyOn(configuration,'get').mockReturnValue({APP_ENVIRONMENT:P.ENVIRONMENT});const module=require('../validators/'+resource+'.validator'),name={tours:'Tour',guias:'Guia',operadores:'Operador',vehiculos:'Vehiculo',paises:'Pais',plataformas:'Plataforma'}[resource],validator=module['validarDatos'+name];
+    const body=resource==='vehiculos'?{identificador:'SYN',capacidad:12}:{nombre:'Nombre'};expect(V.validate(validator,{...body,motivo:'Humano'}).errores).toEqual([]);expect(V.validate(validator,{...body,motivo:' '}).errores.length).toBeGreaterThan(0);expect(V.validate(validator,{...body,password:'SYN'}).errores.length).toBeGreaterThan(0);
+});
+test('auditoria 3 proyecta campos comerciales, usa actor del contexto y RETURNING real',async()=>{
+    jest.spyOn(configuration,'get').mockReturnValue({APP_ENVIRONMENT:P.ENVIRONMENT});const tx=require('../config/revisionApiTransactions');jest.spyOn(tx,'auditContext').mockReturnValue({version:3,resource:'tours',actor:{id:7,name:'Nombre historico'},generation:'g',key:'k',motivo:'Humano',hasMotivo:true});
+    const db={query:jest.fn(async()=>({rows:[{id_bitacora:99}]}))},audit=require('../services/bitacora.service');const result=await audit.registrarAuditoriaEstructurada({recurso:'tours',anterior:null,nuevo:{id_tour:42,nombre:'Tour',descripcion:'Texto',activo:true,password:'NO_COPIAR',id_usuario:999}},db);
+    expect(result.id_bitacora).toBe(99);const [sql,values]=db.query.mock.calls[0];expect(sql).toContain("3,'HUMANO'");expect(sql).toContain('RETURNING id_bitacora');expect(values[0]).toBe(7);expect(values[3]).toBe('Nombre historico');expect(values[4]).toBe(42);expect(values[5]).toBeNull();expect(JSON.parse(values[6])).toEqual({nombre:'Tour',descripcion:'Texto',activo:true});expect(values.join(' ')).not.toContain('NO_COPIAR');
+});
+test('error de INSERT conserva marca tecnica para revertir en lugar de confirmar rechazo comercial',async()=>{
+    jest.spyOn(configuration,'get').mockReturnValue({APP_ENVIRONMENT:P.ENVIRONMENT});jest.spyOn(require('../config/revisionApiTransactions'),'auditContext').mockReturnValue({version:3,resource:'paises',actor:{id:1,name:'Actor'},generation:'g',key:'k',hasMotivo:false});
+    const error=Object.assign(Error('Fallo SQL'),{code:'23514'}),db={query:jest.fn(async()=>{throw error;})};await expect(require('../services/bitacora.service').registrarAuditoriaEstructurada({recurso:'paises',anterior:null,nuevo:{id_pais:2,nombre:'Pais'}},db)).rejects.toMatchObject({auditoriaFallida:true,code:'23514'});
+});

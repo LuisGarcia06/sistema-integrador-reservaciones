@@ -72,3 +72,20 @@ tokens.json
 /test-results/
 __pycache__/
 *.pyc
+
+# Salidas de runtimes y ensayos: conservar localmente, no publicar por accidente.
+*.dll
+*.pak
+*.bin
+*.dat
+*.zip
+*.rar
+*.7z
+/docs/**/packages/
+/docs/**/packages-attempt-*/
+/docs/**/runtime/
+/docs/**/P01-kit/
+
+# Excepcion revisada: paquetes fuente/dependencias del candidato funcional 2E.6.
+!/docs/local-fase-2e6-enterprise/candidate-08/server-candidate026.zip
+!/docs/local-fase-2e6-enterprise/candidate-08/client-candidate026.zip

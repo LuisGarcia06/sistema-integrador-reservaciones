@@ -3,6 +3,7 @@ let config;
 function initialize(value) {
     if (config) throw new Error('CONFIG_ALREADY_INITIALIZED');
     config = Object.freeze({ ...value });
+    if(config.APP_ENVIRONMENT==='enterprise026')require('./enterprise026Policy').approveRuntimeCopy(config,value);
     process.env.JWT_SECRET = config.JWT_SECRET;
     process.env.JWT_EXPIRES_IN = config.JWT_EXPIRES_IN || '8h';
     process.env.GYG_GMAIL_SYNC_ENABLED = 'false';

@@ -198,7 +198,9 @@
 
     if (submit) {
       submit.textContent = isSaving ? "Guardando..." : "Guardar";
+      if(App.adminCommands&&!isSaving)submit.disabled=App.adminCommands.getSession()?.state!=='ready';
     }
+    if(App.adminCommands&&!isSaving&&App.adminCommands.getSession()?.state!=='ready')document.querySelectorAll('#catalogo-form input, #catalogo-form textarea, #catalogo-form select').forEach(function(control){control.disabled=true;});
   }
 
   function renderTabs() {
@@ -460,6 +462,7 @@
   }
 
   function closeDialog() {
+    if(App.adminCommands&&!App.adminCommands.close())return;
     if (saving) {
       return;
     }
@@ -471,6 +474,7 @@
 
     if (host) {
       host.innerHTML = "";
+      App.adminCommands?.redraw();
     }
   }
 
@@ -562,8 +566,10 @@
       '<input type="hidden" id="catalogo-id" value="' + App.ui.escapeHtml(record ? getRecordId(record, config) : "") + '">',
       '<div class="catalogos-form-grid">',
       renderFormFields(config, record),
+      App.adminUi ? App.auditUi.field("catalogo-motivo") : "",
       "</div>",
       '<p class="form-message" id="catalogo-form-message" role="status" aria-live="polite"></p>',
+      App.adminUi ? '<div id="admin-form-panels"></div>' : '',
       '<div class="catalogos-form-actions">',
       '<button class="btn" id="catalogo-cancel" type="button">Cancelar</button>',
       '<button class="btn btn-primary" id="catalogo-submit" type="submit">Guardar</button>',
@@ -573,7 +579,8 @@
     ].join("");
   }
 
-  function openDialog(mode, record) {
+  async function openDialog(mode, record) {
+    if(App.adminCommands&&!App.adminCommands.canOpen()){setMessage("Consulta el resultado original antes de otra intención.","is-error");return;}
     const config = getConfig();
     const host = document.getElementById("catalogos-dialog-host");
 
@@ -589,6 +596,7 @@
     selectedMode = mode;
     host.innerHTML = renderDialog(config, mode, record);
     bindDialogEvents();
+    if(App.adminCommands){const version=App.auth.obtenerVersionSesion(),creation=mode===FORM_CREATE;const showReview=(current,proposal)=>{if(!current){closeDialog();return;}selectedRecord=creation?null:current;host.innerHTML=renderDialog(config,mode,{...current,...proposal});if(creation)for(const key of Object.keys(proposal||{})){const control=document.getElementById("catalogo-"+key);if(control){if(control.type==="checkbox")control.checked=proposal[key];else control.value=proposal[key]??"";}}const reason=document.getElementById("catalogo-motivo");if(reason)reason.value=proposal?.motivo||"";bindDialogEvents();setSaving(false);};setSaving(true);try{const session=await App.adminCommands.open(creation?"POST":"PATCH",config.endpoint+(creation?"":"/"+getRecordId(record,config)),{creation,onReview:showReview});if(version!==App.auth.obtenerVersionSesion())return;if(!creation)showReview(App.revisionConflict.view(session.original),{});}catch(e){if(version===App.auth.obtenerVersionSesion())setFormMessage(App.commandLab.message(e),"is-error");}finally{if(version===App.auth.obtenerVersionSesion())setSaving(false);}}
 
     const first = host.querySelector("input:not([type='hidden']), textarea");
 
@@ -728,6 +736,7 @@
       return;
     }
 
+    if(App.adminCommands){const version=App.auth.obtenerVersionSesion();try{const body=App.auditUi.body(payload,"catalogo-motivo",selectedMode===FORM_EDIT);setSaving(true);const confirmed=await App.adminCommands.submit(body);if(version!==App.auth.obtenerVersionSesion())return;setSaving(false);if(confirmed){closeDialog();await loadCatalog();if(version===App.auth.obtenerVersionSesion())setMessage("Registro guardado correctamente.","is-info");}}catch(e){if(version===App.auth.obtenerVersionSesion())setFormMessage(App.commandLab.message(e),"is-error");}finally{if(version===App.auth.obtenerVersionSesion())setSaving(false);}return;}
     setFormMessage("", "");
     setSaving(true);
 
@@ -767,6 +776,7 @@
 
     const active = getStatusValue(record, config);
     const target = !active;
+    if(App.adminCommands){await openDialog(FORM_EDIT,record);const control=document.getElementById("catalogo-"+config.statusField);if(control)control.checked=target;return;}
     const action = target ? "activar" : "desactivar";
 
     if (!target && !window.confirm("El registro dejará de estar disponible para nuevas asignaciones, pero se conservará en información histórica.")) {
@@ -874,6 +884,7 @@
 
   App.pages.configuracion = {
     resetSession: function () {
+      App.adminCommands?.resetSession();
       activeCatalogKey = CATALOG_TOURS;
       records = [];
       searchText = "";

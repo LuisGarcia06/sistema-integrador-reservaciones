@@ -128,6 +128,11 @@ function crearDbMemoria({ conLink = false } = {}) {
                 };
             }
 
+            if (query.startsWith('SELECT id_evento_integracion FROM eventos_integracion')) {
+                return { rows: state.eventos.filter(evento => evento.provider === values[0]
+                    && evento.external_booking_id.toLowerCase() === values[1].toLowerCase()).slice(0, 1) };
+            }
+
             if (/INSERT INTO eventos_integracion/i.test(query)) {
                 const [
                     provider,
@@ -368,6 +373,7 @@ describe('fareharborWebhook.service', () => {
 
         expect(db.state.eventos).toHaveLength(2);
         expect(db.state.eventos[0].external_event_id).not.toBe(db.state.eventos[1].external_event_id);
+        expect(db.state.eventos.map(evento => evento.event_type)).toEqual(['new_booking', 'modification']);
     });
 
     test('persistirWebhookFareHarbor clasifica modification cuando existe link', async () => {

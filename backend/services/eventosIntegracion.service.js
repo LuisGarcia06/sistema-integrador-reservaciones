@@ -411,83 +411,12 @@ function construirFiltrosEventosIntegracion(filtros = {}) {
 }
 
 function construirFuenteEventosIntegracionOperacional(filtros = {}) {
-    const values = [];
-    const condicionesBase = [];
-    const cutoffAt = obtenerDashboardCutoffAt();
-
-    if (cutoffAt) {
-        values.push(cutoffAt);
-        condicionesBase.push(`(provider = 'fareharbor' OR COALESCE(source_received_at, created_at) >= $${values.length})`);
-    }
-
-    const condicionesOperacionales = construirCondicionesFiltrosEventosIntegracion(
-        {
-            review_status: filtros.review_status,
-            provider: filtros.provider,
-            event_type: filtros.event_type,
-            urgent: filtros.urgent,
-            archived: filtros.archived,
-        },
-        values
-    ).where.replace(/^WHERE\s+/i, '');
-
-    const condicionesFinales = [];
-
-    if (condicionesOperacionales) {
-        condicionesFinales.push(condicionesOperacionales);
-    }
-
-    condicionesFinales.push(`
-        (
-            provider <> 'fareharbor'
-            OR event_type <> 'new_booking'
-            OR NOT EXISTS (
-                SELECT 1
-                FROM reservas_integracion_link ril
-                WHERE ril.provider = eventos_latest.provider
-                  AND ril.external_booking_id = eventos_latest.external_booking_id
-            )
-        )
-    `);
-
+    const { where, values } = construirFiltrosEventosIntegracion(filtros);
+    // Todos los eventos publicados: un cambio posterior no oculta avisos anteriores.
+    // Sin cutoff temporal, UUID seleccionado ni límite global de eventos.
     return {
-        prefix: `
-            WITH eventos_base AS (
-                SELECT
-                    ${columnasEventoIntegracion}
-                FROM eventos_integracion
-                ${condicionesBase.length > 0 ? `WHERE ${condicionesBase.join('\n                    AND ')}` : ''}
-            ),
-            eventos_fareharbor_latest AS (
-                SELECT
-                    ${columnasEventoIntegracion},
-                    ROW_NUMBER() OVER (
-                        PARTITION BY provider, external_booking_id
-                        ORDER BY
-                            COALESCE(source_received_at, created_at) DESC,
-                            id_evento_integracion DESC
-                    ) AS operational_row_number
-                FROM eventos_base
-                WHERE provider = 'fareharbor'
-            ),
-            eventos_latest AS (
-                SELECT
-                    ${columnasEventoIntegracion}
-                FROM eventos_base
-                WHERE provider <> 'fareharbor'
-                UNION ALL
-                SELECT
-                    ${columnasEventoIntegracion}
-                FROM eventos_fareharbor_latest
-                WHERE operational_row_number = 1
-            ),
-            eventos_operational AS (
-                SELECT *
-                FROM eventos_latest
-                WHERE ${condicionesFinales.join('\n                  AND ')}
-            )
-        `,
-        from: 'eventos_operational',
+        prefix: '',
+        from: '(SELECT * FROM eventos_integracion ' + where + (where ? ' AND ' : 'WHERE ') + 'aviso_publicado = true) eventos_publicados',
         values,
         orderBy: 'COALESCE(source_received_at, created_at) DESC, id_evento_integracion DESC',
     };
@@ -502,7 +431,7 @@ function construirFuenteEventosIntegracion(filtros = {}) {
 
     return {
         prefix: '',
-        from: `eventos_integracion ${where}`,
+        from: `eventos_integracion ${where}${where ? ' AND ' : 'WHERE '}aviso_publicado = true`,
         values,
         orderBy: filtros.archived ? 'archived_at DESC, id_evento_integracion DESC' : 'created_at DESC, id_evento_integracion DESC',
     };
@@ -581,6 +510,7 @@ async function obtenerEventoIntegracion(idEventoIntegracion, db = pool) {
                 , (SELECT nombre FROM usuarios WHERE usuarios.id_usuario = eventos_integracion.archived_by) AS archived_by_name
             FROM eventos_integracion
             WHERE id_evento_integracion = $1
+              AND aviso_publicado = true
             LIMIT 1
         `,
         [idEventoIntegracion]

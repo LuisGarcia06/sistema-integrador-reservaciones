@@ -182,6 +182,7 @@
       + '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/></svg> Avisos <span class="notification-badge">' + (count === null ? '—' : count) + '</span></button>'
       + (opened ? '<section id="notification-panel" class="notification-panel" role="dialog" aria-labelledby="notification-title"><div class="notification-heading"><h2 id="notification-title">Reservaciones externas</h2><button id="notification-close" class="btn btn-ghost" type="button" aria-label="Cerrar avisos">Cerrar</button></div>'
         + '<p class="notification-totals">' + (summary ? summary.counts.pending + ' pendientes · ' + count + ' sin ver' : 'Consultando pendientes…') + '</p>'
+        + '<button id="notification-center" class="btn btn-primary" type="button">Abrir Centro de Avisos</button>'
         + (summary ? '<p class="notification-help">' + summary.counts.actionable + ' accionables · ' + summary.counts.requires_archive + ' requieren archivo' + (summary.counts.requires_schedule_review ? ' · ' + summary.counts.requires_schedule_review + ' horarios por revisar' : '') + '</p>' : '')
         + (error ? '<p class="notification-error" role="status">' + escape(error) + '</p>' : '')
         + (storageWarning ? '<p class="notification-error">Historial local no disponible; los vistos se conservan solo en esta sesión.</p>' : '')
@@ -198,6 +199,11 @@
       panel.style.right = 'auto'; panel.style.maxHeight = (window.innerHeight - top - 16) + 'px';
       host.querySelector('#notification-close').onclick = close;
       host.querySelector('#notification-refresh').onclick = refresh;
+      host.querySelector('#notification-center').onclick = function () {
+        opened = false; render();
+        if (window.location.hash === '#/dashboard') document.getElementById('dashboard-integration-section')?.scrollIntoView({ behavior: 'smooth' });
+        else App.router.navigate('dashboard');
+      };
       host.querySelectorAll('[data-notification-event]').forEach(button => { button.onclick = function () { openEvent(Number(button.dataset.notificationEvent)); }; });
       const prev = host.querySelector('#notification-prev'), next = host.querySelector('#notification-next');
       if (prev) prev.onclick = function () { page -= 1; render(); };

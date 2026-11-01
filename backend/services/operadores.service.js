@@ -1,4 +1,6 @@
 const pool = require('../config/database');
+const auditoria = require('./bitacora.service');
+const transactions = require('../config/operationalTransactions');
 
 const camposActualizables = [
     'nombre',
@@ -69,9 +71,12 @@ const crearOperador = async (operador) => {
             id_operador
     `;
 
-    const result = await pool.query(query, [operador.nombre, operador.estado]);
-
-    return obtenerOperadorPorId(result.rows[0].id_operador);
+    return transactions.creation(pool, async db => {
+        const result = await db.query(query, [operador.nombre, operador.estado]);
+        const nuevo = await obtenerOperadorPorIdConDb(db, result.rows[0].id_operador);
+        if (auditoria.catalogosActivos()) await auditoria.registrarAuditoriaEstructurada({recurso:'operadores',anterior:null,nuevo}, db);
+        return nuevo;
+    });
 };
 
 const obtenerCambiosOperador = (operadorActual, campos) => (
@@ -131,9 +136,11 @@ const actualizarOperadorParcial = async (idOperador, campos) => {
             camposActualizados[campo] = campos[campo];
         });
 
+        if (auditoria.catalogosActivos()) auditoria.exigirMotivo(client);
         await actualizarOperadorConDb(client, idOperador, camposActualizados);
 
         const operadorActualizado = await obtenerOperadorPorIdConDb(client, idOperador);
+        if (auditoria.catalogosActivos()) await auditoria.registrarAuditoriaEstructurada({recurso:'operadores',anterior:operadorActual,nuevo:operadorActualizado}, client);
 
         await client.query('COMMIT');
 

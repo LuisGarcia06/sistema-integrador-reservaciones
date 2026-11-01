@@ -1,4 +1,6 @@
 const pool = require('../config/database');
+const auditoria = require('./bitacora.service');
+const transactions = require('../config/operationalTransactions');
 
 const camposActualizables = [
     'identificador',
@@ -143,9 +145,12 @@ const crearVehiculo = async (vehiculo) => {
         vehiculo.estado
     ];
 
-    const result = await pool.query(query, values);
-
-    return obtenerVehiculoPorId(result.rows[0].id_vehiculo);
+    return transactions.creation(pool, async db => {
+        const result = await db.query(query, values);
+        const nuevo = await obtenerVehiculoPorIdConDb(db, result.rows[0].id_vehiculo);
+        if (auditoria.catalogosActivos()) await auditoria.registrarAuditoriaEstructurada({recurso:'vehiculos',anterior:null,nuevo}, db);
+        return nuevo;
+    });
 };
 
 const obtenerCambiosVehiculo = (vehiculoActual, campos) => (
@@ -234,10 +239,12 @@ const actualizarVehiculoParcial = async (idVehiculo, campos) => {
             camposActualizados[campo] = campos[campo];
         });
 
+        if (auditoria.catalogosActivos()) auditoria.exigirMotivo(client);
         await validarReduccionCapacidad(client, vehiculoActual, camposActualizados);
         await actualizarVehiculoConDb(client, idVehiculo, camposActualizados);
 
         const vehiculoActualizado = await obtenerVehiculoPorIdConDb(client, idVehiculo);
+        if (auditoria.catalogosActivos()) await auditoria.registrarAuditoriaEstructurada({recurso:'vehiculos',anterior:vehiculoActual,nuevo:vehiculoActualizado}, client);
 
         await client.query('COMMIT');
 

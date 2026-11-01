@@ -1,4 +1,7 @@
 const obtenerRespuestaErrorPostgres = (error) => {
+    if (error.operationalLab && ['55P03', '40P01'].includes(error.code)) {
+        return { status: 409, body: { mensaje: error.message } };
+    }
     if (error.code === '23503') {
         return {
             status: 400,

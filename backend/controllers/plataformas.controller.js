@@ -21,7 +21,7 @@ const listarPlataformas = async (req, res) => {
 };
 
 const crearPlataforma = async (req, res) => {
-    const { errores, plataforma } = validarDatosPlataforma(req.body || {});
+    const { errores, plataforma } = require('../validators/auditoria.validator').validate(validarDatosPlataforma, req.body || {});
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -38,6 +38,7 @@ const crearPlataforma = async (req, res) => {
             datos: plataformaCreada
         });
     } catch (error) {
+        if (error.auditoriaFallida) return res.status(500).json({mensaje:'No se pudo registrar la auditoría'});
         const respuestaErrorPostgres = obtenerRespuestaErrorPostgres(error);
 
         if (respuestaErrorPostgres) {

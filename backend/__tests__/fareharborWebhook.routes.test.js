@@ -204,6 +204,11 @@ function crearDbWebhookMemoria({ conLink = false } = {}) {
                 return { rows: [evento] };
             }
 
+            if (query.startsWith('SELECT id_evento_integracion FROM eventos_integracion')) {
+                return { rows: state.eventos.filter(evento => evento.provider === values[0]
+                    && evento.external_booking_id.toLowerCase() === values[1].toLowerCase()).slice(0, 1) };
+            }
+
             throw new Error(`Query no soportado en prueba: ${query}`);
         }),
         release: jest.fn()
@@ -298,6 +303,7 @@ describe('POST /api/integraciones/fareharbor/webhook', () => {
         expect(response.status).toBe(200);
         expect(db.state.eventos).toHaveLength(2);
         expect(db.state.eventos[0].external_event_id).not.toBe(db.state.eventos[1].external_event_id);
+        expect(db.state.eventos.map(evento => evento.event_type)).toEqual(['new_booking', 'modification']);
     });
 
     test('booking con reservas_integracion_link existente clasifica modification', async () => {

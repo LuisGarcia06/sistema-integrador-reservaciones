@@ -228,12 +228,12 @@ const validarDatosOperacion = (datos) => {
     };
 };
 
-const validarDatosActualizacionOperacion = (datos) => {
+const validarDatosActualizacionOperacion = (datos, { permitirVacio = false } = {}) => {
     const errores = [];
     const camposActualizacion = {};
     const camposEnviados = Object.keys(datos);
 
-    if (camposEnviados.length === 0) {
+    if (camposEnviados.length === 0 && !permitirVacio) {
         errores.push('Debe enviar al menos un campo para actualizar');
     }
 

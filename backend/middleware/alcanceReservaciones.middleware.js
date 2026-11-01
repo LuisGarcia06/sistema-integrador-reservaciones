@@ -4,6 +4,7 @@ const { validarAlcanceReservaciones } = require('../utils/alcanceReservaciones')
 // Solo endpoints necesarios para las dos pantallas autorizadas. Se comparan
 // rutas registradas de Express, nunca headers, query ni rutas del frontend.
 const LECTURAS_CONSULTA_SELECTED = new Set([
+    '/api/integraciones',
     '/api/dashboard/resumen',
     '/api/reservaciones',
     '/api/reservaciones/:id',

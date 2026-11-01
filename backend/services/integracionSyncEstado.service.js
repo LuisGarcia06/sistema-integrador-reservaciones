@@ -234,6 +234,33 @@ async function registrarBackoffRecoverySync({
     return result.rows[0] || null;
 }
 
+// Cursor incremental independiente; conserva el recovery historico de source=gmail.
+async function guardarCheckpointIncrementalSync({ lastHistoryId, pageToken = null, completed = false } = {}, db = pool) {
+    const result = await db.query(`INSERT INTO integracion_sync_estado
+        (provider,source,last_history_id,recovery_page_token,last_successful_sync_at)
+        VALUES ($1,$2,$3,$4,CASE WHEN $5 THEN CURRENT_TIMESTAMP END)
+        ON CONFLICT (provider,source) DO UPDATE SET
+            last_history_id=EXCLUDED.last_history_id, recovery_page_token=EXCLUDED.recovery_page_token,
+            last_successful_sync_at=CASE WHEN $5 THEN CURRENT_TIMESTAMP ELSE integracion_sync_estado.last_successful_sync_at END,
+            last_error_at=NULL,last_error_code=NULL,backoff_until=NULL,updated_at=CURRENT_TIMESTAMP
+        RETURNING ${columnasEstadoSync}`,
+    ['getyourguide', 'gmail_recent', normalizarTextoObligatorio(lastHistoryId, 'lastHistoryId'), pageToken, completed]);
+    return result.rows[0];
+}
+
+async function registrarBackoffIncrementalSync({ errorCode, backoffUntil } = {}, db = pool) {
+    await db.query(`UPDATE integracion_sync_estado SET last_error_at=CURRENT_TIMESTAMP,
+        last_error_code=$3,backoff_until=$4,updated_at=CURRENT_TIMESTAMP WHERE provider=$1 AND source=$2`,
+    ['getyourguide', 'gmail_recent', normalizarTextoOpcional(errorCode), backoffUntil]);
+}
+
+async function reflejarSyncRecienteExitoso(db = pool) {
+    // Compatibilidad con Electron instalado; conserva los cursores historicos.
+    await db.query(`UPDATE integracion_sync_estado SET last_successful_sync_at=CURRENT_TIMESTAMP,
+        last_error_at=NULL,last_error_code=NULL,updated_at=CURRENT_TIMESTAMP WHERE provider=$1 AND source=$2`,
+    ['getyourguide', 'gmail']);
+}
+
 module.exports = {
     DEFAULT_PROVIDER,
     DEFAULT_SOURCE,
@@ -245,4 +272,7 @@ module.exports = {
     obtenerEstadoSync,
     registrarBackoffRecoverySync,
     registrarErrorSync,
+    guardarCheckpointIncrementalSync,
+    registrarBackoffIncrementalSync,
+    reflejarSyncRecienteExitoso,
 };

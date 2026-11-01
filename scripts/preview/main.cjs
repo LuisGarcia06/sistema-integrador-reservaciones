@@ -1,7 +1,9 @@
+// Guardia antes de cargar Electron, abrir red o crear el perfil.
+require('./windows11-contract.cjs').guard();
 // Entrada explícita del Electron de demostración; nunca electron/main.js.
 const { instalarAislamiento } = require('./isolation.cjs');
 const isolation = instalarAislamiento();
-const { app, BrowserWindow, session } = require('electron');
+const { app, BrowserWindow, session, dialog } = require('electron');
 const fs = require('node:fs'), os = require('node:os'), path = require('node:path');
 const { crearPreviewApi } = require('./api.cjs');
 const testing = process.argv.includes('--preview-self-test');
@@ -67,7 +69,7 @@ async function run() {
     webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, webSecurity: true, backgroundThrottling: !testing, spellcheck: false, devTools: testing } });
   win.removeMenu();
   win.webContents.on('page-title-updated', event => { event.preventDefault(); win.setTitle('DEMO PRE-RELEASE · DATOS FICTICIOS · Community Tours'); });
-  win.webContents.on('render-process-gone', () => cerrar(1));
+  win.webContents.on('render-process-gone', () => { dialog.showErrorBox('Prueba parcial interrumpida', 'Código: PREVIEW_RENDERER_GONE. Se perdió la interfaz; no se utilizó PostgreSQL.'); cerrar(1); });
   await win.loadURL(origin + '/index.html');
   console.log('DEMO lista. API ficticia: ' + origin + ' | Perfil temporal: ' + profile);
   if (testing) {
@@ -75,4 +77,4 @@ async function run() {
     console.log('PRE_RELEASE_05_OK'); cerrar();
   }
 }
-run().catch(error => { console.error('DEMO: ' + (testing ? error.stack : error.message)); cerrar(1); });
+run().catch(async error => { console.error('PREVIEW_REJECTED'); await app.whenReady(); dialog.showErrorBox('Prueba parcial bloqueada', 'No pudo abrirse el frontend con la API sintética. Código: PREVIEW_START_FAILED. No se utilizó PostgreSQL.'); cerrar(1); });

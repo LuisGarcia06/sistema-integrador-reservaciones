@@ -65,7 +65,7 @@ const obtenerGuiaPorId = async (req, res) => {
 };
 
 const crearGuia = async (req, res) => {
-    const { errores, guia } = validarDatosGuia(req.body || {});
+    const { errores, guia } = require('../validators/auditoria.validator').validate(validarDatosGuia, req.body || {});
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -82,6 +82,7 @@ const crearGuia = async (req, res) => {
             datos: guiaCreada
         });
     } catch (error) {
+        if (error.statusCode) return res.status(error.statusCode).json({mensaje:error.message});
         console.error('Error al crear la guía:', error);
 
         return res.status(500).json({
@@ -99,7 +100,7 @@ const actualizarGuiaParcial = async (req, res) => {
         });
     }
 
-    const { errores, camposActualizacion } = validarDatosActualizacionGuia(req.body || {});
+    const { errores, camposActualizacion } = require('../validators/auditoria.validator').validate(validarDatosActualizacionGuia, req.body || {}, true);
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -125,6 +126,7 @@ const actualizarGuiaParcial = async (req, res) => {
             datos: guiaActualizada
         });
     } catch (error) {
+        if (error.statusCode) return res.status(error.statusCode).json({mensaje:error.message});
         console.error('Error al actualizar la guía:', error);
 
         return res.status(500).json({

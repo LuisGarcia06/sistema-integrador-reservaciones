@@ -398,6 +398,17 @@ const guardarObservacionesPorFecha = async (fecha, observaciones) => {
             ultima_actualizacion
     `;
 
+    const auditoria = require('./bitacora.service');
+    if (auditoria.auditoriaActiva()) {
+        return require('../config/operationalTransactions').creation(pool, async db => {
+            const anterior = (await db.query('SELECT id_daily_observacion,fecha,observaciones,ultima_actualizacion FROM daily_observaciones WHERE fecha=$1 FOR UPDATE', [fecha])).rows[0];
+            if (anterior && anterior.observaciones === observaciones) return anterior;
+            if (anterior) auditoria.exigirMotivo(db);
+            const nuevo = (await db.query(query, [fecha, observaciones])).rows[0];
+            await auditoria.registrarAuditoriaEstructurada({recurso:'daily',anterior:anterior || null,nuevo}, db);
+            return nuevo;
+        });
+    }
     const result = await pool.query(query, [fecha, observaciones]);
 
     return result.rows[0];

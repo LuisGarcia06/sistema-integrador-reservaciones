@@ -65,7 +65,7 @@ const obtenerOperadorPorId = async (req, res) => {
 };
 
 const crearOperador = async (req, res) => {
-    const { errores, operador } = validarDatosOperador(req.body || {});
+    const { errores, operador } = require('../validators/auditoria.validator').validate(validarDatosOperador, req.body || {});
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -82,6 +82,7 @@ const crearOperador = async (req, res) => {
             datos: operadorCreado
         });
     } catch (error) {
+        if (error.statusCode) return res.status(error.statusCode).json({mensaje:error.message});
         console.error('Error al crear el operador:', error);
 
         return res.status(500).json({
@@ -99,7 +100,7 @@ const actualizarOperadorParcial = async (req, res) => {
         });
     }
 
-    const { errores, camposActualizacion } = validarDatosActualizacionOperador(req.body || {});
+    const { errores, camposActualizacion } = require('../validators/auditoria.validator').validate(validarDatosActualizacionOperador, req.body || {}, true);
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -125,6 +126,7 @@ const actualizarOperadorParcial = async (req, res) => {
             datos: operadorActualizado
         });
     } catch (error) {
+        if (error.statusCode) return res.status(error.statusCode).json({mensaje:error.message});
         console.error('Error al actualizar el operador:', error);
 
         return res.status(500).json({

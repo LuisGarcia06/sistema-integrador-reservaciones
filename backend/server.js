@@ -1,3 +1,9 @@
+// El esquema 019 aún no tiene precondiciones API: tampoco se puede montar Express
+// importándolo desde el proceso de pruebas de esquema.
+const startupProfile = require('./config/desktopConfiguration').get();
+if (startupProfile?.APP_ENVIRONMENT === 'revision-schema-lab' || startupProfile?.DB_SCHEMA_VERSION === '019') {
+    throw Object.assign(Error('SCHEMA_LAB_NOT_OPERATIONAL'), {code:'SCHEMA_LAB_NOT_OPERATIONAL'});
+}
 const express = require('express');
 const path = require('path');
 const authRoutes = require('./routes/auth.routes');
@@ -69,6 +75,7 @@ app.use('/api/bitacora', bitacoraRoutes);
 app.use('/api/daily', dailyRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/eventos-integracion', eventosIntegracionRoutes);
+app.use('/api/integraciones', require('./routes/integracionesControl.routes'));
 app.use('/api/guias', guiasRoutes);
 app.use('/api/operadores', operadoresRoutes);
 app.use('/api/operaciones', operacionesRoutes);

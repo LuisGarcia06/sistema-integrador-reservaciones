@@ -55,7 +55,7 @@ const obtenerTourPorId = async (req, res) => {
 };
 
 const crearTour = async (req, res) => {
-    const { errores, tour } = validarDatosTour(req.body || {});
+    const { errores, tour } = require('../validators/auditoria.validator').validate(validarDatosTour, req.body || {});
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -72,6 +72,7 @@ const crearTour = async (req, res) => {
             datos: tourCreado
         });
     } catch (error) {
+        if (error.statusCode) return res.status(error.statusCode).json({mensaje:error.message});
         console.error('Error al crear el tour:', error);
 
         return res.status(500).json({
@@ -89,7 +90,7 @@ const actualizarTourParcial = async (req, res) => {
         });
     }
 
-    const { errores, camposActualizacion } = validarDatosActualizacionTour(req.body || {});
+    const { errores, camposActualizacion } = require('../validators/auditoria.validator').validate(validarDatosActualizacionTour, req.body || {}, true);
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -115,6 +116,7 @@ const actualizarTourParcial = async (req, res) => {
             datos: tourActualizado
         });
     } catch (error) {
+        if (error.statusCode) return res.status(error.statusCode).json({mensaje:error.message});
         console.error('Error al actualizar el tour:', error);
 
         return res.status(500).json({

@@ -3,6 +3,7 @@ const jwt = require('jsonwebtoken');
 const request = require('supertest');
 
 jest.mock('../config/database', () => ({ query: jest.fn(), connect: jest.fn() }));
+jest.mock('../services/centroAvisos.service', () => ({ obtenerIndicadores: jest.fn(async () => ({ pendientes: 0, urgentes: 0, sin_revisar: 0 })) }));
 jest.mock('../services/operaciones.service', () => ({
     obtenerOperaciones: jest.fn(async () => []),
     obtenerOperacionPorId: jest.fn(async () => ({ id_operacion_tour: 7 })),
@@ -188,7 +189,7 @@ describe('ACCESS-SCOPE-03A: Reservaciones y Dashboard con servicios reales', () 
         expect(listed.status).toBe(200); expect(listed.body.total).toBe(42);
         const dashboard = await get('/api/dashboard/resumen?fecha=' + FECHA, id);
         expect(dashboard.status).toBe(200);
-        expect(dashboard.body.metricas).toEqual({ reservaciones_vigentes: 40, pax_vigentes: 176, grupos_preparados: 7, grupos_pendientes: 1 });
+        expect(dashboard.body.metricas).toEqual({ reservaciones_vigentes: 40, pax_vigentes: 176, grupos_preparados: 1, grupos_pendientes: 1 });
         expect(dashboard.body.alertas.salidas_con_exceso_capacidad).toBe(1);
         expect(operacionesService.obtenerOperacionesSugeridas).toHaveBeenCalled();
     });

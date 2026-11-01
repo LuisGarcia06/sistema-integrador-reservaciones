@@ -22,6 +22,9 @@ const camposCrearUsuarioPermitidos = [
 const validarIdUsuario = (id) => validarIdCatalogo(id);
 
 const validarCorreo = (valor) => {
+    if(require('../security/credentialPolicy').active()){
+        try{return {valido:true,valor:require('../security/credentialPolicy').email(valor)};}catch{return {valido:false,mensaje:'El campo correo debe ser un correo válido'};}
+    }
     if (typeof valor !== 'string') {
         return {
             valido: false,
@@ -49,6 +52,9 @@ const validarCorreo = (valor) => {
 };
 
 const validarPassword = (valor) => {
+    if(require('../security/credentialPolicy').active()){
+        try{return {valido:true,valor:require('../security/credentialPolicy').password(valor)};}catch{return {valido:false,mensaje:'Contraseña fuera del contrato Unicode de 8 puntos y máximo 72 bytes'};}
+    }
     if (typeof valor !== 'string') {
         return {
             valido: false,

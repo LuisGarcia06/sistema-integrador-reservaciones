@@ -1,4 +1,6 @@
 const pool = require('../config/database');
+const auditoria = require('./bitacora.service');
+const transactions = require('../config/operationalTransactions');
 
 const camposActualizables = [
     'nombre',
@@ -59,9 +61,12 @@ const crearTour = async (tour) => {
             id_tour
     `;
 
-    const result = await pool.query(query, [tour.nombre, tour.descripcion, tour.activo]);
-
-    return obtenerTourPorId(result.rows[0].id_tour);
+    return transactions.creation(pool, async db => {
+        const result = await db.query(query, [tour.nombre, tour.descripcion, tour.activo]);
+        const nuevo = await obtenerTourPorIdConDb(db, result.rows[0].id_tour);
+        if (auditoria.catalogosActivos()) await auditoria.registrarAuditoriaEstructurada({recurso:'tours',anterior:null,nuevo}, db);
+        return nuevo;
+    });
 };
 
 const obtenerCambiosTour = (tourActual, campos) => (
@@ -121,9 +126,11 @@ const actualizarTourParcial = async (idTour, campos) => {
             camposActualizados[campo] = campos[campo];
         });
 
+        if (auditoria.catalogosActivos()) auditoria.exigirMotivo(client);
         await actualizarTourConDb(client, idTour, camposActualizados);
 
         const tourActualizado = await obtenerTourPorIdConDb(client, idTour);
+        if (auditoria.catalogosActivos()) await auditoria.registrarAuditoriaEstructurada({recurso:'tours',anterior:tourActual,nuevo:tourActualizado}, client);
 
         await client.query('COMMIT');
 

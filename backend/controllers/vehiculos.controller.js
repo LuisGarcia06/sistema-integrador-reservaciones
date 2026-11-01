@@ -66,7 +66,7 @@ const obtenerVehiculoPorId = async (req, res) => {
 };
 
 const crearVehiculo = async (req, res) => {
-    const { errores, vehiculo } = validarDatosVehiculo(req.body || {});
+    const { errores, vehiculo } = require('../validators/auditoria.validator').validate(validarDatosVehiculo, req.body || {});
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -83,6 +83,7 @@ const crearVehiculo = async (req, res) => {
             datos: vehiculoCreado
         });
     } catch (error) {
+        if (error.auditoriaFallida) return res.status(500).json({mensaje:'No se pudo registrar la auditoría'});
         const respuestaErrorPostgres = obtenerRespuestaErrorPostgres(error);
 
         if (respuestaErrorPostgres) {
@@ -106,7 +107,7 @@ const actualizarVehiculoParcial = async (req, res) => {
         });
     }
 
-    const { errores, camposActualizacion } = validarDatosActualizacionVehiculo(req.body || {});
+    const { errores, camposActualizacion } = require('../validators/auditoria.validator').validate(validarDatosActualizacionVehiculo, req.body || {}, true);
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -132,6 +133,7 @@ const actualizarVehiculoParcial = async (req, res) => {
             datos: vehiculoActualizado
         });
     } catch (error) {
+        if (error.auditoriaFallida) return res.status(500).json({mensaje:'No se pudo registrar la auditoría'});
         const respuestaErrorPostgres = obtenerRespuestaErrorPostgres(error);
 
         if (respuestaErrorPostgres) {

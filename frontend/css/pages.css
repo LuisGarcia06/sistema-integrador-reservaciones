@@ -2820,3 +2820,5 @@ body.is-login-page .page-root {
   }
   @media (max-width: 520px) { .dashboard-metric-grid { grid-template-columns: minmax(0, 1fr); } }
 }
+.integraciones-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+.integracion-card { padding: 24px; }

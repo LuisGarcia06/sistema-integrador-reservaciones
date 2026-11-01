@@ -6,6 +6,13 @@
     error.status = response.status;
     error.data = data;
     error.isNetworkError = false;
+    error.code = data && data.codigo;
+    error.kind = error.code === 'CONTEXTO_OPERATIVO_CAMBIO' ? 'context'
+      : response.status === 412 ? 'record'
+      : response.status === 428 ? 'required'
+      : error.code === 'PRECONDICION_INVALIDA' || error.code === 'CLIENTE_INCOMPATIBLE' ? 'protocol'
+      : response.status === 401 ? 'authentication'
+      : response.status === 403 ? 'permission' : 'business';
     return error;
   }
 
@@ -32,8 +39,16 @@
     return text ? { mensaje: text } : null;
   }
 
+  function responseMetadata(response) {
+    return { protocol: response.headers.get('X-CTSK-Protocol'), generation: response.headers.get('X-CTSK-Data-Generation'),
+      replayed: response.headers.get('Idempotency-Replayed'), etag: response.headers.get('ETag') };
+  }
+
   async function apiFetch(path, options) {
     const requestOptions = options || {};
+    // El perfil se instala exclusivamente en la página del harness. Nunca se
+    // consulta una foto nueva implícitamente al guardar un formulario heredado.
+    if (App.revisionLab) App.revisionLab.guard(path, requestOptions);
     const headers = new Headers(requestOptions.headers || {});
     const shouldAttachAuth = requestOptions.auth !== false;
     const revision = App.auth ? App.auth.obtenerVersionSesion() : 0;
@@ -76,7 +91,12 @@
     let response;
 
     try {
-      response = await fetch(path, fetchOptions);
+      const flight = fetch(path, fetchOptions);
+      if (requestOptions.onSecretDispatched && App.adminUi) {
+        requestOptions.onSecretDispatched();
+        fetchOptions.body = undefined;
+      }
+      response = await flight;
       const data = await parseResponse(response);
       if (App.auth && revision !== App.auth.obtenerVersionSesion()) throw staleError();
       return await finishResponse(response, data);
@@ -90,15 +110,19 @@
     }
 
     async function finishResponse(response, data) {
+      if (App.adminUi && response.headers.get('X-CTSK-Protocol') === App.adminUi.protocol) App.adminUi.noteGeneration(response.headers.get('X-CTSK-Data-Generation'));
       if (!response.ok) {
         if (response.status === 401 && requestHadJwt && App.auth) {
           App.auth.limpiarSesion();
           App.auth.establecerMensajeSesion("Tu sesión terminó. Inicia sesión nuevamente.");
           if (App.router && window.location.hash !== "#/login") App.router.navigate("login");
         }
-        throw createHttpError(response, data);
+        const error = createHttpError(response, data);
+        if (requestOptions.responseMetadata) error.responseMetadata = responseMetadata(response);
+        throw error;
       }
-      return data;
+      if (!['GET', 'HEAD'].includes(fetchOptions.method.toUpperCase()) && path !== '/api/precondiciones') window.dispatchEvent(new Event('datosactualizados'));
+      return requestOptions.responseMetadata ? { data: data, status: response.status, headers: responseMetadata(response) } : data;
     }
   }
 

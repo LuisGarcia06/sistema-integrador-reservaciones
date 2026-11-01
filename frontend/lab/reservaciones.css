@@ -1,0 +1,9 @@
+.reservation-lab-banner { margin: 0; padding: 5px 20px; background: #fff1cb; color: #533800; font-size: 13px; text-align: center; }
+#reservation-command-panel, #reservation-conflict-panel { min-width: 0; }
+#reservation-command-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 220px; overflow: auto; background: #f3f6f5; padding: 12px; }
+#reservation-command-panel button, #reservation-conflict-panel button { margin: 4px; padding: 8px 12px; cursor: pointer; }
+#reservation-conflict-panel { overflow: auto; }
+#reservation-conflict-panel table { width: 100%; border-collapse: collapse; font-size: 13px; }
+#reservation-conflict-panel th, #reservation-conflict-panel td { padding: 8px; border: 1px solid #ccd7d1; vertical-align: top; overflow-wrap: anywhere; }
+#reservation-conflict-panel .revision-changed { background: #fff4dc; }
+#reservation-command-panel h2, #reservation-conflict-panel h2 { font-size: 19px; margin-top: 20px; }

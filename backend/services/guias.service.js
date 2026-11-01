@@ -1,4 +1,6 @@
 const pool = require('../config/database');
+const auditoria = require('./bitacora.service');
+const transactions = require('../config/operationalTransactions');
 
 const camposActualizables = [
     'nombre',
@@ -69,9 +71,12 @@ const crearGuia = async (guia) => {
             id_guia
     `;
 
-    const result = await pool.query(query, [guia.nombre, guia.estado]);
-
-    return obtenerGuiaPorId(result.rows[0].id_guia);
+    return transactions.creation(pool, async db => {
+        const result = await db.query(query, [guia.nombre, guia.estado]);
+        const nuevo = await obtenerGuiaPorIdConDb(db, result.rows[0].id_guia);
+        if (auditoria.catalogosActivos()) await auditoria.registrarAuditoriaEstructurada({recurso:'guias',anterior:null,nuevo}, db);
+        return nuevo;
+    });
 };
 
 const obtenerCambiosGuia = (guiaActual, campos) => (
@@ -131,9 +136,11 @@ const actualizarGuiaParcial = async (idGuia, campos) => {
             camposActualizados[campo] = campos[campo];
         });
 
+        if (auditoria.catalogosActivos()) auditoria.exigirMotivo(client);
         await actualizarGuiaConDb(client, idGuia, camposActualizados);
 
         const guiaActualizada = await obtenerGuiaPorIdConDb(client, idGuia);
+        if (auditoria.catalogosActivos()) await auditoria.registrarAuditoriaEstructurada({recurso:'guias',anterior:guiaActual,nuevo:guiaActualizada}, client);
 
         await client.query('COMMIT');
 

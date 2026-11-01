@@ -96,7 +96,7 @@ const consultarObservaciones = async (req, res) => {
 
 const guardarObservaciones = async (req, res) => {
     const validacionQuery = validarConsultaDaily(req.query || {});
-    const validacionBody = validarBodyObservacionesDaily(req.body || {});
+    const validacionBody = require('../validators/auditoria.validator').validate(validarBodyObservacionesDaily, req.body || {});
     const errores = [
         ...validacionQuery.errores,
         ...validacionBody.errores
@@ -121,6 +121,8 @@ const guardarObservaciones = async (req, res) => {
             observaciones: observacion.observaciones
         });
     } catch (error) {
+        if (error.auditoriaFallida) throw error;
+        if (require('../validators/auditoria.validator').active() && error.statusCode === 400) return res.status(400).json({mensaje:error.message});
         console.error('Error al guardar observaciones Daily:', error);
 
         return res.status(500).json({

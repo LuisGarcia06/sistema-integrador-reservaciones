@@ -1,0 +1,5 @@
+/* Solo presentación de la entrada experimental; conserva los formularios originales. */
+#admin-form-panels { grid-column: 1 / -1; flex-basis: 100%; width: 100%; min-width: 0; }
+#admin-form-panels:empty, #admin-command-host:empty, #admin-recovery-host:empty { display: none; }
+#admin-recovery-host { margin: 20px 32px; }
+#admin-recovery-host section { border: 1px solid #7a9590; border-radius: 8px; padding: 16px; background: white; }

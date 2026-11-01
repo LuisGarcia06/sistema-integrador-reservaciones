@@ -1,5 +1,7 @@
 const pool = require('../config/database');
 const capacidadService = require('./capacidad.service');
+const operationalTransactions = require('../config/operationalTransactions');
+const auditoria = require('./bitacora.service');
 
 const camposActualizables = [
     'id_operacion_tour',
@@ -399,9 +401,12 @@ const crearTransporte = async (transporte) => {
         transporte.estado
     ];
 
-    const result = await pool.query(query, values);
-
-    return obtenerTransportePorId(result.rows[0].id_transporte_operacion);
+    return operationalTransactions.creation(pool, async db => {
+        const result = await db.query(query, values);
+        const nuevo = await obtenerTransporteEnriquecidoPorIdConDb(db, result.rows[0].id_transporte_operacion);
+        if (auditoria.auditoriaActiva()) await auditoria.registrarAuditoriaEstructurada({recurso:'transportes',anterior:null,nuevo}, db);
+        return nuevo;
+    });
 };
 
 const obtenerCambiosTransporte = (transporteActual, campos) => (
@@ -475,9 +480,12 @@ const actualizarTransporteParcial = async (idTransporte, campos) => {
             return crearResultadoCapacidadInvalida(errorIntegridad);
         }
 
+        if (auditoria.auditoriaActiva()) auditoria.exigirMotivo(client);
         await actualizarTransporteConDb(client, idTransporte, camposActualizados);
 
         const transporteActualizado = await obtenerTransporteEnriquecidoPorIdConDb(client, idTransporte);
+
+        if (auditoria.auditoriaActiva()) await auditoria.registrarAuditoriaEstructurada({recurso:'transportes',anterior:transporteActual,nuevo:transporteActualizado}, client);
 
         await client.query('COMMIT');
 

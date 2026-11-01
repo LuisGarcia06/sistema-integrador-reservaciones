@@ -66,7 +66,7 @@ const obtenerTransportePorId = async (req, res) => {
 };
 
 const crearTransporte = async (req, res) => {
-    const { errores, transporte } = validarDatosTransporte(req.body || {});
+    const { errores, transporte } = require('../validators/auditoria.validator').validate(validarDatosTransporte, req.body || {});
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -89,6 +89,8 @@ const crearTransporte = async (req, res) => {
             datos: transporteCreado
         });
     } catch (error) {
+        if (error.auditoriaFallida) throw error;
+        if (require('../validators/auditoria.validator').active() && error.statusCode === 400) return res.status(400).json({mensaje:error.message});
         const respuestaErrorPostgres = obtenerRespuestaErrorPostgres(error);
 
         if (respuestaErrorPostgres) {
@@ -112,7 +114,7 @@ const actualizarTransporteParcial = async (req, res) => {
         });
     }
 
-    const { errores, camposActualizacion } = validarDatosActualizacionTransporte(req.body || {});
+    const { errores, camposActualizacion } = require('../validators/auditoria.validator').validate(validarDatosActualizacionTransporte, req.body || {}, true);
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -144,6 +146,8 @@ const actualizarTransporteParcial = async (req, res) => {
             datos: transporteActualizado
         });
     } catch (error) {
+        if (error.auditoriaFallida) throw error;
+        if (require('../validators/auditoria.validator').active() && error.statusCode === 400) return res.status(400).json({mensaje:error.message});
         const respuestaErrorPostgres = obtenerRespuestaErrorPostgres(error);
 
         if (respuestaErrorPostgres) {

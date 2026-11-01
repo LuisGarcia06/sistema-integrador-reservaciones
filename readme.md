@@ -187,3 +187,40 @@ python scripts/generar_documento_arquitectura_implementada.py
 ```
 
 El script genera un archivo versionado nuevo y no sobrescribe documentos historicos.
+
+## Backend independiente — Fase 1 de desarrollo
+
+La entrada adicional `npm run backend:independent -- --manifest <ruta-absoluta>` permite
+ejecutar Node/Express sin Electron, exclusivamente en loopback y con un clúster
+desechable verificado. Electron puede conectarse explícitamente sin detener ese
+backend al cerrar. La modalidad habitual se conserva sin argumentos nuevos.
+
+Preparación segura, comandos PowerShell, pruebas, límites y reversión:
+[LOCAL-FASE-01](docs/LOCAL-FASE-01.md). Este perfil no habilita producción, LAN,
+integraciones reales, servicios Windows ni instaladores.
+
+## HTTPS de laboratorio — Fase 2B.1
+
+`scripts/HttpsLab.ps1 -Mode Prepare` crea otro entorno PostgreSQL sintético y
+certificados exclusivos de prueba. `backend/httpsLab.js --server <ruta>` inicia
+HTTPS solo en 127.0.0.1; Electron usa `--ctsk-mode=https-lab --ctsk-client=<ruta>`.
+La confianza se limita a la sesión de la aplicación, sin instalar CA en Windows.
+Procedimiento, resultados, seguridad y reversión: [LOCAL-FASE-2B1](docs/LOCAL-FASE-2B1.md).
+No habilita LAN ni sustituye las modalidades existentes.
+
+## Cliente/servidor LAN aislado — Fase 2B.2
+
+`backend/lanLab.js` y el paquete público con entrada `electron/lanEntry.js` agregan
+un modo exclusivo que exige la aprobación vigente de dos equipos aislados y
+verifica sus interfaces antes de conectarse. No abre LAN por defecto ni configura
+el firewall. PostgreSQL continúa en loopback; el cliente no contiene backend ni secretos.
+Preparación, contratos, resultados y pruebas físicas pendientes:
+[LOCAL-FASE-2B2](docs/LOCAL-FASE-2B2.md).
+
+## Transacciones operativas de laboratorio — Fase 2C.1
+
+`scripts/OperationalLab.ps1 -Mode Verify` crea un clúster nuevo sintético, prueba
+concurrencia mediante conexiones independientes y barreras, y lo detiene al terminar.
+Las protecciones nuevas se activan solo con configuración privada `standalone-development`
+validada; no habilitan producción ni LAN y no agregan revisiones o idempotencia.
+Resultados, protocolo, límites y reversión: [LOCAL-FASE-2C1](docs/LOCAL-FASE-2C1.md).

@@ -4,6 +4,9 @@ const { autenticarUsuario, autorizarRoles } = require('../middleware/auth.middle
 const { ROLES } = require('../constants/roles');
 
 const router = express.Router();
+const centroAvisos = require('../controllers/centroAvisos.controller');
+router.get('/centro', autenticarUsuario, autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA), centroAvisos.listar);
+router.get('/centro/:id/historial', autenticarUsuario, autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA), centroAvisos.historial);
 
 router.get(
     '/resumen',

@@ -2,6 +2,11 @@ const authService = require('../services/auth.service');
 const { validarLogin } = require('../validators/auth.validator');
 
 const login = async (req, res) => {
+    if (require('../security/credentialPolicy').active()) {
+        try { return res.status(200).json(await require('../services/credentialAuth.service').get().login(req.body)); }
+        catch (error) { return res.status(error.statusCode || 500).json({codigo:error.statusCode ? error.code : 'AUTH_UNAVAILABLE'}); }
+        finally { if (req.body && typeof req.body === 'object') req.body.password = null; }
+    }
     const { errores, credenciales } = validarLogin(req.body || {});
 
     if (errores.length > 0) {

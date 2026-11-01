@@ -1,9 +1,23 @@
 const bcrypt = require('bcryptjs');
 const pool = require('../config/database');
+const auditoria = require('./bitacora.service');
 const { ROLES } = require('../constants/roles');
 const { validarDatosActualizacionUsuario } = require('../validators/usuarios.validator');
 
 const BCRYPT_SALT_ROUNDS = 12;
+const credenciales = require('../security/credentialPolicy');
+const correo023 = async (db, correo) => {
+    const entrada=credenciales.email(correo);
+    const clave=(await db.query('SELECT public.ctsk_correo_clave_023($1) clave',[entrada])).rows[0].clave;
+    if(entrada.toLowerCase()!==clave)credenciales.fail(409,'EMAIL_NORMALIZATION_REVIEW_REQUIRED');
+    return clave;
+};
+const validarRol023 = rol => {
+    if(credenciales.active()&&!['Administrador','Consulta'].includes(rol?.nombre))credenciales.fail(400,'ROL_NO_SOPORTADO');
+};
+const marcarFallo023 = error => {
+    if(credenciales.active()&&/^[A-Z0-9]{5}$/.test(error.code||'')&&!['23503','23505'].includes(error.code))error.escrituraUsuarioFallida=true;
+};
 const MENSAJE_AUTO_DESACTIVACION = 'No puedes desactivar tu propia cuenta de Administrador.';
 const MENSAJE_AUTO_DEGRADACION = 'No puedes cambiar tu propio rol de Administrador.';
 const MENSAJE_ULTIMO_ADMIN = 'No se puede desactivar o cambiar el rol del último Administrador activo.';
@@ -222,7 +236,9 @@ const prepararAlcanceUsuario = async (db, campos, rolFinal, usuarioActual = null
     if (validacion.errores.length) throw crearErrorAlcance(validacion.errores.join('. '));
 
     const modo = tieneModo ? campos.alcance_plataformas : usuarioActual.alcance_plataformas;
-    const ids = tieneIds ? validacion.camposActualizacion.platform_ids : [];
+    const ids = tieneIds ? validacion.camposActualizacion.platform_ids
+        : auditoria.usuariosActivos() && modo === 'selected' && usuarioActual?.alcance_plataformas === 'selected'
+            ? usuarioActual.platform_ids : [];
     if (!['all', 'selected'].includes(modo)) throw crearErrorAlcance('Alcance inválido');
     if (modo === 'all' && ids.length) throw crearErrorAlcance('all no admite asignaciones seleccionadas');
 
@@ -253,6 +269,7 @@ const crearUsuario = async (usuario) => {
         await client.query('BEGIN');
 
         const rol = await obtenerRolPorIdConDb(client, usuario.id_rol);
+        validarRol023(rol);
 
         if (!rol) {
             const error = new Error('Rol no encontrado');
@@ -261,6 +278,10 @@ const crearUsuario = async (usuario) => {
         }
 
         const alcance = await prepararAlcanceUsuario(client, usuario, rol.nombre);
+        if(credenciales.active()){
+            credenciales.password(usuario.password);
+            usuario={...usuario,correo:await correo023(client,usuario.correo)};
+        }
         const passwordHash = await hashearPassword(usuario.password);
         const query = `
             INSERT INTO usuarios (
@@ -286,12 +307,14 @@ const crearUsuario = async (usuario) => {
 
         if (alcance) await guardarPlataformasUsuario(client, result.rows[0].id_usuario, alcance.platform_ids);
         const usuarioCreado = await obtenerUsuarioPorIdConDb(client, result.rows[0].id_usuario);
+        if(credenciales.active())await auditoria.registrarAuditoriaEstructurada({recurso:'usuarios',anterior:null,nuevo:usuarioCreado},client);
 
         await client.query('COMMIT');
 
         return usuarioCreado;
     } catch (error) {
         await client.query('ROLLBACK');
+        marcarFallo023(error);
         throw error;
     } finally {
         client.release();
@@ -347,6 +370,7 @@ const actualizarUsuarioParcial = async (idUsuario, campos, usuarioAutenticado) =
 
         if (Object.prototype.hasOwnProperty.call(campos, 'id_rol')) {
             rolActualizado = await obtenerRolPorIdConDb(client, campos.id_rol);
+            validarRol023(rolActualizado);
 
             if (!rolActualizado) {
                 const error = new Error('Rol no encontrado');
@@ -391,12 +415,18 @@ const actualizarUsuarioParcial = async (idUsuario, campos, usuarioAutenticado) =
         }
 
         const rolFinal = construirEstadoFinalUsuario(usuarioActual, campos, rolActualizado).rol;
+        if(credenciales.active()&&!['Administrador','Consulta'].includes(rolFinal))credenciales.fail(400,'ROL_NO_SOPORTADO');
+        if(credenciales.active()&&tieneCampo(campos,'correo'))campos={...campos,correo:await correo023(client,campos.correo)};
         const alcance = await prepararAlcanceUsuario(client, campos, rolFinal, usuarioActual);
         const camposGuardables = Object.fromEntries(Object.entries(campos).filter(([campo]) => camposActualizables.includes(campo)));
         if (alcance) camposGuardables.alcance_plataformas = alcance.alcance_plataformas;
         const camposConCambios = obtenerCambiosUsuario(usuarioActual, camposGuardables);
 
-        if (camposConCambios.length === 0 && !alcance) {
+        const auditoriaUsuario = auditoria.usuariosActivos();
+        const cambianAsignaciones = Boolean(alcance) && (!auditoriaUsuario
+            || JSON.stringify(usuarioActual.platform_ids) !== JSON.stringify(alcance.platform_ids));
+
+        if (camposConCambios.length === 0 && (auditoriaUsuario ? !cambianAsignaciones : !alcance)) {
             await client.query('COMMIT');
             return usuarioActual;
         }
@@ -407,16 +437,40 @@ const actualizarUsuarioParcial = async (idUsuario, campos, usuarioAutenticado) =
             camposActualizados[campo] = camposGuardables[campo];
         });
 
+        if (auditoriaUsuario) {
+            auditoria.exigirMotivo(client);
+            const propuesta = {...usuarioActual,...camposActualizados,
+                platform_ids: alcance ? alcance.platform_ids : usuarioActual.platform_ids};
+            const compatibilidad = await client.query(`SELECT
+                public.ctsk_admin_snapshot_valido_022('usuarios',$1::jsonb) anterior,
+                public.ctsk_admin_snapshot_valido_022('usuarios',$2::jsonb) nuevo`, [
+                JSON.stringify(auditoria.fotoAuditoria('usuarios',usuarioActual)),
+                JSON.stringify(auditoria.fotoAuditoria('usuarios',propuesta))
+            ]);
+            if (compatibilidad.rows[0]?.anterior !== true || compatibilidad.rows[0]?.nuevo !== true) {
+                const error = crearErrorReglaNegocio('El estado público del usuario no es compatible con la auditoría 022. Requiere revisión sin normalización automática.');
+                error.code = 'USUARIO_AUDITORIA_INCOMPATIBLE';
+                throw error;
+            }
+        }
+
         if (camposConCambios.length) await actualizarUsuarioConDb(client, idUsuario, camposActualizados);
-        if (alcance) await guardarPlataformasUsuario(client, idUsuario, alcance.platform_ids);
+        if (cambianAsignaciones) await guardarPlataformasUsuario(client, idUsuario, alcance.platform_ids);
 
         const usuarioActualizado = await obtenerUsuarioPorIdConDb(client, idUsuario);
+
+        if (auditoriaUsuario) await auditoria.registrarAuditoriaEstructurada({recurso:'usuarios',anterior:usuarioActual,nuevo:usuarioActualizado}, client);
 
         await client.query('COMMIT');
 
         return usuarioActualizado;
     } catch (error) {
         await client.query('ROLLBACK');
+        // En el contrato nuevo un fallo SQL inesperado de escritura es tecnico:
+        // no convertirlo en un rechazo durable solo por pertenecer a clase 22.
+        // Unicidad y FK conservan las respuestas comerciales existentes.
+        if (auditoria.usuariosActivos() && /^[A-Z0-9]{5}$/.test(error.code || '')
+            && !['23503','23505'].includes(error.code)) error.escrituraUsuarioFallida = true;
         throw error;
     } finally {
         client.release();
@@ -436,6 +490,7 @@ const actualizarPasswordUsuario = async (idUsuario, password) => {
             return null;
         }
 
+        if(credenciales.active()){auditoria.exigirMotivo(client);credenciales.password(password);}
         const passwordHash = await hashearPassword(password);
         const query = `
             UPDATE usuarios
@@ -450,11 +505,14 @@ const actualizarPasswordUsuario = async (idUsuario, password) => {
 
         const usuarioActualizado = await obtenerUsuarioPorIdConDb(client, idUsuario);
 
+        if(credenciales.active())await auditoria.registrarCambioPassword(idUsuario,client);
+
         await client.query('COMMIT');
 
         return usuarioActualizado;
     } catch (error) {
         await client.query('ROLLBACK');
+        marcarFallo023(error);
         throw error;
     } finally {
         client.release();

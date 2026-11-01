@@ -7,6 +7,7 @@
     "start": "node backend/server.js",
     "test": "jest",
     "desktop": "electron .",
+    "backend:independent": "node backend/standalone.js",
     "pack:win": "electron-builder --win --x64 --dir",
     "dist:win": "electron-builder --win --x64"
   },

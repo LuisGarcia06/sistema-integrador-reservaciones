@@ -3,7 +3,7 @@
   'use strict';
   const banner = document.createElement('section');
   banner.id = 'preview-lab'; banner.setAttribute('aria-label', 'Controles de demostración');
-  banner.innerHTML = '<strong>DEMO PRE-RELEASE · DATOS FICTICIOS · SIN POSTGRESQL NI PROVEEDORES</strong>' +
+  banner.innerHTML = '<strong>PRUEBA PARCIAL · synthetic-acceptance-only · productionAuthorized=false · SIN POSTGRESQL NI PROVEEDORES</strong>' +
     '<div>Los cambios viven en memoria hasta cerrar. El acceso de cada perfil se valida en la API sintética.</div>' +
     '<div class="preview-controls"><label>Perfil <select id="preview-profile"><option value="admin">Administrador</option><option value="all">Consulta all</option><option value="selected">Consulta selected</option></select></label>' +
     '<button id="preview-login" type="button">Entrar / cambiar perfil</button><button id="preview-operations" type="button">Operaciones de hoy</button>' +

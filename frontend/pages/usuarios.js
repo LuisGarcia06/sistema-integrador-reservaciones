@@ -122,6 +122,7 @@
     document.querySelectorAll("[data-usuarios-action]").forEach(function (button) {
       button.disabled = isLoading || Boolean(actionLoadingId);
     });
+    enforceOwnAdminRowControls();
   }
 
   function renderStatusRow(title, text) {
@@ -313,6 +314,7 @@
   }
 
   function closeDialog() {
+    if(App.adminCommands&&!App.adminCommands.close())return;
     if (submitLoading) {
       return;
     }
@@ -323,6 +325,7 @@
 
     if (host) {
       host.innerHTML = "";
+      App.adminCommands?.redraw();
     }
   }
 
@@ -403,8 +406,11 @@
       '<div class="usuarios-form-grid">',
       formContent,
       isPassword ? "" : renderAlcance(usuario),
+      App.adminUi && !isEdit && !isPassword ? '<label class="field">Confirmar contraseña<input class="input" id="usuario-password-crear-confirmar" type="password" autocomplete="new-password"></label>' : "",
+      App.adminUi ? App.auditUi.field("usuario-motivo") : "",
       "</div>",
       '<p class="form-message" id="usuarios-form-message" role="status" aria-live="polite"></p>',
+      App.adminUi ? '<div id="admin-form-panels"></div>' : '',
       '<div class="usuarios-form-actions">',
       '<button class="btn" id="usuarios-cancel" type="button">Cancelar</button>',
       '<button class="btn btn-primary" id="usuarios-submit" type="submit">Guardar</button>',
@@ -414,7 +420,8 @@
     ].join("");
   }
 
-  function openDialog(mode, usuario) {
+  async function openDialog(mode, usuario) {
+    if(App.adminCommands&&!App.adminCommands.canOpen()){setMessage("Consulta el resultado original antes de otra intención.","is-error");return;}
     const host = document.getElementById("usuarios-dialog-host");
 
     if (!host || submitLoading || actionLoadingId) {
@@ -425,6 +432,13 @@
     host.innerHTML = renderUserDialog(mode, usuario);
     bindFormEvents();
     updateAlcanceControls();
+    if(App.adminCommands){
+      const version=App.auth.obtenerVersionSesion(),creation=mode===FORM_MODE_CREATE,url=creation?"/api/usuarios":"/api/usuarios/"+getUsuarioId(usuario)+(mode===FORM_MODE_PASSWORD?"/password":"");
+      const showReview=(current,proposal)=>{if(!current){closeDialog();return;}const model={...current,...proposal};model.rol=getRoleNameById(model.id_rol)||model.rol;selectedUsuario=creation?null:current;host.innerHTML=renderUserDialog(mode,model);bindFormEvents();updateAlcanceControls();for(const [key,id]of [["nombre","usuario-nombre"],["correo","usuario-correo"],["id_rol","usuario-rol"],["alcance_plataformas","usuario-alcance"],["motivo","usuario-motivo"]]){if(proposal?.[key]!==undefined&&document.getElementById(id))document.getElementById(id).value=proposal[key];}setFormLoading(false);};
+      setFormLoading(true);try{const session=await App.adminCommands.open(creation?"POST":"PATCH",url,{creation,credential:creation||mode===FORM_MODE_PASSWORD,onReview:showReview});if(version!==App.auth.obtenerVersionSesion())return;if(!creation)showReview(App.revisionConflict.view(session.original),{});}
+      catch(e){if(version===App.auth.obtenerVersionSesion())setFormMessage(App.commandLab.message(e),"is-error");}
+      finally{if(version===App.auth.obtenerVersionSesion())setFormLoading(false);}
+    }
 
     const firstInput = host.querySelector("input:not([type='hidden']), select");
 
@@ -455,6 +469,11 @@
 
     if (submit) {
       submit.textContent = isLoading ? "Guardando..." : "Guardar";
+      if(App.adminCommands&&!isLoading)submit.disabled=App.adminCommands.getSession()?.state!=='ready';
+    }
+    if(App.adminCommands&&!isLoading&&App.adminCommands.getSession()?.state!=='ready')document.querySelectorAll('#usuarios-form input, #usuarios-form select, #usuarios-form textarea').forEach(function(control){control.disabled=true;});
+    if(!isLoading&&document.getElementById('usuarios-form-mode')?.value===FORM_MODE_EDIT&&isOwnAdminUsuario(selectedUsuario)){
+      ['usuario-rol','usuario-estado'].forEach(function(id){const control=document.getElementById(id);if(control)control.disabled=true;});
     }
   }
 
@@ -479,7 +498,7 @@
     }
 
     payload.nombre = nombreInput.value.trim();
-    payload.correo = correoInput.value.trim().toLowerCase();
+    payload.correo = App.adminUi ? correoInput.value.trim() : correoInput.value.trim().toLowerCase();
     payload.id_rol = Number(rolInput.value);
     payload.estado = parseEstado(estadoInput.value);
     if (getRoleNameById(payload.id_rol) === 'Consulta') {
@@ -506,7 +525,8 @@
     if (mode === FORM_MODE_CREATE) {
       payload.password = passwordInput ? passwordInput.value : "";
 
-      if (payload.password.length < 8) {
+      if(App.adminUi){try{App.adminUi.password(payload.password);}catch(e){errores.push(e.message);}if(payload.password!==document.getElementById("usuario-password-crear-confirmar")?.value)errores.push("La confirmación no coincide.");}
+      else if (payload.password.length < 8) {
         errores.push("La contraseña debe tener al menos 8 caracteres.");
       }
     }
@@ -555,7 +575,8 @@
     const confirmar = confirmarInput ? confirmarInput.value : "";
     const errores = [];
 
-    if (password.length < 8) {
+    if(App.adminUi){try{App.adminUi.password(password);}catch(e){errores.push(e.message);}}
+    else if (password.length < 8) {
       errores.push("La contraseña debe tener al menos 8 caracteres.");
     }
 
@@ -610,6 +631,12 @@
       return;
     }
 
+    if(App.adminCommands){
+      const version=App.auth.obtenerVersionSesion();try{const body=App.auditUi.body(payload,"usuario-motivo",mode!==FORM_MODE_CREATE);setFormLoading(true);const confirmed=await App.adminCommands.submit(body,{clearSecrets:()=>{delete data.payload.password;delete payload.password;}});if(version!==App.auth.obtenerVersionSesion())return;setFormLoading(false);if(confirmed){closeDialog();await loadUsuarios();if(version===App.auth.obtenerVersionSesion())setMessage("Usuario guardado correctamente.","is-info");}}
+      catch(e){if(version===App.auth.obtenerVersionSesion())setFormMessage(App.commandLab.message(e),"is-error");}
+      finally{if(version===App.auth.obtenerVersionSesion())setFormLoading(false);}
+      return;
+    }
     setFormMessage("", "");
     setFormLoading(true);
 
@@ -649,6 +676,7 @@
 
     const idUsuario = getUsuarioId(usuario);
     const nextEstado = usuario.estado !== true;
+    if(App.adminCommands){await openDialog(FORM_MODE_EDIT,usuario);const control=document.getElementById("usuario-estado");if(control)control.value=String(nextEstado);return;}
 
     if (!nextEstado && !window.confirm("¿Desactivar este usuario? No podrá iniciar sesión mientras esté inactivo.")) {
       return;
@@ -771,6 +799,7 @@
 
   App.pages.usuarios = {
     resetSession: function () {
+      App.adminCommands?.resetSession();
       requestId += 1;
       usuarios = [];
       roles = [];

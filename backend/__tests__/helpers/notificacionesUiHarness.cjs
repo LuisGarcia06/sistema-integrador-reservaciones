@@ -44,6 +44,8 @@ const server = http.createServer(async (req, res) => {
             await new Promise(r => setTimeout(r, delay)); inFlight -= 1;
             if (offline) { res.writeHead(500); return res.end('{"mensaje":"Fallo sintético de conexión"}'); }
             data = { datos: summary() };
+        } else if (u.pathname === '/api/eventos-integracion/centro' || /^\/api\/eventos-integracion\/centro\/\d+\/historial$/.test(u.pathname)) {
+            data = require('./notificacionesCentroFixture.cjs').respond(rows, u);
         } else if (u.pathname === '/api/eventos-integracion') {
             const selected = rows.filter(r => Boolean(r.archived_at) === (u.searchParams.get('archived') === 'true') && (!u.searchParams.has('review_status') || r.review_status === u.searchParams.get('review_status')));
             const limit = Number(u.searchParams.get('limit') || 25); data = { data: selected.slice(0, limit), pagination: { total: selected.length, page: 1, limit, totalPages: Math.ceil(selected.length / limit) } };
@@ -86,6 +88,11 @@ async function run() {
     assert.ok((await c.e("document.getElementById('notification-panel').innerText")).includes('64 pendientes · 64 sin ver')); checks.push('Conteo completo >50 y categorías accionables/archivo separadas');
     await c.e("for(let i=0;i<6;i++)document.getElementById('notification-next').click();document.getElementById('notification-panel').scrollTop=0;void 0");
     await c.wait("document.getElementById('notification-panel').innerText.includes('Actividad iniciada · Requiere archivo')");
+    assert.ok((await c.e("document.getElementById('notification-event-11004').innerText")).includes('Modificación'));
+    await c.click('#notification-prev');
+    assert.ok((await c.e("document.getElementById('notification-event-11006').innerText")).includes('Cancelación'));
+    await c.click('#notification-next');
+    checks.push('FareHarbor: etiquetas Modificación y Cancelación visibles en Avisos, con estado pendiente');
     await capture(c, 'actividad-iniciada-y-conciliacion-1366'); checks.push('Paginación hasta históricos: alta vencida distinta de modificaciones y cancelaciones accionables');
     await c.e("for(let i=0;i<6;i++)document.getElementById('notification-prev').click();document.getElementById('notification-panel').scrollTop=0;void 0");
     rows.push(event(13001)); await c.e('App.notificaciones.refresh()'); await c.wait("document.getElementById('notification-live').textContent.includes('GetYourGuide')");

@@ -96,7 +96,7 @@ const obtenerOperacionPorId = async (req, res) => {
 };
 
 const crearOperacion = async (req, res) => {
-    const { errores, operacion } = validarDatosOperacion(req.body || {});
+    const { errores, operacion } = require('../validators/auditoria.validator').validate(validarDatosOperacion, req.body || {});
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -113,6 +113,8 @@ const crearOperacion = async (req, res) => {
             datos: operacionCreada
         });
     } catch (error) {
+        if (error.auditoriaFallida) throw error;
+        if (require('../validators/auditoria.validator').active() && error.statusCode === 400) return res.status(400).json({mensaje:error.message});
         const respuestaErrorPostgres = obtenerRespuestaErrorPostgres(error);
 
         if (respuestaErrorPostgres) {
@@ -136,7 +138,7 @@ const actualizarOperacionParcial = async (req, res) => {
         });
     }
 
-    const { errores, camposActualizacion } = validarDatosActualizacionOperacion(req.body || {});
+    const { errores, camposActualizacion } = require('../validators/auditoria.validator').validate(validarDatosActualizacionOperacion, req.body || {}, true);
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -162,6 +164,8 @@ const actualizarOperacionParcial = async (req, res) => {
             datos: operacionActualizada
         });
     } catch (error) {
+        if (error.auditoriaFallida) throw error;
+        if (require('../validators/auditoria.validator').active() && error.statusCode === 400) return res.status(400).json({mensaje:error.message});
         const respuestaErrorPostgres = obtenerRespuestaErrorPostgres(error);
 
         if (respuestaErrorPostgres) {

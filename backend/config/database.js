@@ -12,7 +12,8 @@ if (!desktopConfig && protectedEntry && process.env.APP_CONFIG_PATH) {
 }
 
 const options = desktopConfig ? {
-    host: '127.0.0.1', port: 5432, database: desktopConfig.DB_NAME,
+    host: '127.0.0.1', port: require('./operationalTransactions').isOperationalLab(desktopConfig) ? Number(desktopConfig.DB_PORT) : 5432,
+    database: desktopConfig.DB_NAME,
     user: desktopConfig.DB_USER, password: desktopConfig.DB_PASSWORD,
     connectionTimeoutMillis: 5000, query_timeout: 5000,
     options: '-c search_path=public,pg_catalog -c statement_timeout=5000',
@@ -25,6 +26,10 @@ const options = desktopConfig ? {
     password: process.env.DB_PASSWORD
 } : { host: 'unconfigured.invalid', database: 'unconfigured', user: 'unconfigured', password: '' };
 const pool = new Pool(options);
+// El evento connect de pg ocurre antes de entregar el cliente al llamador.
+// Cubre también BEGIN de los aplicadores manuales sin editar integraciones.
+require('./operationalTransactions').install(pool, desktopConfig);
+require('./revisionApiTransactions').install(pool, desktopConfig);
 if (!desktopConfig && !protectedEntry) {
     pool.query = pool.connect = async () => { throw Object.assign(new Error('Configuración privada de arranque requerida.'), { code: 'PRIVATE_PARENT' }); };
 }

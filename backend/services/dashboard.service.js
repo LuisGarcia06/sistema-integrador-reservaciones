@@ -1,6 +1,7 @@
 const pool = require('../config/database');
 const { validarAlcanceReservaciones, construirFiltroAlcanceReservaciones } = require('../utils/alcanceReservaciones');
 const operacionesService = require('./operaciones.service');
+const centroAvisos = require('./centroAvisos.service');
 
 const ESTADOS_RESERVACION_VIGENTE = [
     'Pendiente',
@@ -43,18 +44,6 @@ const consultarMetricasReservaciones = async (fecha, alcance) => {
         reservaciones_vigentes: Number(result.rows[0]?.reservaciones_vigentes) || 0,
         pax_vigentes: Number(result.rows[0]?.pax_vigentes) || 0
     };
-};
-
-const consultarGruposPreparados = async (fecha) => {
-    const query = `
-        SELECT COUNT(*)::int AS total
-        FROM operaciones_tour
-        WHERE fecha = $1
-    `;
-
-    const result = await pool.query(query, [fecha]);
-
-    return Number(result.rows[0]?.total) || 0;
 };
 
 const consultarReservacionesRecientes = async (alcance) => {
@@ -138,6 +127,7 @@ const construirSalidasDashboard = async (fecha) => {
         reservaciones_sin_turno: Number(sugeridas.reservaciones_sin_turno) || 0,
         salidas_con_exceso_capacidad: salidasConExcesoCapacidad,
         grupos_pendientes: gruposPendientes,
+        grupos_preparados: salidasHoy.reduce((total, salida) => total + salida.grupos_preparados, 0),
         salidas_hoy: salidasHoy
     };
 };
@@ -164,22 +154,23 @@ const obtenerResumenDashboard = async (fecha, alcance) => {
     }
     const [
         metricasReservaciones,
-        gruposPreparados,
+        avisos,
         resumenSalidas,
         reservacionesRecientes
     ] = await Promise.all([
         consultarMetricasReservaciones(fecha, alcance),
-        consultarGruposPreparados(fecha),
+        centroAvisos.obtenerIndicadores(fecha),
         construirSalidasDashboard(fecha),
         consultarReservacionesRecientes(alcance)
     ]);
 
     return {
         fecha,
+        avisos,
         metricas: {
             reservaciones_vigentes: metricasReservaciones.reservaciones_vigentes,
             pax_vigentes: metricasReservaciones.pax_vigentes,
-            grupos_preparados: gruposPreparados,
+            grupos_preparados: resumenSalidas.grupos_preparados,
             grupos_pendientes: resumenSalidas.grupos_pendientes
         },
         alertas: {

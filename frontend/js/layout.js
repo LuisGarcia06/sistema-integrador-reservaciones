@@ -9,10 +9,12 @@
     { id: "historial", label: "Historial", route: "#/historial", mark: "HS" },
     { id: "bitacora", label: "Bitácora", route: "#/bitacora", mark: "BT", adminOnly: true },
     { id: "usuarios", label: "Usuarios", route: "#/usuarios", mark: "US", adminOnly: true },
-    { id: "configuracion", label: "Configuración", route: "#/configuracion", mark: "CF" }
+    { id: "configuracion", label: "Configuración", route: "#/configuracion", mark: "CF" },
+    { id: "integraciones", label: "Integraciones", route: "#/integraciones", mark: "IN" }
   ];
 
   const ICONS = {
+    integraciones: '<path d="M8 3v5m8-5v5M6 8h12v4a6 6 0 0 1-12 0zM12 18v4"/>',
     dashboard: '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
     reservaciones: '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 11h18m-13 5 3 3 5-5"/>',
     operaciones: '<rect x="5" y="4" width="14" height="17" rx="2"/><path d="M9 4V2h6v2M9 9h6m-6 4h6m-6 4h4"/>',
@@ -52,7 +54,7 @@
     }
 
     if (App.auth.esAdministrador()) {
-      return NAV_ITEMS;
+      return App.unified?.active ? NAV_ITEMS.filter(function (item) { return App.auth.puedeAccederPagina(item.id); }) : NAV_ITEMS;
     }
 
     return NAV_ITEMS.filter(function (item) {

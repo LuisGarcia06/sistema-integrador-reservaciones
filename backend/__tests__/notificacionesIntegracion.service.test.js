@@ -20,14 +20,14 @@ test.each(['fareharbor', 'getyourguide'])('modificación/cancelación antigua %s
     const db = setup(['modification', 'cancellation'].map((event_type, i) => event(i + 1, { provider, event_type, start_at: '2020-01-01', review_status: 'approved' })));
     const r = await obtenerResumenNotificaciones(db, now); expect(r.counts.actionable).toBe(2); expect(r.events.every(e => e.review_status === 'approved')).toBe(true);
 });
-test('ranking antes de archivo; excluye aplicado/descartado/vinculado y conserva cutoff selectivo', async () => {
+test('solo publicados, excluye aplicado/descartado/archivado; sin ranking ni cutoff', async () => {
     const previous = process.env.INTEGRATION_DASHBOARD_CUTOFF_AT; process.env.INTEGRATION_DASHBOARD_CUTOFF_AT = '2026-01-01T00:00:00Z';
     try {
         const db = setup([]); expect((await obtenerResumenNotificaciones(db, now)).counts.pending).toBe(0);
         const [sql, values] = db.query.mock.calls[0];
-        expect(sql.indexOf('operational_row_number = 1')).toBeLessThan(sql.indexOf('archived_at IS NULL'));
+        expect(sql).toContain('aviso_publicado = true'); expect(sql).toContain('archived_at IS NULL');
         expect(sql).toContain("application_status = 'not_applied'"); expect(sql).toContain("review_status IN ('pending_review','approved')");
-        expect(sql).toContain('NOT EXISTS'); expect(sql).toContain('reservas_integracion_link'); expect(sql).toContain("provider = 'fareharbor' OR COALESCE"); expect(values).toEqual([new Date('2026-01-01T00:00:00Z')]);
+        expect(sql).not.toMatch(/ROW_NUMBER|NOT EXISTS|COALESCE\(source_received_at, created_at\) >=/); expect(values).toEqual([]);
     } finally { if (previous === undefined) delete process.env.INTEGRATION_DASHBOARD_CUTOFF_AT; else process.env.INTEGRATION_DASHBOARD_CUTOFF_AT = previous; }
 });
 test('error de esquema/conexión nunca se convierte en cero', async () => {

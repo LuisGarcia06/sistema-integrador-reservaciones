@@ -66,15 +66,11 @@ function syncHabilitado(env = process.env) {
 }
 
 function obtenerCodigoErrorSeguro(error) {
-    return String(
-        error?.response?.data?.error?.status
-        || error?.response?.data?.error?.code
-        || error?.errors?.[0]?.reason
-        || error?.code
-        || error?.response?.status
-        || error?.message
-        || 'error'
-    ).replace(/[^a-zA-Z0-9_.:-]/g, '_').slice(0, 100);
+    // El texto de errores OAuth/SQL puede contener tokens o datos de una fila.
+    // Guardar solo una categoría HTTP; nunca mensajes ni respuestas del proveedor.
+    const status = obtenerStatusError(error);
+    return Number.isInteger(status) && status >= 100 && status <= 599
+        ? `GMAIL_HTTP_${status}` : 'GYG_SYNC_ERROR';
 }
 
 function obtenerStatusError(error) {
@@ -140,7 +136,10 @@ function crearResultadoProcesamiento(messagesDetected = 0) {
 }
 
 function esRemitenteGetYourGuide(from) {
-    return String(from || '').toLowerCase().includes(GYG_FROM_EMAIL);
+    // Una coincidencia parcial acepta dominios sufijados o la dirección en el nombre visible.
+    const value = String(from || '').trim();
+    const match = /^(?:[^<>\r\n]*<([^<>\s,]+)>|([^<>\s,]+))$/.exec(value);
+    return Boolean(match && (match[1] || match[2]).toLowerCase() === GYG_FROM_EMAIL);
 }
 
 function construirEventoPersistible(gmailMessage, event) {
@@ -354,8 +353,19 @@ function construirBackoffUntil(env = process.env, now = new Date()) {
     return new Date(now.getTime() + obtenerQuotaBackoffMs(env));
 }
 
+function obtenerRetryAfterMs(error, now = Date.now()) {
+    const headers = error?.response?.headers;
+    const value = headers?.get?.('retry-after') ?? headers?.['retry-after'] ?? headers?.['Retry-After'];
+    if (value === undefined || value === null || value === '') return 0;
+    const seconds = Number(value);
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+    const date = Date.parse(value);
+    return Number.isFinite(date) ? Math.max(0, date - now) : 0;
+}
+
 async function guardarBackoffRecovery(syncEstado, db, error, env) {
-    const backoffUntil = construirBackoffUntil(env);
+    const now = Date.now();
+    const backoffUntil = new Date(Math.max(construirBackoffUntil(env, new Date(now)).getTime(), now + obtenerRetryAfterMs(error, now)));
     await syncEstado.registrarBackoffRecoverySync({
         provider: PROVIDER,
         source: SOURCE,
@@ -372,6 +382,7 @@ async function ejecutarRecovery(gmail, estado, {
     env = process.env,
     syncEstado = syncEstadoService,
     registrarEvento = registrarEventoIntegracion,
+    procesarMensajes = procesarMessageIds,
 } = {}) {
     if (tieneBackoffActivo(estado)) {
         return {
@@ -425,7 +436,7 @@ async function ejecutarRecovery(gmail, estado, {
     let resultado;
 
     try {
-        resultado = await procesarMessageIds(gmail, messageIds, { logger, registrarEvento });
+        resultado = await procesarMensajes(gmail, messageIds, { logger, registrarEvento });
     } catch (error) {
         if (esErrorCuotaGmail(error)) {
             const backoffUntil = await guardarBackoffRecovery(syncEstado, db, error, env);
@@ -685,6 +696,8 @@ module.exports = {
     SOURCE,
     detenerWorkerSincronizacion,
     ejecutarCicloSincronizacion,
+    ejecutarRecovery,
+    esRemitenteGetYourGuide,
     esErrorCuotaGmail,
     esHistoryIdExpirado,
     esMensajeNoEncontrado,
@@ -695,6 +708,7 @@ module.exports = {
     obtenerQuotaBackoffMs,
     obtenerRecoveryBatchSize,
     obtenerRecoveryMaxMessages,
+    obtenerRetryAfterMs,
     procesarMensajeGetYourGuide,
     syncHabilitado,
 };

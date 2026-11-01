@@ -5,6 +5,7 @@ const { spawnSync } = require('node:child_process');
 // Sin icacls /grant, Set-Acl, secretos en argumentos ni mensajes del subsistema.
 const SCRIPT = `
 $ErrorActionPreference='Stop'
+[Console]::InputEncoding=New-Object Text.UTF8Encoding($false)
 try {
  $p=[IO.Path]::GetFullPath([Console]::In.ReadToEnd())
  if (!(Test-Path -LiteralPath $p -PathType Leaf)) { exit 3 }
@@ -39,6 +40,7 @@ function checkAcl(filename, { platform = process.platform, run = spawnSync, syst
     const result = run(path.join(systemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe'),
         ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(SCRIPT, 'utf16le').toString('base64')],
         { input: filename, encoding: 'utf8', windowsHide: true, timeout: 15000, maxBuffer: 16384 });
-    if (result.status !== 0) throw Object.assign(Error('CONFIG_ACL'), { code: result.status === 3 ? 'CONFIG_MISSING' : 'CONFIG_ACL' });
+    if (!result || result.status !== 0 || result.error != null || result.signal != null)
+        throw Object.assign(Error('CONFIG_ACL'), { code: result?.status === 3 && result.error == null && result.signal == null ? 'CONFIG_MISSING' : 'CONFIG_ACL' });
 }
 module.exports = { checkAcl, SCRIPT };

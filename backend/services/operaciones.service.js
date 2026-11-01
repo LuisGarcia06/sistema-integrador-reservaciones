@@ -1,5 +1,7 @@
 const pool = require('../config/database');
 const capacidadService = require('./capacidad.service');
+const operationalTransactions = require('../config/operationalTransactions');
+const auditoria = require('./bitacora.service');
 
 const camposActualizables = [
     'fecha',
@@ -461,9 +463,12 @@ const crearOperacion = async (operacion) => {
         operacion.estado
     ];
 
-    const result = await pool.query(query, values);
-
-    return obtenerOperacionPorId(result.rows[0].id_operacion_tour);
+    return operationalTransactions.creation(pool, async db => {
+        const result = await db.query(query, values);
+        const nueva = await obtenerOperacionEnriquecidaPorIdConDb(db, result.rows[0].id_operacion_tour);
+        if (auditoria.auditoriaActiva()) await auditoria.registrarAuditoriaEstructurada({recurso:'operaciones',anterior:null,nuevo:nueva}, db);
+        return nueva;
+    });
 };
 
 const obtenerCambiosOperacion = (operacionActual, campos) => (
@@ -567,6 +572,10 @@ const actualizarOperacionParcial = async (idOperacion, campos) => {
 
         if (afectaGrupoOperativo(camposActualizados)) {
             const operacionFinal = proyectarOperacion(operacionActual, camposActualizados);
+            if (operationalTransactions.isOperationalLab()) {
+                // Releer membresía bajo candado común y bloqueos, no usar la foto preliminar.
+                reservacionesAsignadas = await obtenerReservacionesOperacionConDb(client, idOperacion, true);
+            }
 
             await validarIntegridadOperacion(
                 client,
@@ -577,9 +586,12 @@ const actualizarOperacionParcial = async (idOperacion, campos) => {
             );
         }
 
+        if (auditoria.auditoriaActiva()) auditoria.exigirMotivo(client);
         await actualizarOperacionConDb(client, idOperacion, camposActualizados);
 
         const operacionActualizada = await obtenerOperacionEnriquecidaPorIdConDb(client, idOperacion);
+
+        if (auditoria.auditoriaActiva()) await auditoria.registrarAuditoriaEstructurada({recurso:'operaciones',anterior:operacionActual,nuevo:operacionActualizada}, client);
 
         await client.query('COMMIT');
 

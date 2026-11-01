@@ -1,4 +1,6 @@
 const pool = require('../config/database');
+const auditoria = require('./bitacora.service');
+const transactions = require('../config/operationalTransactions');
 const { construirFiltroAlcanceReservaciones } = require('../utils/alcanceReservaciones');
 
 const columnasPlataforma = `
@@ -34,9 +36,12 @@ const crearPlataforma = async (plataforma) => {
             ${columnasPlataforma}
     `;
 
-    const result = await pool.query(query, [plataforma.nombre]);
-
-    return result.rows[0];
+    return transactions.creation(pool, async db => {
+        const result = await db.query(query, [plataforma.nombre]);
+        const nuevo = result.rows[0];
+        if (auditoria.catalogosActivos()) await auditoria.registrarAuditoriaEstructurada({recurso:'plataformas',anterior:null,nuevo}, db);
+        return nuevo;
+    });
 };
 
 module.exports = {

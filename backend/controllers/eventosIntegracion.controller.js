@@ -637,6 +637,9 @@ const aplicarEventoIntegracion = async (req, res) => {
             },
         });
     } catch (error) {
+        if (error.operationalLab && ['55P03', '40P01'].includes(error.code)) {
+            return res.status(409).json({ mensaje: error.message });
+        }
         console.error('Error al aplicar evento de integracion:', error.message);
 
         return res.status(500).json({

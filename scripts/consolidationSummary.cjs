@@ -1,0 +1,17 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),E=require('./consolidationEvidence.cjs'),B=require('../backend/config/standalonePolicy');
+function summaries(){const files=fs.readdirSync(E.out).filter(f=>f.endsWith('.log')),labs=new Map();for(const file of files){const lines=fs.readFileSync(path.join(E.out,file),'utf8').split(/\r?\n/);for(const line of lines){const match=/^(?:CONSOLIDATION|CREDENTIAL_SECURITY|FIRST_ACCESS|UNIFIED|AUDIT_API|ADMIN_AUDIT_API)_LAB (.+)$/.exec(line.trim());if(match){const directory=match[1].trim();if(!labs.has(directory))labs.set(directory,{directory,logs:[]});labs.get(directory).logs.push(file);}}}
+ const results=[];for(const lab of labs.values()){
+ const names=['unified-manifest.json','first-access-manifest.json','administrative-frontend-manifest.json','security-a-manifest.json','admin-api-manifest.json','manifest.json'];const name=names.find(n=>fs.existsSync(path.join(lab.directory,n)));if(!name){results.push({...lab,provisioned:false});continue;}
+ const m=JSON.parse(fs.readFileSync(path.join(lab.directory,name),'utf8'));B.validateManifest({...m,version:1,environment:'standalone-development'},E.root);
+ const reportNames=['consolidation-verification.json','unified-backend-verification.json','first-access-verification.json','administrative-frontend-verification.json','security-verification.json','admin-api-verification.json','audit-api-verification.json'];
+ const reports=reportNames.filter(f=>fs.existsSync(path.join(lab.directory,f))).map(file=>{const r=JSON.parse(fs.readFileSync(path.join(lab.directory,file),'utf8'));return {file,completed:r.completed,checks:Array.isArray(r.checks)?r.checks.length:r.checks,failures:r.failures?.map(f=>f.code),gate:r.gate,allOtherChecksPassed:r.allOtherChecksPassed,uiPort:r.uiPort,apiPort:r.apiPort};});
+ results.push({...lab,provisioned:true,cluster:m.cluster,database:m.database,pgPort:m.pgPort,httpPort:m.httpPort,code:m.code,manifest:name,ports:[...new Set([m.pgPort,m.httpPort,...reports.flatMap(r=>[r.uiPort,r.apiPort])].filter(Number.isInteger))],postgresStopped:!fs.existsSync(path.join(m.dataDirectory,'postmaster.pid')),reports});
+ }
+ fs.writeFileSync(path.join(E.out,'labs.json'),JSON.stringify(results,null,2));
+ const copies=[['regression-021.log','audit-api-verification.json','regression-021.json'],['regression-022.log','admin-api-verification.json','regression-022.json'],['security-c-historical-adapter.log','security-verification.json','regression-023-a.json'],['security-c-historical-adapter.log','administrative-frontend-verification.json','regression-023-c.json']];
+ for(const [log,source,target]of copies){const lab=results.find(l=>l.logs.includes(log));if(lab&&fs.existsSync(path.join(lab.directory,source)))fs.copyFileSync(path.join(lab.directory,source),path.join(E.out,target));}
+ const baseline=JSON.parse(fs.readFileSync(path.join(E.out,'source-before.json'),'utf8')),beforeFiles=new Set(baseline.map(e=>e.file));const added=E.snapshot().filter(e=>!beforeFiles.has(e.file)&&/^(backend|frontend|electron|scripts)\//.test(e.file));added.push({...baseline.find(e=>e.file==='scripts/consolidationEvidence.cjs'),createdBeforeBaseline:true});fs.writeFileSync(path.join(E.out,'created-code-files.json'),JSON.stringify(added,null,2));
+ console.log(JSON.stringify({labs:results.length,stopped:results.every(r=>r.postgresStopped),createdCode:added.length}));return results;
+}
+if(require.main===module)summaries();module.exports={summaries};

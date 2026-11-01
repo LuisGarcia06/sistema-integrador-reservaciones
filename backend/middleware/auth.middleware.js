@@ -32,6 +32,7 @@ const construirUsuarioRequest = (usuario) => ({
 });
 
 const autenticarUsuario = async (req, res, next) => {
+    if (require('../security/credentialPolicy').active()) return require('../services/credentialAuth.service').middleware(req,res,next);
     const jwtSecret = process.env.JWT_SECRET;
 
     if (!jwtSecret) {

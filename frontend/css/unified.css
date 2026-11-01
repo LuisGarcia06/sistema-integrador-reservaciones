@@ -1,0 +1,14 @@
+/* Componentes protegidos; los estilos globales y el formato corporativo original se conservan. */
+.revision-conflict { border: 2px solid #b67a1a; padding: 16px; border-radius: 8px; overflow-x: auto; margin-block: 16px; }
+.revision-conflict table { width: 100%; min-width: 600px; border-collapse: collapse; table-layout: fixed; }
+.revision-conflict td, .revision-conflict th { border: 1px solid #cedbd5; text-align: left; vertical-align: top; padding: 8px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.revision-conflict button, .command-panel button, #admin-recovery-host button { margin: 4px; padding: 9px 12px; border: 1px solid #7a9590; border-radius: 5px; background: #e5f1eb; color: #183f36; cursor: pointer; }
+.revision-changed { background: #fff4d9; }
+.command-panel { margin: 18px 0; padding: 16px; border: 2px solid #397f76; border-radius: 8px; background: #f3faf6; }
+.command-panel p { margin: 8px 0; overflow-wrap: anywhere; }
+.command-panel pre, #admin-recovery-host pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; overflow: auto; padding: 12px; background: #eef4f0; }
+#admin-recovery-host:empty, #admin-command-host:empty { display: none; }
+#admin-recovery-host section { border: 1px solid #7a9590; border-radius: 8px; padding: 16px; margin-bottom: 20px; background: white; }
+.daily-notes-lab { margin-bottom: 20px; padding: 20px; }
+.daily-notes-lab textarea { min-height: 100px; width: 100%; }
+@media print { #daily-observations-host, #admin-recovery-host, #admin-command-host, #unified-assignment-host { display: none !important; } }

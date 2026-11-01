@@ -3,6 +3,7 @@ const pool = require('../config/database');
 const { construirFiltroAlcanceReservaciones } = require('../utils/alcanceReservaciones');
 const bitacoraService = require('./bitacora.service');
 const capacidadService = require('./capacidad.service');
+const operationalTransactions = require('../config/operationalTransactions');
 const { ACCIONES_BITACORA } = require('../constants/bitacora.actions');
 const { camposEditablesReservacion } = require('../constants/reservaciones.fields');
 const { validarNinosNoExcedePax } = require('../validators/reservaciones.validator');
@@ -176,6 +177,7 @@ const insertarReservacionConDb = async (db, reservacion) => {
             $21, $22, $23, $24,
             CURRENT_TIMESTAMP, CURRENT_TIMESTAMP
         )
+        ${operationalTransactions.isOperationalLab() ? 'ON CONFLICT ON CONSTRAINT reservaciones_codigo_key DO NOTHING' : ''}
         RETURNING
             ${columnasReservacionBase}
     `;
@@ -821,6 +823,7 @@ const obtenerReservacionPorId = async (idReservacion, alcance) => {
 };
 
 const crearReservacionConDb = async (db, reservacion, idUsuario) => {
+    await require('./reservacionesCapacity023.service').verifyCreation(db, reservacion);
     for (let intento = 1; intento <= MAX_INTENTOS_GENERAR_CODIGO; intento += 1) {
         const reservacionConCodigo = {
             ...reservacion,
@@ -829,6 +832,8 @@ const crearReservacionConDb = async (db, reservacion, idUsuario) => {
 
         try {
             const reservacionCreada = await insertarReservacionConDb(db, reservacionConCodigo);
+            // DO NOTHING evita 23505/25P02 sin perder la transacción y su auditoría.
+            if (!reservacionCreada) continue;
 
             await bitacoraService.crearEntradaBitacora({
                 idUsuario,
@@ -898,6 +903,7 @@ const actualizarReservacionParcialConDb = async (db, idReservacion, campos, idUs
     const reservacionFinal = proyectarReservacion(reservacionActual, camposActualizados);
 
     validarIntegridadNinosPax(reservacionFinal);
+    await require('./reservacionesCapacity023.service').verifyEdit(db, reservacionActual, reservacionFinal);
 
     await validarCapacidadPatchAsignado(
         db,

@@ -465,6 +465,7 @@
         button.disabled = isLoading;
       });
     }
+    if (App.reservationCommands) App.reservationCommands.limitPage();
   }
 
   function renderStatusRow(title, text) {
@@ -821,7 +822,9 @@
       ? ""
       : '<button class="btn btn-ghost" type="button" data-reservacion-action="cancel" data-id="' + App.ui.escapeHtml(id) + '">Cancelar</button>';
 
-    return [viewButton, printButton, editButton, cancelButton].join("");
+    const transportButton = App.reservationCommands
+      ? '<button class="btn btn-ghost" type="button" data-reservacion-action="transport" data-id="' + App.ui.escapeHtml(id) + '">Transporte</button>' : "";
+    return [viewButton, printButton, editButton, cancelButton, transportButton].join("");
   }
 
   function renderPickupCell(reservacion) {
@@ -872,6 +875,7 @@
     }
 
     elements.tbody.innerHTML = renderRows(data);
+    if (App.reservationCommands) App.reservationCommands.limitPage();
   }
 
   function resetPagination() {
@@ -1328,6 +1332,13 @@
         selectField("reserva-pais", "País *", renderPaisOptions(selectedPaisId, false), readOnly),
         selectField("reserva-plataforma", "Plataforma *", renderPlataformaOptions(selectedPlataformaId, false), readOnly)
       ].join("")),
+      (['synthetic','manual'].includes(document.documentElement.dataset.refs025)?renderSection('Referencia externa declarada',[
+        selectField('reserva-ref-provider','Proveedor de la referencia','<option value="fareharbor"'+(reservacion?.referencia_externa?.provider==='fareharbor'?' selected':'')+'>FareHarbor</option><option value="getyourguide"'+(reservacion?.referencia_externa?.provider==='getyourguide'?' selected':'')+'>GetYourGuide</option>',readOnly),
+        textField('reserva-ref-valor','Código o UUID externo (opcional)',reservacion?.referencia_externa?.reference||'','type="text" maxlength="100"',readOnly),
+        selectField('reserva-ref-tipo','Tipo','<option value="code">Código</option><option value="uuid"'+(reservacion?.referencia_externa?.kind==='uuid'?' selected':'')+'>UUID</option>',readOnly),
+        textField('reserva-ref-motivo','Motivo de corrección (si cambia una referencia)', '', 'type="text" maxlength="500"',readOnly),
+        '<p>Declaración manual pendiente de verificación. No confirma un vínculo de sincronización.</p>'
+      ].join('')):''),
       renderSection("Cliente", [
         textField("reserva-nombre", "Nombre del cliente *", reservacion && reservacion.nombre_cliente, 'type="text" maxlength="120"', readOnly),
         textField("reserva-telefono", "Teléfono", reservacion && reservacion.telefono_cliente, 'type="text" maxlength="30"', readOnly),
@@ -1370,6 +1381,11 @@
   function closeDialog() {
     if (submitLoading || cancelLoading) {
       return;
+    }
+
+    if (App.reservationCommands) {
+      if (!App.reservationCommands.canLeave()) return;
+      App.reservationCommands.reset();
     }
 
     selectedReservacion = null;
@@ -1429,9 +1445,14 @@
       return;
     }
 
+    if (App.reservationCommands && mode === FORM_CREATE) {
+      if (!App.reservationCommands.canLeave() || !await App.reservationCommands.startCreate()) return;
+    }
+
     selectedReservacion = mode === FORM_EDIT ? reservacion : null;
     host.innerHTML = renderReservacionDialog(mode, reservacion);
     bindDialogEvents();
+    if (App.reservationCommands && [FORM_EDIT, FORM_CREATE].includes(mode)) attachReservationCommands();
 
     const firstInput = host.querySelector("input:not([type='hidden']):not([disabled]), select:not([disabled]), textarea:not([disabled])");
 
@@ -1445,12 +1466,19 @@
       return;
     }
 
+    if (App.reservationCommands) {
+      if (!App.reservationCommands.canLeave()) return;
+      App.reservationCommands.reset();
+    }
+
     actionLoadingId = idReservacion;
     setLoading(true);
     setMessage("", "");
 
     try {
-      const response = await App.api.apiFetch("/api/reservaciones/" + encodeURIComponent(idReservacion));
+      const response = App.reservationCommands && [FORM_EDIT, "cancel", "transport"].includes(mode)
+        ? { datos: await App.reservationCommands.open(idReservacion, mode) }
+        : await App.api.apiFetch("/api/reservaciones/" + encodeURIComponent(idReservacion));
       const reservacion = response && response.datos ? response.datos : null;
 
       if (!reservacion) {
@@ -1458,7 +1486,9 @@
         return;
       }
 
-      await openDialog(mode, reservacion);
+      if (App.reservationCommands && mode === "cancel") openCancelDialog(reservacion);
+      else if (App.reservationCommands && mode === "transport") renderProtectedTransport(reservacion, reservacion);
+      else await openDialog(mode, reservacion);
     } catch (error) {
       setMessage(getBackendMessage(error, "No fue posible consultar la reservación."), "is-error");
     } finally {
@@ -1471,6 +1501,54 @@
   function getInputValue(id) {
     const element = document.getElementById(id);
     return element ? element.value : "";
+  }
+
+  // El laboratorio agrega paneles al formulario original, sin duplicar su HTML o validaciones.
+  function attachReservationCommands() {
+    App.reservationCommands.attach({
+      message: setFormMessage,
+      loading: setFormLoading,
+      rebuild: function (baseline, draft) {
+        selectedReservacion = baseline;
+        document.getElementById("reservaciones-dialog-host").innerHTML = renderReservacionDialog(FORM_EDIT, draft);
+        bindDialogEvents();
+        attachReservationCommands();
+      }
+    });
+  }
+
+  function renderProtectedTransport(baseline, draft) {
+    selectedReservacion = baseline;
+    const host = document.getElementById("reservaciones-dialog-host");
+    host.innerHTML = renderReservacionDialog(FORM_DETAIL, baseline);
+    document.getElementById("reservaciones-dialog-title").textContent = "Asignar o cambiar transporte";
+    const form = document.getElementById("reservaciones-form");
+    const selection = document.createElement("section");
+    selection.className = "reservas-action-group";
+    selection.innerHTML = App.reservationCommands.transportControls(baseline, draft);
+    form.append(selection);
+    const select = form.querySelector("[data-reserva-select]");
+    if (select && draft.id_transporte_operacion !== baseline.id_transporte_operacion) {
+      const value = String(draft.id_transporte_operacion ?? "");
+      if (value && !Array.from(select.options).some(option => option.value === value)) {
+        const unavailable = document.createElement("option"); unavailable.value = value;
+        unavailable.textContent = "Destino propuesto no disponible #" + value; select.append(unavailable);
+      }
+      select.value = value;
+    }
+    selection.querySelectorAll("[data-assign-reserva], [data-move-reserva], [data-unassign-reserva]").forEach(function (button) {
+      button.addEventListener("click", async function () {
+        if (!isAdmin()) return;
+        const remove = button.hasAttribute("data-unassign-reserva");
+        const destination = remove ? null : App.transportesUi.leerDestino(getReservacionId(baseline));
+        if (!remove && (destination === null || !App.reservationCommands.validDestination(destination))) {
+          setFormMessage("Selecciona un transporte destino.", "is-error"); return;
+        }
+        await App.reservationCommands.submit({ id_transporte_operacion: destination });
+      });
+    });
+    bindDialogEvents();
+    App.reservationCommands.attach({message: setFormMessage, loading: setFormLoading, rebuild: renderProtectedTransport});
   }
 
   function textOrNull(value) {
@@ -1511,6 +1589,10 @@
       observaciones: textOrNull(getInputValue("reserva-observaciones"))
     };
 
+    if(['synthetic','manual'].includes(document.documentElement.dataset.refs025)){
+      const valor=getInputValue('reserva-ref-valor').trim(),previous=selectedReservacion?.referencia_externa;
+      if(valor||mode===FORM_EDIT&&previous)payload.referencia_externa={provider:getInputValue('reserva-ref-provider'),valor,tipo:getInputValue('reserva-ref-tipo'),motivo:getInputValue('reserva-ref-motivo'),confirmacion:true};
+    }
     if (mode === FORM_CREATE) {
       payload.estado = ESTADO_PENDIENTE;
       payload.notificado = getCheckboxValue("reserva-notificado");
@@ -1607,6 +1689,7 @@
       return normalizeDate(value);
     }
 
+    if(campo==='referencia_externa')return JSON.stringify(value?{provider:value.provider,valor:value.valor??value.reference,tipo:value.tipo??value.kind}:null);
     if (campo === "pickup_time") {
       return normalizeTime(value);
     }
@@ -1651,6 +1734,7 @@
     }
 
     const mode = getInputValue("reservaciones-form-mode") || FORM_CREATE;
+    if (App.reservationCommands && ![FORM_EDIT, FORM_CREATE].includes(mode)) return;
     const idReservacion = getInputValue("reservaciones-form-id");
     const data = buildPayload(mode);
 
@@ -1663,6 +1747,11 @@
 
     if (mode === FORM_EDIT && Object.keys(payload).length === 0) {
       setFormMessage("No hay cambios por guardar.", "is-info");
+      return;
+    }
+
+    if (App.reservationCommands) {
+      await App.reservationCommands.submit(payload);
       return;
     }
 
@@ -1735,6 +1824,11 @@
       return;
     }
 
+    if (App.reservationCommands) {
+      if (!App.reservationCommands.canLeave()) return;
+      App.reservationCommands.reset();
+    }
+
     selectedCancelReservacion = null;
 
     const host = document.getElementById("reservaciones-dialog-host");
@@ -1769,16 +1863,26 @@
     }
   }
 
-  function openCancelDialog(reservacion) {
+  function openCancelDialog(reservacion, rebuilding) {
     const host = document.getElementById("reservaciones-dialog-host");
 
-    if (!host || !reservacion || cancelLoading) {
+    if (!host || !reservacion || (cancelLoading && !rebuilding)) {
       return;
     }
 
     selectedCancelReservacion = reservacion;
     host.innerHTML = renderCancelDialog(reservacion);
     bindCancelDialogEvents();
+    if (App.reservationCommands) {
+      App.reservationCommands.attach({
+        formId: "reservaciones-cancel-form", closeIds: ["reservaciones-cancel-close", "reservaciones-cancel-back"],
+        message: setCancelMessage, loading: setCancelLoading,
+        rebuild: function (baseline, draft) {
+          openCancelDialog(baseline, true);
+          document.getElementById("reservaciones-cancel-motivo").value = draft.motivo_cancelacion || "";
+        }
+      });
+    }
 
     const motivo = document.getElementById("reservaciones-cancel-motivo");
 
@@ -1799,6 +1903,10 @@
     if (!motivo) {
       setCancelMessage("Ingresa el motivo de cancelación.", "is-error");
       return;
+    }
+
+    if (App.reservationCommands) {
+      await App.reservationCommands.submit({ motivo_cancelacion: motivo }); return;
     }
 
     const idReservacion = getReservacionId(selectedCancelReservacion);
@@ -1870,6 +1978,7 @@
 
     const id = button.dataset.id;
     const action = button.dataset.reservacionAction;
+    if (App.reservationCommands && !["view", "edit", "cancel", "transport"].includes(action)) return;
     const reservacion = findReservacion(id);
 
     if (action === "view") {
@@ -1890,6 +1999,10 @@
     if (action === "edit") {
       openRemoteDialog(FORM_EDIT, id);
       return;
+    }
+
+    if (App.reservationCommands && ["cancel", "transport"].includes(action)) {
+      openRemoteDialog(action, id); return;
     }
 
     if (action === "cancel") {
@@ -2004,6 +2117,7 @@
 
   App.pages.reservaciones = {
     resetSession: function () {
+      if (App.reservationCommands) App.reservationCommands.reset();
       clearReservacionPrint();
       requestId += 1;
       catalogRequestId += 1;

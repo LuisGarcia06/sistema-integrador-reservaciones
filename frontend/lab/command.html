@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Laboratorio de comandos y recuperación · Community Tours</title>
+  <link rel="stylesheet" href="/frontend/css/variables.css">
+  <link rel="stylesheet" href="/frontend/css/base.css">
+  <link rel="stylesheet" href="/frontend/css/components.css">
+  <link rel="stylesheet" href="/frontend/lab/revision.css">
+  <link rel="stylesheet" href="/frontend/lab/command.css">
+  <script defer src="/frontend/js/api.js"></script>
+  <script defer src="/frontend/js/auth.js"></script>
+  <script defer src="/frontend/js/revisionLab.js"></script>
+  <script defer src="/frontend/js/commandLab.js"></script>
+  <script defer src="/frontend/js/revisionConflict.js"></script>
+  <script defer src="/frontend/js/commandPanel.js"></script>
+  <script defer src="/frontend/lab/revisionEditor.js"></script>
+</head>
+<body>
+  <main>
+    <p class="lab-banner">LABORATORIO 020 · Comandos idempotentes · Solo loopback · Borrador y referencia únicamente en memoria</p>
+    <h1>Guardar y recuperar el resultado original</h1>
+    <form id="lab-login">
+      <label>Correo <input id="correo" type="email" required autocomplete="username"></label>
+      <label>Contraseña <input id="password" type="password" required autocomplete="current-password"></label>
+      <button type="submit">Iniciar sesión</button>
+    </form>
+    <button id="logout" type="button">Cerrar sesión</button>
+    <p id="lab-status" role="status" aria-live="polite"></p>
+    <form id="lab-select">
+      <label>Acción <select id="action"></select></label>
+      <label>Identificador sintético o fecha Daily <input id="target" required></label>
+      <button id="open" type="submit">Consultar precondiciones y abrir</button>
+    </form>
+    <section id="editor" aria-label="Formulario de edición"></section>
+    <section id="command-result" aria-label="Recuperación del comando"></section>
+    <section id="conflict" aria-label="Comparación de conflicto"></section>
+    <details><summary>Acciones bloqueadas</summary><p>Las diez altas y el cambio de contraseña no tienen formularios compatibles. Las aplicaciones externas solo admiten cancelaciones sintéticas; no se habilitan altas o modificaciones externas ni controles de sincronización. Cerrar la ventana o perder la sesión destruye este borrador y su referencia local.</p></details>
+  </main>
+</body>
+</html>

@@ -1,0 +1,9 @@
+.operation-lab-banner { margin: 0; padding: 5px 20px; background: #fff1cb; color: #533800; font-size: 13px; text-align: center; }
+#operation-command-panel, #operation-conflict-panel { min-width: 0; }
+#operation-command-panel pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 200px; overflow: auto; padding: 12px; background: #f3f6f5; }
+#operation-command-panel button, #operation-conflict-panel button { padding: 8px 12px; margin: 4px; cursor: pointer; }
+#operation-conflict-panel { overflow: auto; }
+#operation-conflict-panel table { border-collapse: collapse; width: 100%; font-size: 13px; }
+#operation-conflict-panel th, #operation-conflict-panel td { padding: 8px; border: 1px solid #ccd7d1; vertical-align: top; overflow-wrap: anywhere; }
+#operation-conflict-panel .revision-changed { background: #fff4dc; }
+#operation-command-panel h2, #operation-conflict-panel h2 { font-size: 19px; margin-top: 20px; }

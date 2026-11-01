@@ -1,0 +1,18 @@
+const fs=require('node:fs'),path=require('node:path');
+async function seed(input){
+  await require('./transportFrontendFixtures.cjs').seed(input);const db=input.admin,file=path.join(input.plan.manifest.directory,'api-fixtures.json'),f=JSON.parse(fs.readFileSync(file));const one=async(sql,args)=>(await db.query(sql,args)).rows[0];
+  const d={date:'2091-04-01',alternate:'2091-04-02',absent:'2091-04-03',lost:'2091-04-04',unknown:'2091-04-05',rollback:'2091-04-06',operations:[],transports:[],reservations:[]};
+  d.otherTour=(await one("INSERT INTO tours(nombre,descripcion,activo) VALUES ('Otra actividad Daily','Sintético',true) RETURNING id_tour id")).id;
+  for(const [i,date,tour,shift,group,pax]of [[0,d.date,f.tour,'Mañana',1,3],[1,d.date,f.tour,'Mañana',2,2],[2,d.date,f.tour,'Tarde',1,2],[3,d.date,d.otherTour,'Mañana',1,2],[4,d.alternate,f.tour,'Mañana',1,4]]){
+    const op=(await one("INSERT INTO operaciones_tour(fecha,id_tour,hora_inicio,turno,numero_grupo,id_guia,estado) VALUES ($1,$2,$3,$4,$5,$6,'Preparada') RETURNING id_operacion_tour id",[date,tour,shift==='Tarde'?'14:00':'07:00',shift,group,f.operations.guide])).id;
+    const tr=(await one("INSERT INTO transportes_operacion(id_operacion_tour,id_vehiculo,id_operador,observaciones_operador,estado) VALUES ($1,$2,$3,$4,'Preparado') RETURNING id_transporte_operacion id",[op,i===0?f.vehicles[1]:f.vehicles[0],f.operations.operator,'Notas operador Daily '+i])).id;
+    const res=(await one("INSERT INTO reservaciones(codigo,fecha,id_tour,id_pais,id_plataforma,nombre_cliente,telefono_cliente,habitacion,pax,ninos,pickup_place,pickup_time,turno,precio_total,deposito,saldo,observaciones,estado,id_transporte_operacion,fecha_registro,ultima_actualizacion) VALUES ($1,$2,$3,$4,$5,$6,'SYN-TEL','SYN-HAB',$7,$8,'Hotel sintético',$9,$10,1000,200,800,$11,'Programada',$12,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP) RETURNING id_reservacion id",['SYN-DAILY-'+i,date,tour,f.country,f.platform,i===4?'PASAJERO FECHA B':'PASAJERO DAILY '+i,pax,i===0?1:0,shift==='Tarde'?'14:05':'07:05',shift,'Notas pasajero Daily '+i,tr])).id;
+    d.operations.push(op);d.transports.push(tr);d.reservations.push(res);
+  }
+  await db.query("INSERT INTO reservaciones(codigo,fecha,id_tour,id_pais,id_plataforma,nombre_cliente,pax,ninos,pickup_place,pickup_time,turno,precio_total,deposito,saldo,estado,id_transporte_operacion,fecha_registro,ultima_actualizacion) SELECT 'SYN-DAILY-CANCEL',fecha,id_tour,id_pais,id_plataforma,'CANCELADA DAILY',10,0,pickup_place,pickup_time,turno,precio_total,deposito,saldo,'Cancelada',id_transporte_operacion,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP FROM reservaciones WHERE id_reservacion=$1",[d.reservations[0]]);
+  await db.query("INSERT INTO reservaciones(codigo,fecha,id_tour,id_pais,id_plataforma,nombre_cliente,pax,ninos,pickup_place,pickup_time,turno,precio_total,deposito,saldo,estado,fecha_registro,ultima_actualizacion) SELECT 'SYN-DAILY-PENDING',fecha,id_tour,id_pais,id_plataforma,'SIN ASIGNAR DAILY',1,0,pickup_place,pickup_time,turno,precio_total,deposito,saldo,'Pendiente',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP FROM reservaciones WHERE id_reservacion=$1",[d.reservations[0]]);
+  await db.query("INSERT INTO daily_observaciones(fecha,observaciones) VALUES ($1,'Observaciones generales A'),($2,'Observaciones generales B')",[d.date,d.alternate]);
+  d.pdfUser=(await one("INSERT INTO usuarios(id_rol,nombre,correo,password,estado,alcance_plataformas) SELECT id_rol,'Exportador Daily sintético','daily-pdf@standalone.example.test',password,true,'all' FROM usuarios WHERE correo='administrador@standalone.example.test' RETURNING id_usuario id")).id;
+  f.daily=d;fs.writeFileSync(file,JSON.stringify(f,null,2));
+}
+module.exports={seed};

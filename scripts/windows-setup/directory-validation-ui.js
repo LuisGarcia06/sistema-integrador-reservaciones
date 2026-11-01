@@ -1,0 +1,5 @@
+'use strict';
+const inspect=document.getElementById('inspect'),create=document.getElementById('create'),ack=document.getElementById('ack'),result=document.getElementById('result');let ready=false,busy=false,attempted=false,destination='';
+function paint(){inspect.disabled=busy||attempted;ack.disabled=busy||attempted;create.disabled=busy||!ready||!ack.checked||attempted;}
+async function run(action){busy=true;if(action==='create')attempted=true;paint();try{const r=await window.f02.run(action,ack.checked);if(!r.ok){ready=false;result.textContent=r.error.code+'\nDestino previsto: '+destination+'\nSe conserva cualquier evidencia parcial. No reintentar.';return;}if(action==='inspect'){ready=true;destination=r.result.root;result.textContent=r.result.code+'\nDestino: '+destination+'\nNo se crearon directorios F-02.';}else result.textContent=r.result.code+'\nConstancia: '+r.result.receipt+'\nNo se aprovisionó Community Tours ni PostgreSQL.';}catch{ready=false;result.textContent='F02_REVIEW_REQUIRED\nDestino previsto: '+destination;}finally{busy=false;paint();}}
+inspect.onclick=()=>run('inspect');create.onclick=()=>run('create');ack.onchange=paint;paint();

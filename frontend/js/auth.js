@@ -49,6 +49,7 @@
     }
     token = nuevoToken;
     usuario = Object.assign({}, nuevoUsuario, { platform_ids: nuevoUsuario.platform_ids.slice() });
+    App.adminCommands?.onSession(usuario);
     mensajeSesion = "";
     iniciarRenovacionPeriodica();
     if (App.notificaciones) App.notificaciones.start();
@@ -116,7 +117,8 @@
   function esConsultaRestringida() { return esConsulta() && usuario.alcance_plataformas === "selected"; }
   function puedeAccederPagina(route) {
     if (!estaAutenticado()) return false;
-    if (esConsultaRestringida()) return ["dashboard", "reservaciones"].includes(route);
+    if (App.unified?.active && route === "integraciones") return false;
+    if (esConsultaRestringida()) return (App.unified?.active ? ["dashboard", "reservaciones"] : ["dashboard", "reservaciones", "integraciones"]).includes(route);
     return esAdministrador() || !["usuarios", "bitacora"].includes(route);
   }
 

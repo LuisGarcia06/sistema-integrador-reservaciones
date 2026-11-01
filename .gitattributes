@@ -1,1 +1,8 @@
 database/migrations/017_archivo_eventos_integracion.sql text eol=lf
+
+# Conservar bytes de fuentes y manifiestos historicos ligados a SHA256.
+/docs/local-fase-2e6-enterprise/candidate-08/** -text
+/docs/**/before/** -text
+/docs/**/originals/** -text
+/docs/**/source/** -text
+/docs/respaldo-pre-entrega-2026-11-01/** -text

@@ -205,7 +205,7 @@ const obtenerReservaIntegracionLink = async (externalBookingId, db) => {
             SELECT id_reserva_integracion_link
             FROM reservas_integracion_link
             WHERE provider = $1
-              AND external_booking_id = $2
+              AND lower(external_booking_id) = lower($2)
             LIMIT 1
         `,
         [PROVIDER, externalBookingId]
@@ -230,7 +230,13 @@ const clasificarEventoFareHarbor = async (eventoNormalizado, db) => {
     const externalBookingId = eventoNormalizado?.external_booking_id || null;
     const link = await obtenerReservaIntegracionLink(externalBookingId, db);
 
-    return link ? EVENT_TYPE_MODIFICATION : EVENT_TYPE_NEW_BOOKING;
+    if (link) return EVENT_TYPE_MODIFICATION;
+
+    // Una alta aun pendiente tambien identifica el UUID: no exigir que el
+    // administrador la haya aplicado para reconocer una modificacion posterior.
+    const previous = await db.query(`SELECT id_evento_integracion FROM eventos_integracion
+        WHERE provider = $1 AND lower(external_booking_id) = lower($2) LIMIT 1`, [PROVIDER, externalBookingId]);
+    return previous.rows.length ? EVENT_TYPE_MODIFICATION : EVENT_TYPE_NEW_BOOKING;
 };
 
 const crearSourceSubjectFareHarbor = (eventoNormalizado) => {
@@ -277,7 +283,7 @@ const persistirWebhookFareHarbor = async (payload = {}, {
         event: resultado.event,
         external_event_id: evento.external_event_id,
         external_booking_id: evento.external_booking_id,
-        event_type: evento.event_type,
+        event_type: resultado.event?.event_type || evento.event_type,
         fingerprint: evento.normalized_data.fingerprint
     };
 });

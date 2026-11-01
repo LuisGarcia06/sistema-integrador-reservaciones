@@ -4,6 +4,7 @@
   const LOGIN_ROUTE = "login";
   const PUBLIC_ROUTES = [LOGIN_ROUTE];
   let renderId = 0;
+  let renderedPage = null;
 
   function getRouteFromHash() {
     const hash = window.location.hash || "";
@@ -59,6 +60,10 @@
     const page = App.pages && App.pages[routeId];
     const pageRoot = document.getElementById("page-root");
     const isAuthenticated = App.auth && App.auth.estaAutenticado();
+    if (App.unified?.active && renderedPage && !PUBLIC_ROUTES.includes(renderedPage) && isAuthenticated && pageRoot.childElementCount && !App.unified.canLeave(renderedPage)) {
+      if (routeId !== renderedPage) history.replaceState(null, "", "#/" + renderedPage);
+      return;
+    }
 
     if (routeId === LOGIN_ROUTE && isAuthenticated) {
       navigate(DEFAULT_ROUTE);
@@ -76,11 +81,15 @@
     }
 
     if (!page) {
+      if(App.unified?.active&&renderedPage)App.pages[renderedPage]?.resetSession?.();
+      renderedPage=routeId;
       renderUnknown(routeId);
       return;
     }
 
     if (!isPublicRoute(routeId) && (!App.auth.puedeAccederPagina(routeId) || (page.adminOnly && !App.auth.esAdministrador()))) {
+      if(App.unified?.active&&renderedPage)App.pages[renderedPage]?.resetSession?.();
+      renderedPage=routeId;
       renderUnauthorized();
       pageRoot.focus({ preventScroll: true });
       return;
@@ -97,7 +106,10 @@
       });
     }
 
+    if (App.unified?.active && renderedPage) App.pages[renderedPage]?.resetSession?.();
     pageRoot.innerHTML = page.render();
+    renderedPage = routeId;
+    if (App.unified?.active) App.unified.preparePage(pageRoot);
 
     if (typeof page.afterRender === "function") {
       page.afterRender();

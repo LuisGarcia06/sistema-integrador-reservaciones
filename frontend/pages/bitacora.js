@@ -100,8 +100,8 @@
   }
 
   function renderUsuario(registro) {
-    const nombre = registro.usuario || "Usuario " + registro.id_usuario;
-    const correo = registro.usuario_correo || "";
+    const nombre = registro.usuario_nombre_snapshot || registro.usuario || "Usuario " + registro.id_usuario;
+    const correo = registro.accion==='CAMBIAR_PASSWORD' ? '' : registro.usuario_correo || "";
 
     return [
       '<strong class="bitacora-primary-text">' + App.ui.escapeHtml(nombre) + "</strong>",
@@ -110,6 +110,13 @@
   }
 
   function renderReservacion(registro) {
+    if(registro.version_auditoria===3){const refs={id_usuario_afectado:'Usuario',id_tour:'Tour',id_guia:'Guía',id_operador:'Operador',id_vehiculo:'Vehículo',id_pais:'País',id_plataforma:'Plataforma'};const key=Object.keys(refs).find(k=>registro[k]);return '<strong class="bitacora-primary-text">'+App.ui.escapeHtml(key?refs[key]+' #'+registro[key]:'-')+'</strong>';}
+    if (registro.version_auditoria === 2 && !registro.id_reservacion) {
+      const resource = registro.id_operacion_tour ? 'Operación #' + registro.id_operacion_tour
+        : registro.id_transporte_operacion ? 'Transporte #' + registro.id_transporte_operacion
+        : registro.id_daily_observacion ? 'Daily ' + (registro.valores_nuevos?.fecha || registro.valores_anteriores?.fecha || '') : '-';
+      return '<strong class="bitacora-primary-text">' + App.ui.escapeHtml(resource) + '</strong>';
+    }
     const codigo = registro.codigo_reservacion || "";
     const idReservacion = registro.id_reservacion ? "#" + registro.id_reservacion : "-";
 
@@ -135,10 +142,20 @@
         "<td>" + renderUsuario(registro) + "</td>",
         '<td><span class="' + getBadgeClass(accion) + '">' + App.ui.escapeHtml(accion) + "</span></td>",
         "<td>" + renderReservacion(registro) + "</td>",
-        '<td class="bitacora-description-cell">' + App.ui.escapeHtml(registro.descripcion || "-") + "</td>",
+        '<td class="bitacora-description-cell">' + renderDescription(registro) + "</td>",
         "</tr>"
       ].join("");
     }).join("");
+  }
+
+  function renderDescription(registro) {
+    const historic = App.ui.escapeHtml(registro.descripcion || '-');
+    if(registro.version_auditoria===3&&registro.accion==='CAMBIAR_PASSWORD')return '<p><strong>Motivo del cambio:</strong> '+App.ui.escapeHtml(registro.motivo??'No capturado')+'</p>';
+    if (![2,3].includes(registro.version_auditoria)) return historic;
+    const show = value => App.ui.escapeHtml(value === null ? '(sin registro anterior)' : JSON.stringify(value, null, 2));
+    return historic + '<details><summary>Valores anteriores y nuevos</summary><strong>Anteriores</strong><pre>' + show(registro.valores_anteriores)
+      + '</pre><strong>Nuevos</strong><pre>' + show(registro.valores_nuevos) + '</pre></details><p><strong>Motivo del cambio:</strong> '
+      + App.ui.escapeHtml(registro.motivo ?? 'No capturado') + '</p>';
   }
 
   function buildQuery(elements) {
@@ -158,6 +175,8 @@
   }
 
   async function loadBitacora() {
+    if (!App.auth.puedeAccederPagina('bitacora')) return;
+    const sessionVersion = App.auth.obtenerVersionSesion();
     const currentRequestId = requestId + 1;
     requestId = currentRequestId;
 
@@ -175,7 +194,7 @@
     try {
       const response = await App.api.apiFetch("/api/bitacora" + buildQuery(elements));
 
-      if (currentRequestId !== requestId || window.location.hash !== "#/bitacora") {
+      if (currentRequestId !== requestId || sessionVersion !== App.auth.obtenerVersionSesion() || !App.auth.puedeAccederPagina('bitacora') || window.location.hash !== "#/bitacora") {
         return;
       }
 
@@ -185,7 +204,7 @@
         : "";
       elements.message.className = "form-message bitacora-message is-info";
     } catch (error) {
-      if (currentRequestId !== requestId || window.location.hash !== "#/bitacora") {
+      if (currentRequestId !== requestId || sessionVersion !== App.auth.obtenerVersionSesion() || !App.auth.puedeAccederPagina('bitacora') || window.location.hash !== "#/bitacora") {
         return;
       }
 
@@ -204,6 +223,9 @@
   App.pages.bitacora = {
     resetSession: function () {
       requestId += 1;
+      const elements = getElements();
+      if (elements.tbody) elements.tbody.replaceChildren();
+      if (elements.message) elements.message.textContent = '';
     },
     adminOnly: true,
     title: "Bitácora",
@@ -226,7 +248,7 @@
         '<th scope="col">Fecha / hora</th>',
         '<th scope="col">Usuario</th>',
         '<th scope="col">Acción</th>',
-        '<th scope="col">Reservación</th>',
+        App.auditUi ? '<th scope="col">Recurso / reservación</th>' : '<th scope="col">Reservación</th>',
         '<th scope="col">Descripción / cambios</th>',
         "</tr></thead>",
         '<tbody id="bitacora-tbody">',

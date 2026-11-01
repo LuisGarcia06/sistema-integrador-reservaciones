@@ -8,7 +8,7 @@ const { evaluarTimingActividadFareHarbor } = require('../integrations/fareharbor
 async function obtenerResumenNotificaciones(db = pool, now = new Date()) {
     const fuente = construirFuenteEventosIntegracion({ operational_only: true });
     const result = await db.query(`
-        ${fuente.prefix}, notificaciones_elegibles AS (
+        WITH notificaciones_elegibles AS (
             SELECT id_evento_integracion, provider, event_type, review_status,
                 normalized_data #>> '{availability,start_at}' AS start_at
             FROM ${fuente.from}

@@ -8,6 +8,8 @@ const {
 const { obtenerRespuestaErrorPostgres } = require('../utils/dbErrors');
 
 const responderErrorServicio = (res, error, contexto, mensajeDefault) => {
+    if (error.auditoriaFallida) return res.status(500).json({mensaje:'No se pudo registrar la auditoría'});
+    if (error.escrituraUsuarioFallida) return res.status(500).json({mensaje:'No se pudo confirmar el cambio de usuario'});
     const respuestaErrorPostgres = obtenerRespuestaErrorPostgres(error);
 
     if (respuestaErrorPostgres) {
@@ -20,7 +22,7 @@ const responderErrorServicio = (res, error, contexto, mensajeDefault) => {
         });
     }
 
-    console.error(contexto, error);
+    if(!require('../security/credentialPolicy').active())console.error(contexto, error);
 
     return res.status(500).json({
         mensaje: mensajeDefault
@@ -98,7 +100,7 @@ const obtenerUsuarioPorId = async (req, res) => {
 };
 
 const crearUsuario = async (req, res) => {
-    const { errores, usuario } = validarDatosUsuario(req.body || {});
+    const { errores, usuario } = require('../validators/auditoria.validator').validate(validarDatosUsuario,req.body || {});
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -133,7 +135,7 @@ const actualizarUsuarioParcial = async (req, res) => {
         });
     }
 
-    const { errores, camposActualizacion } = validarDatosActualizacionUsuario(req.body || {});
+    const { errores, camposActualizacion } = require('../validators/auditoria.validator').validate(validarDatosActualizacionUsuario, req.body || {}, true);
 
     if (errores.length > 0) {
         return res.status(400).json({
@@ -178,7 +180,7 @@ const actualizarPasswordUsuario = async (req, res) => {
         });
     }
 
-    const { errores, password } = validarDatosPasswordUsuario(req.body || {});
+    const { errores, password } = require('../validators/auditoria.validator').validate(validarDatosPasswordUsuario,req.body || {});
 
     if (errores.length > 0) {
         return res.status(400).json({

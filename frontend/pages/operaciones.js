@@ -820,22 +820,7 @@
   function renderReservacionPendienteRow(reservacion, transportesOperacion) {
     const idReservacion = getReservacionId(reservacion);
     const isLoading = reservacionTransporteLoadingId === idReservacion;
-    const canAssign = isAdmin() && transportesOperacion.length > 0;
-    const actionCell = canAssign
-      ? [
-        '<div class="reservas-action-group">',
-        '<label class="field reservas-select-field" for="reservas-asignar-' + App.ui.escapeHtml(idReservacion) + '">',
-        '<span class="field-label">Transporte</span>',
-        '<select class="input" id="reservas-asignar-' + App.ui.escapeHtml(idReservacion) + '" data-reserva-select="' + App.ui.escapeHtml(idReservacion) + '"' + (isLoading ? " disabled" : "") + ">",
-        renderTransporteDestinoOptions(null),
-        "</select>",
-        "</label>",
-        '<button class="btn btn-primary" type="button" data-assign-reserva="' + App.ui.escapeHtml(idReservacion) + '"' + (isLoading ? " disabled" : "") + ">",
-        isLoading ? "Guardando..." : "Asignar",
-        "</button>",
-        "</div>"
-      ].join("")
-      : (isAdmin() ? '<span class="card-text">Primero crea un transporte.</span>' : "");
+    const actionCell = App.transportesUi.controlesPendiente(idReservacion, isLoading, isAdmin(), transportesOperacion, renderTransporteDestinoOptions(null));
 
     return [
       '<tr class="' + (isCancelada(reservacion) ? "is-cancelada" : "") + '">',
@@ -856,32 +841,7 @@
     const idReservacion = getReservacionId(reservacion);
     const idTransporte = getTransporteId(transporte);
     const isLoading = reservacionTransporteLoadingId === idReservacion;
-    const otrosTransportes = transportesOperacion.filter(function (item) {
-      return getTransporteId(item) !== idTransporte;
-    });
-    const moveControls = otrosTransportes.length > 0
-      ? [
-        '<label class="field reservas-select-field" for="reservas-mover-' + App.ui.escapeHtml(idReservacion) + '">',
-        '<span class="field-label">Destino</span>',
-        '<select class="input" id="reservas-mover-' + App.ui.escapeHtml(idReservacion) + '" data-reserva-select="' + App.ui.escapeHtml(idReservacion) + '"' + (isLoading ? " disabled" : "") + ">",
-        renderTransporteDestinoOptions(idTransporte),
-        "</select>",
-        "</label>",
-        '<button class="btn" type="button" data-move-reserva="' + App.ui.escapeHtml(idReservacion) + '"' + (isLoading ? " disabled" : "") + ">",
-        isLoading ? "Guardando..." : "Mover",
-        "</button>"
-      ].join("")
-      : "";
-    const actionCell = isAdmin()
-      ? [
-        '<div class="reservas-action-group">',
-        moveControls,
-        '<button class="btn btn-ghost" type="button" data-unassign-reserva="' + App.ui.escapeHtml(idReservacion) + '"' + (isLoading ? " disabled" : "") + ">",
-        isLoading ? "Guardando..." : "Quitar asignación",
-        "</button>",
-        "</div>"
-      ].join("")
-      : "";
+    const actionCell = App.transportesUi.controlesAsignada(idReservacion, idTransporte, isLoading, isAdmin(), transportesOperacion, renderTransporteDestinoOptions(idTransporte));
 
     return [
       '<tr class="' + (isCancelada(reservacion) ? "is-cancelada" : "") + '">',
@@ -1022,6 +982,7 @@
       renderReservacionesPendientes(operacion),
       renderReservacionesAsignadas(operacion)
     ].join("");
+    if (App.transportCommands) App.transportCommands.limitPage();
   }
 
   function renderOrganizacionShell() {
@@ -1224,6 +1185,7 @@
       vehiculoField,
       '<label class="field transporte-estado-field" for="transporte-estado"><span class="field-label">Estado</span><input class="input" id="transporte-estado" name="estado" type="text" maxlength="30" value="' + App.ui.escapeHtml(estado) + '"></label>',
       '<label class="field transporte-observaciones-field" for="transporte-observaciones"><span class="field-label">Observaciones para operador</span><textarea class="input transporte-textarea" id="transporte-observaciones" name="observaciones_operador">' + App.ui.escapeHtml(observaciones) + "</textarea></label>",
+      App.auditUi ? App.auditUi.field('transporte-motivo', transporte?.motivo || '') : '',
       "</div>",
       '<p class="form-message" id="transporte-form-message" role="status" aria-live="polite"></p>',
       '<div class="operacion-form-actions">',
@@ -1242,6 +1204,8 @@
     }
 
     content.innerHTML = renderSugerencias() + renderOperacionesPreparadas();
+    if (App.operationCommands) App.operationCommands.limitPage();
+    if (App.transportCommands) App.transportCommands.limitPage();
   }
 
   function renderTourOptions(selectedTourId, includeInactiveSelection) {
@@ -1366,6 +1330,7 @@
       '<label class="field" for="operacion-hora"><span class="field-label">Primera hora de pickup del grupo</span><input class="input" id="operacion-hora" name="hora_inicio" type="time" value="' + App.ui.escapeHtml(horaInicio) + '"></label>',
       '<label class="field" for="operacion-guia"><span class="field-label">Guía</span><select class="input" id="operacion-guia" name="id_guia">' + renderGuiaOptions(selectedGuiaId, isEdit) + "</select></label>",
       estadoField,
+      App.auditUi ? App.auditUi.field('operacion-motivo', operacion?.motivo || '') : '',
       "</div>",
       '<p class="form-message" id="operacion-form-message" role="status" aria-live="polite"></p>',
       '<div class="operacion-form-actions">',
@@ -1377,7 +1342,10 @@
     ].join("");
   }
 
-  function openForm(mode, operacion) {
+  async function openForm(mode, operacion) {
+    if (App.unified?.active && !App.unifiedAssignments.canLeave()) return;
+    if (App.transportCommands && !App.auditUi) return;
+    if (App.auditUi && App.transportCommands.getSession()) { setMessage('Cierra la edición del transporte antes de abrir otra operación.', 'error'); return; }
     if (!isAdmin() || catalogosLoading) {
       return;
     }
@@ -1393,11 +1361,20 @@
       return;
     }
 
+    if (App.operationCommands) {
+      if (!App.operationCommands.canLeave()) return;
+      try {
+        const authorized = await App.operationCommands.open(mode === FORM_MODE_EDIT ? getOperacionId(operacion) : null);
+        if (!authorized) return;
+        if (mode === FORM_MODE_EDIT) operacion = authorized;
+      } catch (error) { setMessage(getBackendMessage(error, "No fue posible abrir una operación autorizada."), "error"); return; }
+    }
     selectedOperacion = mode === FORM_MODE_EDIT ? operacion : null;
     selectedSugerencia = null;
     dialogHost.innerHTML = renderDialog(mode, operacion);
 
     bindFormEvents();
+    if (App.operationCommands) attachOperationCommands();
 
     const firstInput = document.getElementById("operacion-fecha");
 
@@ -1406,7 +1383,9 @@
     }
   }
 
-  function openSuggestionForm(salida, numeroGrupo) {
+  async function openSuggestionForm(salida, numeroGrupo) {
+    if (App.transportCommands && !App.auditUi) return;
+    if (App.auditUi && App.transportCommands.getSession()) { setMessage('Cierra la edición del transporte antes de preparar otra operación.', 'error'); return; }
     if (!isAdmin() || catalogosLoading) {
       return;
     }
@@ -1429,6 +1408,9 @@
       return;
     }
 
+    if (App.operationCommands) {
+      if (!App.operationCommands.canLeave() || !await App.operationCommands.open(null)) return;
+    }
     selectedOperacion = null;
     selectedSugerencia = {
       salida: salida,
@@ -1437,6 +1419,7 @@
     dialogHost.innerHTML = renderDialog(FORM_MODE_SUGGESTION, null);
 
     bindFormEvents();
+    if (App.operationCommands) attachOperationCommands();
 
     const firstInput = document.getElementById("operacion-hora");
 
@@ -1448,6 +1431,10 @@
   function closeForm() {
     if (submitLoading) {
       return;
+    }
+    if (App.operationCommands) {
+      if (!App.operationCommands.canLeave()) return;
+      App.operationCommands.reset();
     }
 
     const dialogHost = document.getElementById("operacion-dialog-host");
@@ -1470,6 +1457,17 @@
     element.textContent = message || "";
     element.classList.toggle("is-error", type === "error");
     element.classList.toggle("is-info", type === "info");
+  }
+
+  function attachOperationCommands() {
+    App.operationCommands.attach({
+      message: setFormMessage, loading: setSubmitLoading, refresh: function () { return loadOperaciones(currentFecha); },
+      rebuild: function (baseline, draft) {
+        selectedOperacion = baseline; selectedSugerencia = null;
+        document.getElementById("operacion-dialog-host").innerHTML = renderDialog(FORM_MODE_EDIT, draft);
+        bindFormEvents(); attachOperationCommands();
+      }
+    });
   }
 
   function buildOperacionPayload() {
@@ -1581,6 +1579,7 @@
 
   async function handleSubmit(event) {
     event.preventDefault();
+    if (App.transportCommands && !App.auditUi) return;
 
     if (!isAdmin() || submitLoading) {
       return;
@@ -1601,6 +1600,12 @@
 
     if (mode === FORM_MODE_EDIT && Object.keys(payload).length === 0) {
       setFormMessage("No hay cambios por guardar.", "info");
+      return;
+    }
+
+    if (App.operationCommands) {
+      try { await App.operationCommands.submit(App.auditUi ? App.auditUi.body(payload, 'operacion-motivo', mode === FORM_MODE_EDIT) : payload); }
+      catch (error) { setFormMessage(error.message, 'error'); }
       return;
     }
 
@@ -1679,7 +1684,10 @@
     element.classList.toggle("is-info", type === "info");
   }
 
-  function openTransporteForm(mode, transporte) {
+  async function openTransporteForm(mode, transporte) {
+    if (App.unified?.active && !App.unifiedAssignments.canLeave()) return;
+    if (App.operationCommands && !App.auditUi) return;
+    if (App.auditUi && App.operationCommands.getSession()) { setTransportesMessage('Cierra la edición de la operación antes de abrir un transporte.', 'error'); return; }
     if (!isAdmin() || transporteCatalogosLoading || !selectedTransportOperacion) {
       return;
     }
@@ -1705,9 +1713,25 @@
       return;
     }
 
+    if (App.transportCommands) {
+      if (!App.transportCommands.canLeave()) return;
+      try {
+        const authorized = await App.transportCommands.open(mode === TRANSPORTE_FORM_EDIT ? getTransporteId(transporte) : null);
+        if (!authorized) return;
+        if (mode === TRANSPORTE_FORM_EDIT) {
+          if (Number(authorized.id_operacion_tour) !== getOperacionId(selectedTransportOperacion)) {
+            App.transportCommands.reset();
+            setTransportesMessage("El transporte cambió de operación. Actualiza y abre el grupo correspondiente.", "error");
+            return;
+          }
+          transporte = authorized;
+        }
+      } catch (error) { setTransportesMessage(App.commandLab.message(error), "error"); return; }
+    }
     selectedTransporte = mode === TRANSPORTE_FORM_EDIT ? transporte : null;
     host.innerHTML = renderTransporteForm(mode, transporte);
     bindTransporteFormEvents();
+    if (App.transportCommands) attachTransportCommands();
 
     const operadorInput = document.getElementById("transporte-operador");
 
@@ -1717,6 +1741,10 @@
   }
 
   function closeTransporteForm() {
+    if (App.transportCommands) {
+      if (!App.transportCommands.canLeave()) return;
+      App.transportCommands.reset();
+    }
     if (transporteSubmitLoading) {
       return;
     }
@@ -1731,8 +1759,13 @@
   }
 
   function closeTransportesPanel() {
+    if (App.unified?.active && !App.unifiedAssignments.canLeave()) return;
+    if (App.transportCommands) {
+      if (!App.transportCommands.canLeave()) return false;
+      App.transportCommands.reset();
+    }
     if (transporteSubmitLoading) {
-      return;
+      return false;
     }
 
     const host = document.getElementById("transportes-dialog-host");
@@ -1756,6 +1789,7 @@
     if (host) {
       host.innerHTML = "";
     }
+    return true;
   }
 
   function buildTransportePayload(mode) {
@@ -1842,6 +1876,7 @@
 
   async function handleTransporteSubmit(event) {
     event.preventDefault();
+    if (App.operationCommands && !App.auditUi) return;
 
     if (!isAdmin() || transporteSubmitLoading) {
       return;
@@ -1868,6 +1903,11 @@
     }
 
     setTransporteFormMessage("", "");
+    if (App.transportCommands) {
+      try { await App.transportCommands.submit(App.auditUi ? App.auditUi.body(payload, 'transporte-motivo', mode === TRANSPORTE_FORM_EDIT) : payload); }
+      catch (error) { setTransporteFormMessage(error.message, 'error'); }
+      return;
+    }
     setTransporteSubmitLoading(true);
 
     try {
@@ -1892,6 +1932,23 @@
       setTransporteFormMessage(getBackendMessage(error, "No fue posible guardar el transporte. Intenta nuevamente."), "error");
       setTransporteSubmitLoading(false);
     }
+  }
+
+  function attachTransportCommands() {
+    App.transportCommands.attach({
+      message: setTransporteFormMessage,
+      loading: setTransporteSubmitLoading,
+      refresh: function () { return loadTransportes(selectedTransportOperacion); },
+      rebuild: function (baseline, proposal) {
+        if (Number(baseline.id_operacion_tour) !== getOperacionId(selectedTransportOperacion)) {
+          throw new Error("El transporte pertenece a otra operación. Conserva tu propuesta y abre el grupo correspondiente antes de otra edición.");
+        }
+        selectedTransporte = baseline;
+        document.getElementById("transporte-form-host").innerHTML = renderTransporteForm(TRANSPORTE_FORM_EDIT, proposal);
+        bindTransporteFormEvents();
+        attachTransportCommands();
+      }
+    });
   }
 
   function bindTransporteFormEvents() {
@@ -2031,6 +2088,7 @@
   }
 
   function toggleOrganizacionReservaciones() {
+    if (App.unified?.active && !App.unifiedAssignments.canLeave()) return;
     const host = document.getElementById("reservas-organizacion-host");
 
     if (!host || organizacionReservacionesLoading || reservacionTransporteLoadingId !== null) {
@@ -2050,20 +2108,7 @@
   }
 
   function getSelectedReservaDestino(idReservacion) {
-    const select = Array.prototype.find.call(
-      document.querySelectorAll("[data-reserva-select]"),
-      function (element) {
-        return String(element.dataset.reservaSelect) === String(idReservacion);
-      }
-    );
-
-    if (!select || !select.value) {
-      return null;
-    }
-
-    const idTransporte = Number(select.value);
-
-    return Number.isInteger(idTransporte) && idTransporte > 0 ? idTransporte : null;
+    return App.transportesUi.leerDestino(idReservacion);
   }
 
   function setReservacionActionLoading(idReservacion) {
@@ -2072,6 +2117,18 @@
   }
 
   async function handleReservacionTransporteSubmit(idReservacionRaw, quitarAsignacion) {
+    if (App.unified?.active) {
+      if (!isAdmin() || !selectedTransportOperacion) return;
+      const id = Number(idReservacionRaw), destination = quitarAsignacion ? null : getSelectedReservaDestino(id);
+      if (!Number.isInteger(id) || id <= 0 || !quitarAsignacion && destination === null) { setOrganizacionMessage("Selecciona una reservación y transporte destino válidos.", "error"); return; }
+      const version = App.auth.obtenerVersionSesion(), operationId = getOperacionId(selectedTransportOperacion);
+      await App.unifiedAssignments.assign(id, destination, {message:setOrganizacionMessage, onConfirmed:async function () {
+        if (version === App.auth.obtenerVersionSesion() && operationId === getOperacionId(selectedTransportOperacion)) await loadOrganizacionReservaciones(selectedTransportOperacion);
+      }});
+      return;
+    }
+    if (App.transportCommands) return;
+    if (App.operationCommands) return;
     if (!isAdmin() || reservacionTransporteLoadingId !== null || !selectedTransportOperacion) {
       return;
     }
@@ -2201,6 +2258,10 @@
   }
 
   function openTransportesPanel(operacion) {
+    if (App.operationCommands && !App.auditUi) return;
+    if (App.auditUi && App.operationCommands.getSession()) { setMessage('Cierra la edición de la operación antes de gestionar transportes.', 'error'); return; }
+    if (App.transportCommands && !App.transportCommands.canLeave()) return;
+    if (App.transportCommands) App.transportCommands.reset();
     if (!operacion) {
       return;
     }
@@ -2330,7 +2391,7 @@
           return;
         }
 
-        closeTransportesPanel();
+        if (closeTransportesPanel() === false) { dateInput.value = currentFecha; return; }
         setMessage("", "");
         loadOperaciones(dateInput.value);
       });
@@ -2398,6 +2459,9 @@
 
   App.pages.operaciones = {
     resetSession: function () {
+      if (App.operationCommands) App.operationCommands.reset();
+      App.unifiedAssignments?.reset();
+      if (App.transportCommands) App.transportCommands.reset();
       operacionesRequestId += 1;
       catalogosRequestId += 1;
       transportesRequestId += 1;
