@@ -1,0 +1,103 @@
+{
+  "candidate": "candidate-08",
+  "attempt": "attempt-10",
+  "installer": false,
+  "productionAuthorized": false,
+  "technicalCandidateVerified": true,
+  "enterpriseReady": false,
+  "findingsResolved": 41,
+  "sides": {
+    "server": {
+      "digest": "49b5b52d62cec4fa4378a9242c4658a62a58d44a454792bd5e09c85c29156c3d",
+      "files": 1024,
+      "findings": [],
+      "archive": "A:\\sistema-integrador-reservaciones\\docs\\local-fase-2e6-enterprise\\candidate-08\\server-candidate026.zip"
+    },
+    "client": {
+      "digest": "93205dd6a7b3a765ab17a8bfc74a699e3b53bb2ee730628cace80cccba51e49c",
+      "files": 53,
+      "findings": [],
+      "archive": "A:\\sistema-integrador-reservaciones\\docs\\local-fase-2e6-enterprise\\candidate-08\\client-candidate026.zip"
+    }
+  },
+  "secretsNotIncluded": true,
+  "legacyOperationalNames": [
+    {
+      "side": "server",
+      "file": "database/migrations/019_revisiones_registros_lab.sql",
+      "justification": "Contrato histórico fijado por SHA; no se aplica directamente ni contiene registros comerciales."
+    },
+    {
+      "side": "server",
+      "file": "database/migrations/020_comandos_idempotentes_lab.sql",
+      "justification": "Contrato histórico fijado por SHA; no se aplica directamente ni contiene registros comerciales."
+    },
+    {
+      "side": "server",
+      "file": "database/migrations/021_auditoria_recursos_lab.sql",
+      "justification": "Contrato histórico fijado por SHA; no se aplica directamente ni contiene registros comerciales."
+    },
+    {
+      "side": "server",
+      "file": "database/migrations/022_auditoria_administrativa_lab.sql",
+      "justification": "Contrato histórico fijado por SHA; no se aplica directamente ni contiene registros comerciales."
+    },
+    {
+      "side": "server",
+      "file": "database/migrations/023_seguridad_credenciales_lab.sql",
+      "justification": "Contrato histórico fijado por SHA; no se aplica directamente ni contiene registros comerciales."
+    },
+    {
+      "side": "server",
+      "file": "database/migrations/024_activacion_integraciones_lab.sql",
+      "justification": "Contrato histórico fijado por SHA; no se aplica directamente ni contiene registros comerciales."
+    },
+    {
+      "side": "server",
+      "file": "database/migrations/025_referencias_manuales_lab.sql",
+      "justification": "Contrato histórico fijado por SHA; no se aplica directamente ni contiene registros comerciales."
+    },
+    {
+      "side": "server",
+      "file": "frontend/js/commandLab.js",
+      "justification": "Adaptador de precondiciones/comandos usado por los formularios originales, sin fixtures ni autorización de laboratorio."
+    },
+    {
+      "side": "server",
+      "file": "frontend/js/revisionLab.js",
+      "justification": "Adaptador de precondiciones/comandos usado por los formularios originales, sin fixtures ni autorización de laboratorio."
+    },
+    {
+      "side": "client",
+      "file": "frontend/js/commandLab.js",
+      "justification": "Adaptador de precondiciones/comandos usado por los formularios originales, sin fixtures ni autorización de laboratorio."
+    },
+    {
+      "side": "client",
+      "file": "frontend/js/revisionLab.js",
+      "justification": "Adaptador de precondiciones/comandos usado por los formularios originales, sin fixtures ni autorización de laboratorio."
+    }
+  ],
+  "dormantReferences": [
+    {
+      "file": "backend/config/operationalTransactions.js",
+      "branch": "Otros entornos: retorno enterprise026 validado antes del require standalonePolicy."
+    },
+    {
+      "file": "backend/revisionApiApp.js",
+      "branch": "Selección de otras políticas y sincronización: enterprise026 fuerza política026 y sync024=false."
+    },
+    {
+      "file": "backend/services/cleanInstallationCertification.service.js",
+      "branch": "Rama de ensayo023 anterior: identidad026 retorna antes de importar política anterior."
+    }
+  ],
+  "runtimeDependencyClosure": {
+    "modules": 349,
+    "outsidePackage": 0,
+    "fixtures": 0,
+    "probes": 0,
+    "oldAttestations": 0,
+    "enforcedAtLoader": true
+  }
+}

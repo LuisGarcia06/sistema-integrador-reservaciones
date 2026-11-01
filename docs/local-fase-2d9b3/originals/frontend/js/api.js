@@ -1,0 +1,126 @@
+(function () {
+  const App = window.App = window.App || {};
+
+  function createHttpError(response, data) {
+    const error = new Error("HTTP " + response.status);
+    error.status = response.status;
+    error.data = data;
+    error.isNetworkError = false;
+    error.code = data && data.codigo;
+    error.kind = error.code === 'CONTEXTO_OPERATIVO_CAMBIO' ? 'context'
+      : response.status === 412 ? 'record'
+      : response.status === 428 ? 'required'
+      : error.code === 'PRECONDICION_INVALIDA' || error.code === 'CLIENTE_INCOMPATIBLE' ? 'protocol'
+      : response.status === 401 ? 'authentication'
+      : response.status === 403 ? 'permission' : 'business';
+    return error;
+  }
+
+  function createNetworkError() {
+    const error = new Error("Network request failed");
+    error.status = 0;
+    error.data = null;
+    error.isNetworkError = true;
+    return error;
+  }
+
+  async function parseResponse(response) {
+    if (response.status === 204) {
+      return null;
+    }
+
+    const contentType = response.headers.get("content-type") || "";
+
+    if (contentType.includes("application/json")) {
+      return response.json();
+    }
+
+    const text = await response.text();
+    return text ? { mensaje: text } : null;
+  }
+
+  function responseMetadata(response) {
+    return { protocol: response.headers.get('X-CTSK-Protocol'), generation: response.headers.get('X-CTSK-Data-Generation'),
+      replayed: response.headers.get('Idempotency-Replayed'), etag: response.headers.get('ETag') };
+  }
+
+  async function apiFetch(path, options) {
+    const requestOptions = options || {};
+    // El perfil se instala exclusivamente en la página del harness. Nunca se
+    // consulta una foto nueva implícitamente al guardar un formulario heredado.
+    if (App.revisionLab) App.revisionLab.guard(path, requestOptions);
+    const headers = new Headers(requestOptions.headers || {});
+    const shouldAttachAuth = requestOptions.auth !== false;
+    const revision = App.auth ? App.auth.obtenerVersionSesion() : 0;
+    const staleError = function () { const error = new Error('Respuesta de una sesión anterior'); error.isStaleSession = true; return error; };
+    if (shouldAttachAuth && requestOptions.verificarSesion !== false && App.auth && App.auth.estaAutenticado()) {
+      await App.auth.refrescarSesion();
+      if (revision !== App.auth.obtenerVersionSesion()) throw staleError();
+    }
+    const currentToken = shouldAttachAuth && App.auth ? App.auth.obtenerToken() : null;
+    const requestHadJwt = Boolean(currentToken);
+    const fetchOptions = {
+      method: requestOptions.method || "GET",
+      headers: headers,
+      credentials: "omit",
+      cache: "no-store"
+    };
+
+    headers.set("Accept", "application/json");
+
+    if (requestHadJwt) {
+      headers.set("Authorization", "Bearer " + currentToken);
+    }
+
+    if (requestOptions.body !== undefined) {
+      headers.set("Content-Type", "application/json");
+      fetchOptions.body = typeof requestOptions.body === "string"
+        ? requestOptions.body
+        : JSON.stringify(requestOptions.body);
+    }
+
+    const controller = new AbortController();
+    const externalSignal = requestOptions.signal;
+    const abort = function () { controller.abort(); };
+    if (externalSignal) {
+      if (externalSignal.aborted) abort();
+      else externalSignal.addEventListener('abort', abort, { once: true });
+    }
+    fetchOptions.signal = controller.signal;
+    const unregister = App.auth ? App.auth.registrarSolicitud(controller) : function () {};
+    let response;
+
+    try {
+      response = await fetch(path, fetchOptions);
+      const data = await parseResponse(response);
+      if (App.auth && revision !== App.auth.obtenerVersionSesion()) throw staleError();
+      return await finishResponse(response, data);
+    } catch (error) {
+      if (error.isStaleSession || (App.auth && revision !== App.auth.obtenerVersionSesion())) throw staleError();
+      if (error.status !== undefined) throw error;
+      throw createNetworkError();
+    } finally {
+      if (externalSignal) externalSignal.removeEventListener('abort', abort);
+      unregister();
+    }
+
+    async function finishResponse(response, data) {
+      if (!response.ok) {
+        if (response.status === 401 && requestHadJwt && App.auth) {
+          App.auth.limpiarSesion();
+          App.auth.establecerMensajeSesion("Tu sesión terminó. Inicia sesión nuevamente.");
+          if (App.router && window.location.hash !== "#/login") App.router.navigate("login");
+        }
+        const error = createHttpError(response, data);
+        if (requestOptions.responseMetadata) error.responseMetadata = responseMetadata(response);
+        throw error;
+      }
+      if (!['GET', 'HEAD'].includes(fetchOptions.method.toUpperCase()) && path !== '/api/precondiciones') window.dispatchEvent(new Event('datosactualizados'));
+      return requestOptions.responseMetadata ? { data: data, status: response.status, headers: responseMetadata(response) } : data;
+    }
+  }
+
+  App.api = {
+    apiFetch: apiFetch
+  };
+})();

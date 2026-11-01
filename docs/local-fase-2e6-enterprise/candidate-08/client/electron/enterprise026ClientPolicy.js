@@ -1,0 +1,9 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),R=require('../shared/release026');
+function readClient(filename,trustFile,root=path.resolve(__dirname,'..')){
+ const acl=require('./windowsConfigAcl').checkAcl;for(const file of [filename,trustFile]){if(!path.isAbsolute(file)||fs.realpathSync(file)!==file)R.fail('CLIENT026_PATH');acl(file);}const trust=R.trust(JSON.parse(fs.readFileSync(trustFile))),release=R.inventory(root),body=R.authorized(trust,JSON.parse(fs.readFileSync(filename)),'ctsk-client-descriptor026-v1');
+ if(release.side!=='client'||body.clientDigest!==release.digest||!R.uuid(body.installationId)||!R.uuid(body.authEpoch)||!R.uuid(body.generation)||!/^https:\/\/127\.0\.0\.1:[1-9][0-9]{3,4}$/.test(body.origin)||Number(new URL(body.origin).port)>65535||Number(new URL(body.origin).port)===5432||!/^[a-f0-9]{64}$/.test(body.code||'')||!/^[a-f0-9]{64}$/.test(body.tlsSpki||'')||body.directory!==path.dirname(filename)||filename!==path.join(body.directory,'client026.json'))R.fail('CLIENT026_DESCRIPTOR');try{if(crypto.createPublicKey(body.verificationKey).asymmetricKeyType!=='ed25519'||!new crypto.X509Certificate(body.ca).ca)R.fail('CLIENT026_CERTIFICATE');}catch{R.fail('CLIENT026_CERTIFICATE');}
+ return {...body,address:'127.0.0.1',port:Number(new URL(body.origin).port),filename,trustFile,root,descriptorDigest:R.sha(fs.readFileSync(filename))};
+}
+function verify(c,nonce,p){const b=p?.body;if(!R.signed(c.verificationKey,p)||b?.purpose!=='ctsk-server-identity026-v1'||b.nonce!==nonce||b.installationId!==c.installationId||b.authEpoch!==c.authEpoch||b.generation!==c.generation||b.origin!==c.origin||b.code!==c.code||!R.uuid(b.instance)||!Number.isInteger(b.issuedAt)||b.issuedAt>Date.now()+1000||Date.now()-b.issuedAt>10000)R.fail('CLIENT026_IDENTITY');return b.instance;}
+module.exports={readClient,verify};

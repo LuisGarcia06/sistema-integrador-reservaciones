@@ -1,0 +1,31 @@
+.centro-tabs,.centro-filters { display:flex; flex-wrap:wrap; gap:12px; }
+.centro-filters { align-items:end; padding-bottom:16px; border-bottom:1px solid var(--border-color,#e0e6e3); }
+.centro-filters .field { flex:1 1 150px; min-width:0; }
+.centro-filters .centro-search { flex-basis:240px; }
+.centro-filters .field:has(select[name="sort"]) { flex-basis:300px; }
+.centro-filters input,.centro-filters select,.dashboard-date input { min-height:40px; width:100%; padding:8px 12px; border:1px solid var(--color-outline-variant); border-radius:var(--radius-lg); color:var(--color-on-surface); background:var(--color-surface-lowest); font:inherit; }
+.centro-group { margin:12px 0; border:1px solid var(--border-color,#dde5e0); border-radius:12px; overflow:hidden; }
+.centro-group summary { display:flex; flex-wrap:wrap; align-items:center; gap:10px 16px; cursor:pointer; padding:16px; background:var(--surface-muted,#f4f8f5); overflow-wrap:anywhere; }
+.centro-group summary::before { content:'▸'; color:var(--color-primary,#176a50); }
+.centro-group[open] summary::before { content:'▾'; }
+.centro-group-content { flex:1; min-width:0; }
+.centro-group summary { align-items:flex-start; }
+.centro-group summary::before { margin-top:3px; }
+.centro-group-heading,.centro-group-state { display:flex; flex-wrap:wrap; align-items:center; gap:8px 14px; }
+.centro-tour { display:grid; grid-template-columns: minmax(180px,1.5fr) repeat(2,minmax(140px,1fr)); gap:12px; margin:14px 0; }
+.centro-tour > div { display:flex; flex-direction:column; gap:5px; }
+.centro-tour small { color:var(--color-on-surface-variant); font-size:.72rem; letter-spacing:.04em; }
+.centro-tour-date strong { font-size:1.12rem; color:var(--color-primary); }
+.centro-receipt { display:flex; flex-direction:column; gap:5px; margin:12px 0; font-size:.85rem; color:var(--color-on-surface-variant); }
+.centro-receipt strong { color:var(--color-on-surface); font-weight:600; }
+.centro-warning { padding:8px; border-left:3px solid var(--color-warning); font-size:.86rem; }
+.centro-schedule-note { display:block; margin:6px 0; color:var(--color-on-surface-variant); }
+.centro-history { padding:0 16px; }
+.centro-event { display:flex; flex-wrap:wrap; justify-content:space-between; align-items:center; gap:12px; padding:16px 0; border-bottom:1px solid #e1e8e4; overflow-wrap:anywhere; }
+.centro-event p { margin:6px 0; }
+.dashboard-notice-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:16px; margin:0 0 20px; }
+.dashboard-notice-grid button { text-align:left; cursor:pointer; color:inherit; font:inherit; }
+.dashboard-notice-grid .metric-value { font-size:1.65rem; }
+.dashboard-date { max-width:220px; margin-top:12px; }
+@media(max-width:700px) { .dashboard-notice-grid { grid-template-columns:1fr; } .centro-event > div { width:100%; } .centro-tabs .btn { flex:1 1 auto; } }
+@media(max-width:900px) { .centro-tour { grid-template-columns:repeat(2,minmax(0,1fr)); } .centro-tour-date { grid-column:1/-1; } }

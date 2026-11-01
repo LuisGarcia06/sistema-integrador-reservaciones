@@ -1,0 +1,16 @@
+'use strict';
+// Fallos exclusivamente por IPC heredado; la API normal no importa esta sonda.
+const {Client}=require('pg'),original=Client.prototype.query,net=require('node:net'),connect=net.Socket.prototype.connect,clients=new WeakMap();let serial=0,fault=null,readHold=null,writeHold=null;
+net.Socket.prototype.connect=function(...args){const a=Array.isArray(args[0])?args[0]:args,t=a[0];process.send?.({type:'connection',host:typeof t==='object'?t.host:a[1],port:Number(typeof t==='object'?t.port:t)});return connect.apply(this,args);};
+Client.prototype.query=function(...args){const sql=String(typeof args[0]==='string'?args[0]:args[0]?.text||'').trim();const match=/^(INSERT\s+INTO|UPDATE|DELETE\s+FROM)\s+(?:public\.)?(reservaciones|operaciones_tour|transportes_operacion|daily_observaciones|usuarios|usuario_plataformas_visibles|tours|guias|operadores|vehiculos|paises|plataformas|bitacora|comandos_idempotentes)\b/i.exec(sql);
+ if(!match)return original.apply(this,args);return (async()=>{const phase=match[2]==='bitacora'?'audit':match[2]==='comandos_idempotentes'?'ledger':'business';if(fault===phase){fault=null;await original.call(this,'SELECT * FROM public.ctsk_private_unified_fault');}
+ if(fault==='deferred'&&phase==='ledger'){args=[args[0],[...args[1]]];args[1][13]=[];fault=null;}
+ const value=await original.apply(this,args),proof=(await original.call(this,'SELECT pg_current_xact_id()::text transaction,pg_backend_pid() pid')).rows[0];if(!clients.has(this))clients.set(this,++serial);process.send({type:'sql-proof',phase,table:match[2],client:clients.get(this),...proof,...(phase==='ledger'?{key:args[1][2]}:{})});return value;})();};
+require('../backend/unifiedApi').start(process.argv[2]).then(service=>{process.on('message',m=>{if(m.type==='arm'){fault=m.fault;process.send({type:'armed',id:m.id});}
+ if(m.type==='hold-read-arm'){readHold={url:m.url};process.send({type:'held-read-armed',id:m.id});}
+ if(m.type==='hold-status')process.send({type:'hold-status',id:m.id,read:Boolean(readHold?.release),write:Boolean(writeHold),key:writeHold?.key});
+ if(m.type==='release-read'){const release=readHold?.release;readHold=null;release?.();process.send({type:'released-read',id:m.id});}
+ if(m.type==='release-write'){const release=writeHold?.release;writeHold=null;release?.();process.send({type:'released-write',id:m.id});}});service.server.prependListener('request',(req,res)=>{const end=res.end;res.end=function(...args){
+ if(readHold&&req.method==='GET'&&req.url===readHold.url&&!readHold.release){readHold.release=()=>end.apply(res,args);return res;}
+ if(fault==='hold'){let body;try{body=JSON.parse(String(args[0]));}catch{}if(body?.comando?.estado==='confirmado'){fault=null;writeHold={key:body.comando.clave,release:()=>end.apply(res,args)};return res;}}
+ if(fault==='lost'){let body;try{body=JSON.parse(String(args[0]));}catch{}if(body?.comando?.estado==='confirmado'){fault=null;process.send({type:'response-dropped',key:body.comando.clave});res.socket.destroy();return res;}}return end.apply(this,args);};});process.once('SIGTERM',()=>void service.close());console.log('UNIFIED_PROBE_READY');}).catch(e=>{console.error('UNIFIED_PROBE_FAILED '+(e.code||e.message));process.exitCode=1;});

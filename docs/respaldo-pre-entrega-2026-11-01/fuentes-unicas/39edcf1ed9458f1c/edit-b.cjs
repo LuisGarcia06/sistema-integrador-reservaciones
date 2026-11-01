@@ -1,0 +1,18 @@
+const fs=require('node:fs');
+for(const file of ['backend/config/operationalTransactions.js','backend/config/revisionApiTransactions.js','backend/security/credentialPolicy.js','backend/services/comandos.service.js','backend/services/bitacora.service.js','backend/validators/auditoria.validator.js']){
+ let s=fs.readFileSync(file,'utf8');
+ s=s.replaceAll("'first-access023-lab']","'first-access023-lab','unified023-lab']").replaceAll("'administrative-frontend023-lab']","'administrative-frontend023-lab','unified023-lab']");
+ if(file.endsWith('operationalTransactions.js'))s=s.replace("if (config.APP_ENVIRONMENT === 'first-access023-lab'", "if (config.APP_ENVIRONMENT === 'unified023-lab' && config.DB_SCHEMA_VERSION !== '023') throw Error('OPERATIONAL_LAB_CONFIG');\n    if (config.APP_ENVIRONMENT === 'first-access023-lab'");
+ if(file.endsWith('credentialPolicy.js'))s=s.replace("const integrated=()=>require('../config/desktopConfiguration').get()?.APP_ENVIRONMENT===INTEGRATED;","const integrated=()=>[INTEGRATED,'unified023-lab'].includes(require('../config/desktopConfiguration').get()?.APP_ENVIRONMENT);");
+ if(file.endsWith('revisionApiTransactions.js')){
+  s=s.replace("const integrated=config.APP_ENVIRONMENT==='administrative-frontend023-lab';", "const unified=config.APP_ENVIRONMENT==='unified023-lab';\n    const integrated=unified||config.APP_ENVIRONMENT==='administrative-frontend023-lab';");
+  s=s.replace('installed={pool,connect,facade,commands,auditing,administrative,userAudit,security,integrated};','installed={pool,connect,facade,commands,auditing,administrative,userAudit,security,integrated,unified};');
+  s=s.replace("if(installed.integrated&&!['usuarios'", "if(installed.integrated&&!installed.unified&&!['usuarios'");
+  s=s.replace("current.audit=Object.freeze({actor:","const adminFormat=installed.unified?require('./unifiedHttpPolicy').ADMIN_RESOURCES.includes(spec.resource):installed.administrative;\n    current.audit=Object.freeze({actor:");
+  s=s.replace("...(installed.administrative?{version:3}:{}),","...(adminFormat?{version:3}:{}),");
+ }
+ if(file.endsWith('bitacora.service.js'))s=s.replace("if (administrativo !== (catalogosActivos() || usuariosActivos()))", "if (administrativo !== (require('../config/desktopConfiguration').get()?.APP_ENVIRONMENT==='unified023-lab' ? require('../config/unifiedHttpPolicy').ADMIN_RESOURCES.includes(recurso) : (catalogosActivos() || usuariosActivos())))");
+ fs.writeFileSync(file,s);
+}
+let s=fs.readFileSync('backend/revisionApiApp.js','utf8');s=s.replace("const firstAccess=", "const unified=plan.config.APP_ENVIRONMENT==='unified023-lab';\n    const firstAccess=").replace("const integrated=plan", "const integrated=unified||plan").replace("require(firstAccess?", "require(unified?'./config/unifiedPolicy':firstAccess?");s=s.replace("for(const resource of integrated?", "for(const resource of unified?['reservaciones','operaciones','transportes','daily','usuarios','tours','guias','operadores','vehiculos','paises','plataformas','bitacora','dashboard','eventos-integracion']:integrated?");s=s.replace("...(auditFrontend&&spec.resource==='daily'?", "...((auditFrontend||unified)&&spec.resource==='daily'?");fs.writeFileSync('backend/revisionApiApp.js',s);
+s=fs.readFileSync('backend/services/comandos.service.js','utf8').replace('if(auditing)tx.establishAudit({actor,generation,key,spec});',"if(auditing&&(plan.config.APP_ENVIRONMENT!=='unified023-lab'||require('../config/unifiedHttpPolicy').AUDIT_RESOURCES.includes(spec.resource)))tx.establishAudit({actor,generation,key,spec});");fs.writeFileSync('backend/services/comandos.service.js',s);

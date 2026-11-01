@@ -1,0 +1,692 @@
+const eventosIntegracionService = require('../services/eventosIntegracion.service');
+const { obtenerResumenNotificaciones } = require('../services/notificacionesIntegracion.service');
+const {
+    aplicarNuevaReservaGetYourGuide,
+    obtenerPreviewNuevaReservaGetYourGuideConDb,
+} = require('../integrations/getyourguide/getyourguideReservationApplication.service');
+const {
+    aplicarNuevaReservaFareHarbor,
+    construirPreviewNuevaReservaFareHarborConDb,
+} = require('../integrations/fareharbor/fareharborApplication.service');
+const { obtenerDiffModificationGetYourGuide } = require('../integrations/getyourguide/getyourguideModificationDiff.service');
+const { obtenerDiffModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationDiff.service');
+const { obtenerDiffCancellationFareHarbor } = require('../integrations/fareharbor/fareharborCancellationPreview.service');
+const { aplicarModificationFareHarbor } = require('../integrations/fareharbor/fareharborModificationApplication.service');
+const { aplicarCancellationFareHarbor } = require('../integrations/fareharbor/fareharborCancellationApplication.service');
+const { ROLES } = require('../constants/roles');
+const FAREHARBOR_PROVIDER = 'fareharbor';
+const FAREHARBOR_READONLY_MESSAGE = 'La aplicacion de eventos FareHarbor aun no esta habilitada.';
+
+const esEventoFareHarbor = (evento) => evento?.provider === FAREHARBOR_PROVIDER;
+const puedeRecibirPreviewFareHarbor = (req) => req.usuario?.rol === ROLES.ADMINISTRADOR;
+
+const responderFareHarborNoHabilitado = (res) => res.status(409).json({
+    mensaje: FAREHARBOR_READONLY_MESSAGE,
+});
+
+const {
+    validarArchivoEventoIntegracion,
+    validarAplicacionFareHarbor,
+    validarAplicacionFareHarborCancellation,
+    validarAplicacionFareHarborModification,
+    validarAplicacionEventoIntegracion,
+    validarFiltrosEventosIntegracion,
+    validarIdEventoIntegracion,
+    validarRevisionEventoIntegracion,
+} = require('../validators/eventosIntegracion.validator');
+
+const listarEventosIntegracion = async (req, res) => {
+    const { errores, filtros, paginacion } = validarFiltrosEventosIntegracion(req.query || {});
+
+    if (errores.length > 0) {
+        return res.status(400).json({
+            mensaje: 'Filtros invalidos',
+            errores,
+        });
+    }
+
+    try {
+        const resultado = await eventosIntegracionService.listarEventosIntegracion(filtros, paginacion);
+
+        return res.status(200).json({
+            mensaje: 'Eventos de integracion consultados correctamente',
+            ...resultado,
+        });
+    } catch (error) {
+        console.error('Error al consultar eventos de integracion:', error.message);
+
+        return res.status(500).json({
+            mensaje: 'Error al consultar eventos de integracion',
+        });
+    }
+};
+
+const obtenerEventoIntegracion = async (req, res) => {
+    const idEventoIntegracion = validarIdEventoIntegracion(req.params.id);
+
+    if (idEventoIntegracion === null) {
+        return res.status(400).json({
+            mensaje: 'El id del evento de integracion debe ser un entero valido',
+        });
+    }
+
+    try {
+        const evento = await eventosIntegracionService.obtenerEventoIntegracion(idEventoIntegracion);
+
+        if (!evento) {
+            return res.status(404).json({
+                mensaje: 'Evento de integracion no encontrado',
+            });
+        }
+
+        let datos = evento;
+
+        if (!evento.archived_at && evento.provider === 'getyourguide' && evento.event_type === 'new_booking') {
+            const preview = await obtenerPreviewNuevaReservaGetYourGuideConDb(undefined, evento, {});
+            datos = {
+                ...evento,
+                application_preview: preview,
+            };
+        }
+
+        if (
+            esEventoFareHarbor(evento)
+            && !evento.archived_at
+            && evento.event_type === 'new_booking'
+            && puedeRecibirPreviewFareHarbor(req)
+        ) {
+            const eventoCompleto = await eventosIntegracionService.obtenerEventoIntegracionCompleto(idEventoIntegracion);
+            const preview = await construirPreviewNuevaReservaFareHarborConDb(undefined, eventoCompleto);
+
+            datos = {
+                ...evento,
+                fareharbor_application_preview: preview,
+            };
+        }
+
+        return res.status(200).json({
+            mensaje: 'Evento de integracion consultado correctamente',
+            datos,
+        });
+    } catch (error) {
+        console.error('Error al consultar evento de integracion:', error.message);
+
+        return res.status(500).json({
+            mensaje: 'Error al consultar evento de integracion',
+        });
+    }
+};
+
+const revisarEventoIntegracion = async (req, res) => {
+    const idEventoIntegracion = validarIdEventoIntegracion(req.params.id);
+
+    if (idEventoIntegracion === null) {
+        return res.status(400).json({
+            mensaje: 'El id del evento de integracion debe ser un entero valido',
+        });
+    }
+
+    try {
+        const evento = await eventosIntegracionService.obtenerEventoIntegracion(idEventoIntegracion);
+
+        if (!evento) {
+            return res.status(404).json({
+                mensaje: 'Evento de integracion no encontrado',
+            });
+        }
+
+        if (esEventoFareHarbor(evento) && !['new_booking', 'modification', 'cancellation'].includes(evento.event_type)) {
+            return responderFareHarborNoHabilitado(res);
+        }
+
+        const { errores, revision } = validarRevisionEventoIntegracion(req.body || {});
+
+        if (errores.length > 0) {
+            return res.status(400).json({
+                mensaje: 'Datos invalidos',
+                errores,
+            });
+        }
+
+        const resultado = await eventosIntegracionService.revisarEventoIntegracion({
+            idEventoIntegracion,
+            accion: revision.accion,
+            idUsuario: req.usuario.id_usuario,
+            nota: revision.nota,
+        });
+
+        if (resultado.tipo === 'no_encontrado') {
+            return res.status(404).json({
+                mensaje: 'Evento de integracion no encontrado',
+            });
+        }
+
+        if (resultado.tipo === 'evento_archivado') return responderEventoArchivado(res);
+        if (resultado.tipo === 'ya_revisado') {
+            return res.status(409).json({
+                mensaje: 'El evento de integracion ya fue revisado',
+            });
+        }
+
+        return res.status(200).json({
+            mensaje: 'Evento de integracion revisado correctamente',
+            datos: resultado.event,
+        });
+    } catch (error) {
+        console.error('Error al revisar evento de integracion:', error.message);
+
+        return res.status(500).json({
+            mensaje: 'Error al revisar evento de integracion',
+        });
+    }
+};
+
+
+const obtenerDiffEventoIntegracion = async (req, res) => {
+    const idEventoIntegracion = validarIdEventoIntegracion(req.params.id);
+
+    if (idEventoIntegracion === null) {
+        return res.status(400).json({
+            mensaje: 'El id del evento de integracion debe ser un entero valido',
+        });
+    }
+
+    try {
+        const evento = await eventosIntegracionService.obtenerEventoIntegracion(idEventoIntegracion);
+
+        if (!evento) {
+            return res.status(404).json({
+                mensaje: 'Evento de integracion no encontrado',
+            });
+        }
+
+        if (esEventoFareHarbor(evento)) {
+            if (!['modification', 'cancellation'].includes(evento.event_type)) {
+                return responderFareHarborNoHabilitado(res);
+            }
+
+            const resultadoFareHarbor = evento.event_type === 'cancellation'
+                ? await obtenerDiffCancellationFareHarbor(idEventoIntegracion)
+                : await obtenerDiffModificationFareHarbor(idEventoIntegracion);
+
+            if (resultadoFareHarbor.tipo === 'no_encontrado') {
+                return res.status(404).json({
+                    mensaje: 'Evento de integracion no encontrado',
+                });
+            }
+
+            if (resultadoFareHarbor.tipo === 'provider_no_soportado' || resultadoFareHarbor.tipo === 'event_type_no_soportado') {
+                return res.status(409).json({
+                    mensaje: 'El diff de integracion no esta soportado para este evento',
+                });
+            }
+
+            return res.status(200).json({
+                mensaje: 'Diff de evento de integracion consultado correctamente',
+                datos: evento.event_type === 'cancellation'
+                    ? resultadoFareHarbor.fareharbor_cancellation_preview
+                    : resultadoFareHarbor.fareharbor_modification_diff,
+            });
+        }
+
+        const resultado = await obtenerDiffModificationGetYourGuide(idEventoIntegracion);
+
+        if (resultado.tipo === 'no_encontrado') {
+            return res.status(404).json({
+                mensaje: 'Evento de integracion no encontrado',
+            });
+        }
+
+        if (resultado.tipo === 'provider_no_soportado' || resultado.tipo === 'event_type_no_soportado') {
+            return res.status(409).json({
+                mensaje: 'El diff de integracion no esta soportado para este evento',
+            });
+        }
+
+        return res.status(200).json({
+            mensaje: 'Diff de evento de integracion consultado correctamente',
+            datos: resultado.preview,
+        });
+    } catch (error) {
+        console.error('Error al consultar diff de evento de integracion:', error.message);
+
+        return res.status(500).json({
+            mensaje: 'Error al consultar diff de evento de integracion',
+        });
+    }
+};
+
+
+const responderResultadoAplicacionFareHarbor = (res, resultado) => {
+    if (resultado.tipo === 'evento_archivado') return responderEventoArchivado(res);
+    if (resultado.tipo === 'no_encontrado') {
+        return res.status(404).json({
+            mensaje: 'Evento de integracion no encontrado',
+        });
+    }
+
+    if (resultado.tipo === 'referencia_invalida' || resultado.tipo === 'catalogo_no_encontrado') {
+        return res.status(404).json({
+            mensaje: 'Referencia interna invalida',
+            campo: resultado.campo,
+        });
+    }
+
+    if (['completar_invalido', 'override_prohibido', 'datos_invalidos', 'faltan_datos'].includes(resultado.tipo)) {
+        const body = {
+            mensaje: resultado.tipo === 'faltan_datos'
+                ? 'El evento requiere informacion adicional'
+                : 'Datos invalidos',
+        };
+
+        if (resultado.errores) {
+            body.errores = resultado.errores;
+        }
+
+        if (resultado.missingFields) {
+            body.missing_fields = resultado.missingFields;
+        }
+
+        if (resultado.warnings) {
+            body.warnings = resultado.warnings;
+        }
+
+        return res.status(400).json(body);
+    }
+
+    if (resultado.tipo === 'snapshot_obsoleto') {
+        return res.status(409).json({
+            mensaje: 'Existe una actualización más reciente de esta reserva FareHarbor.',
+        });
+    }
+
+    if (resultado.tipo === 'actividad_iniciada') {
+        return res.status(409).json({
+            mensaje: 'La actividad FareHarbor ya inició y no puede aplicarse como reservación operativa.',
+        });
+    }
+
+    if (resultado.tipo === 'horario_inicio_indeterminado') {
+        return res.status(409).json({
+            mensaje: 'No fue posible determinar el horario de inicio de la actividad FareHarbor.',
+        });
+    }
+
+    if ([
+        'provider_no_soportado',
+        'event_type_no_soportado',
+        'no_aprobado',
+        'ya_aplicado',
+        'ya_vinculado',
+        'moneda_no_soportada',
+        'dinero_inconsistente',
+        'dinero_overflow',
+        'dinero_invalido',
+    ].includes(resultado.tipo)) {
+        return res.status(409).json({
+            mensaje: 'El evento de integracion no puede aplicarse en su estado actual',
+        });
+    }
+
+    return res.status(201).json({
+        mensaje: 'Reserva creada correctamente',
+        datos: {
+            id_reservacion: resultado.reservacion.id_reservacion,
+            codigo: resultado.reservacion.codigo,
+            external_booking_id: resultado.link.external_booking_id,
+            id_evento_integracion: resultado.evento?.id_evento_integracion,
+        },
+    });
+};
+
+const responderResultadoModificationFareHarbor = (res, resultado) => {
+    if (resultado.tipo === 'evento_archivado') return responderEventoArchivado(res);
+    if (resultado.tipo === 'no_encontrado') {
+        return res.status(404).json({
+            mensaje: 'Evento de integracion no encontrado',
+        });
+    }
+
+    if (resultado.tipo === 'referencia_invalida') {
+        return res.status(422).json({
+            mensaje: 'Referencia interna invalida',
+            campo: resultado.campo,
+        });
+    }
+
+    if (['datos_invalidos', 'decision_invalida'].includes(resultado.tipo)) {
+        return res.status(400).json({
+            mensaje: 'Datos invalidos',
+            errores: resultado.errores || [],
+        });
+    }
+
+    if (resultado.tipo === 'diff_obsoleto') {
+        return res.status(409).json({
+            mensaje: 'La reservación o la modificación cambió. Actualiza los datos antes de aplicar.',
+        });
+    }
+
+    if (resultado.tipo === 'decision_bloqueada' || resultado.tipo === 'event_blocked') {
+        return res.status(409).json({
+            mensaje: 'El evento de integracion no puede aplicarse en su estado actual',
+            reason: resultado.reason,
+            blocking_issues: resultado.blockingIssues || [],
+        });
+    }
+
+    if ([
+        'provider_no_soportado',
+        'event_type_no_soportado',
+        'no_aprobado',
+        'ya_aplicado',
+    ].includes(resultado.tipo)) {
+        return res.status(409).json({
+            mensaje: 'El evento de integracion no puede aplicarse en su estado actual',
+        });
+    }
+
+    return res.status(201).json({
+        mensaje: 'Modificacion FareHarbor aplicada correctamente',
+        datos: {
+            id_reservacion: resultado.reservacion.id_reservacion,
+            codigo: resultado.reservacion.codigo,
+            id_evento_integracion: resultado.evento?.id_evento_integracion,
+            updated_fields: resultado.updatedFields || [],
+            no_changes_applied: Boolean(resultado.noChangesApplied),
+        },
+    });
+};
+
+
+const responderResultadoCancellationFareHarbor = (res, resultado) => {
+    if (resultado.tipo === 'evento_archivado') return responderEventoArchivado(res);
+    if (resultado.tipo === 'no_encontrado') {
+        return res.status(404).json({
+            mensaje: 'Evento de integracion no encontrado',
+        });
+    }
+
+    if (['datos_invalidos'].includes(resultado.tipo)) {
+        return res.status(400).json({
+            mensaje: 'Datos invalidos',
+            errores: resultado.errores || [],
+        });
+    }
+
+    if (resultado.tipo === 'faltan_datos') {
+        return res.status(400).json({
+            mensaje: 'El evento requiere informacion adicional',
+            missing_fields: resultado.missingFields || [],
+        });
+    }
+
+    if (resultado.tipo === 'fingerprint_obsoleto') {
+        return res.status(409).json({
+            mensaje: 'La cancelación o la reservación cambió. Actualiza los datos antes de aplicar.',
+        });
+    }
+
+    if (resultado.tipo === 'snapshot_obsoleto') {
+        return res.status(409).json({
+            mensaje: 'Existe una actualización más reciente de esta reserva FareHarbor.',
+        });
+    }
+
+    if (resultado.tipo === 'event_blocked' || resultado.tipo === 'domain_conflict') {
+        return res.status(409).json({
+            mensaje: 'El evento de integracion no puede aplicarse en su estado actual',
+            reason: resultado.reason,
+            blocking_issues: resultado.blockingIssues || [],
+        });
+    }
+
+    if ([
+        'provider_no_soportado',
+        'event_type_no_soportado',
+        'no_aprobado',
+        'ya_aplicado',
+    ].includes(resultado.tipo)) {
+        return res.status(409).json({
+            mensaje: 'El evento de integracion no puede aplicarse en su estado actual',
+        });
+    }
+
+    return res.status(201).json({
+        mensaje: 'Cancelacion FareHarbor aplicada correctamente',
+        datos: {
+            id_evento_integracion: resultado.evento?.id_evento_integracion,
+            resolution_mode: resultado.resolutionMode,
+            id_reservacion: resultado.reservacion?.id_reservacion || resultado.link?.id_reservacion || null,
+            codigo: resultado.reservacion?.codigo || null,
+            already_cancelled: Boolean(resultado.alreadyCancelled),
+            no_reservation_link: Boolean(resultado.noReservationLink),
+        },
+    });
+};
+const aplicarEventoIntegracion = async (req, res) => {
+    const idEventoIntegracion = validarIdEventoIntegracion(req.params.id);
+
+    if (idEventoIntegracion === null) {
+        return res.status(400).json({
+            mensaje: 'El id del evento de integracion debe ser un entero valido',
+        });
+    }
+
+    try {
+        const evento = await eventosIntegracionService.obtenerEventoIntegracion(idEventoIntegracion);
+
+        if (!evento) {
+            return res.status(404).json({
+                mensaje: 'Evento de integracion no encontrado',
+            });
+        }
+
+        if (evento.archived_at) return responderEventoArchivado(res);
+        if (esEventoFareHarbor(evento)) {
+            if (evento.event_type === 'new_booking') {
+                const { errores, aplicacion } = validarAplicacionFareHarbor(req.body || {});
+
+                if (errores.length > 0) {
+                    return res.status(400).json({
+                        mensaje: 'Datos invalidos',
+                        errores,
+                    });
+                }
+
+                const resultadoFareHarbor = await aplicarNuevaReservaFareHarbor(
+                    idEventoIntegracion,
+                    req.usuario.id_usuario,
+                    aplicacion.completar
+                );
+
+                return responderResultadoAplicacionFareHarbor(res, resultadoFareHarbor);
+            }
+
+            if (evento.event_type === 'modification') {
+                const { errores, aplicacion } = validarAplicacionFareHarborModification(req.body || {});
+
+                if (errores.length > 0) {
+                    return res.status(400).json({
+                        mensaje: 'Datos invalidos',
+                        errores,
+                    });
+                }
+
+                const resultadoFareHarbor = await aplicarModificationFareHarbor(
+                    idEventoIntegracion,
+                    req.usuario.id_usuario,
+                    aplicacion
+                );
+
+                return responderResultadoModificationFareHarbor(res, resultadoFareHarbor);
+            }
+
+            if (evento.event_type === 'cancellation') {
+                const { errores, aplicacion } = validarAplicacionFareHarborCancellation(req.body || {});
+
+                if (errores.length > 0) {
+                    return res.status(400).json({
+                        mensaje: 'Datos invalidos',
+                        errores,
+                    });
+                }
+
+                const resultadoFareHarbor = await aplicarCancellationFareHarbor(
+                    idEventoIntegracion,
+                    req.usuario.id_usuario,
+                    aplicacion
+                );
+
+                return responderResultadoCancellationFareHarbor(res, resultadoFareHarbor);
+            }
+
+            return responderFareHarborNoHabilitado(res);
+        }
+
+        const { errores, aplicacion } = validarAplicacionEventoIntegracion(req.body || {});
+
+        if (errores.length > 0) {
+            return res.status(400).json({
+                mensaje: 'Datos invalidos',
+                errores,
+            });
+        }
+
+        const resultado = await aplicarNuevaReservaGetYourGuide(
+            idEventoIntegracion,
+            req.usuario.id_usuario,
+            aplicacion.completar
+        );
+
+        if (resultado.tipo === 'evento_archivado') return responderEventoArchivado(res);
+
+        if (resultado.tipo === 'no_encontrado') {
+            return res.status(404).json({
+                mensaje: 'Evento de integracion no encontrado',
+            });
+        }
+
+        if (resultado.tipo === 'faltan_datos' || resultado.tipo === 'configuracion_incompleta') {
+            return res.status(422).json({
+                mensaje: 'El evento requiere informacion adicional',
+                missing_fields: resultado.missingFields || [],
+                warnings: resultado.warnings || [],
+            });
+        }
+
+        if (resultado.tipo === 'referencia_invalida') {
+            return res.status(422).json({
+                mensaje: 'Referencia interna invalida',
+                campo: resultado.campo,
+            });
+        }
+
+        if (resultado.tipo === 'datos_invalidos') {
+            return res.status(422).json({
+                mensaje: 'El evento requiere informacion adicional',
+                errores: resultado.errores,
+            });
+        }
+
+        if (resultado.tipo === 'fecha_actividad_pasada') {
+            return res.status(409).json({
+                mensaje: 'La fecha de la actividad GetYourGuide ya pasó y no puede aplicarse como una reservación operativa.',
+            });
+        }
+
+        if (resultado.tipo === 'reserva_no_vinculada') {
+            return res.status(409).json({
+                mensaje: 'El evento de integracion no tiene reservacion vinculada',
+            });
+        }
+
+        if (resultado.tipo === 'reserva_no_encontrada') {
+            return res.status(409).json({
+                mensaje: 'La reservacion vinculada no existe',
+            });
+        }
+
+        if (resultado.tipo === 'modification_no_aplicable') {
+            return res.status(409).json({
+                mensaje: 'El evento de modificacion no puede aplicarse',
+                reason: resultado.reason,
+                warnings: resultado.warnings || [],
+            });
+        }
+
+        if ([
+            'provider_no_soportado',
+            'event_type_no_soportado',
+            'no_aprobado',
+            'ya_aplicado',
+            'ya_vinculado',
+        ].includes(resultado.tipo)) {
+            return res.status(409).json({
+                mensaje: 'El evento de integracion no puede aplicarse en su estado actual',
+            });
+        }
+
+        return res.status(201).json({
+            mensaje: 'Reserva creada correctamente',
+            datos: {
+                id_reservacion: resultado.reservacion.id_reservacion,
+                codigo: resultado.reservacion.codigo,
+                external_booking_id: resultado.link.external_booking_id,
+                campos_modificados: resultado.camposModificados,
+            },
+        });
+    } catch (error) {
+        if (error.operationalLab && ['55P03', '40P01'].includes(error.code)) {
+            return res.status(409).json({ mensaje: error.message });
+        }
+        console.error('Error al aplicar evento de integracion:', error.message);
+
+        return res.status(500).json({
+            mensaje: 'Error al aplicar evento de integracion',
+        });
+    }
+};
+const responderEventoArchivado = (res) => res.status(409).json({ mensaje: 'El evento está archivado y no puede revisarse ni aplicarse.' });
+
+const archivarEventoIntegracion = async (req, res) => {
+    const idEventoIntegracion = validarIdEventoIntegracion(req.params.id);
+    if (idEventoIntegracion === null) return res.status(400).json({ mensaje: 'El id del evento debe ser un entero válido' });
+    const { errores, motivo } = validarArchivoEventoIntegracion(req.body);
+    if (errores.length) return res.status(400).json({ mensaje: 'Datos inválidos', errores });
+    try {
+        const resultado = await eventosIntegracionService.archivarEventoIntegracion({
+            idEventoIntegracion, idUsuario: req.usuario.id_usuario, motivo
+        });
+        if (resultado.tipo === 'no_encontrado') return res.status(404).json({ mensaje: 'Evento de integración no encontrado' });
+        if (resultado.tipo === 'motivo_invalido') return res.status(400).json({ mensaje: 'Motivo inválido' });
+        if (resultado.tipo !== 'archivado') return res.status(409).json({
+            mensaje: resultado.tipo === 'ya_archivado' ? 'El evento ya fue archivado; se conserva el archivo original.'
+                : resultado.tipo === 'ya_aplicado' ? 'No se puede archivar un evento aplicado.'
+                : 'El evento cambió o su estado no permite archivarlo. Actualiza los datos.'
+        });
+        return res.status(200).json({ mensaje: 'Evento archivado correctamente', datos: resultado.event });
+    } catch (error) {
+        console.error('Error al archivar evento de integración:', error.code || 'ARCHIVE_ERROR');
+        return res.status(500).json({ mensaje: 'No fue posible archivar el evento' });
+    }
+};
+
+const obtenerResumenEventosIntegracion = async (_req, res) => {
+    try {
+        return res.status(200).json({ datos: await obtenerResumenNotificaciones() });
+    } catch (error) {
+        console.error('Error al consultar resumen de eventos:', error.code || 'SUMMARY_ERROR');
+        return res.status(500).json({ mensaje: 'No fue posible actualizar los avisos de integración.' });
+    }
+};
+
+module.exports = {
+    obtenerResumenEventosIntegracion,
+    archivarEventoIntegracion,
+    aplicarEventoIntegracion,
+    obtenerDiffEventoIntegracion,
+    listarEventosIntegracion,
+    obtenerEventoIntegracion,
+    revisarEventoIntegracion,
+};

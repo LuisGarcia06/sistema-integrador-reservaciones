@@ -1,0 +1,24 @@
+'use strict';
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto'),cp=require('node:child_process'),assert=require('node:assert/strict'),Module=require('node:module');
+const out=__dirname,root=path.resolve(out,'../..'),packages=path.join(out,'packages'),inventory=JSON.parse(fs.readFileSync(path.join(out,'package-inventory.json'))),sha=b=>crypto.createHash('sha256').update(b).digest('hex'),checks=[];
+function pass(name){checks.push(name);}
+for(const entry of inventory.files){const file=path.join(packages,entry.side,entry.file);assert.equal(sha(fs.readFileSync(file)),entry.sha256);assert.ok(!/(^|\/)(?:\.env(?:\.|$)|__fixtures__|__tests__|secrets|frontend\/lab)|\.(?:dump|log|pem|key)$|(?:preproduction-client|preproduction-server|manifest)\.json$/.test(entry.file));}
+const walk=d=>fs.readdirSync(d,{withFileTypes:true}).flatMap(e=>e.isDirectory()?walk(path.join(d,e.name)):[path.join(d,e.name)]);
+assert.equal(walk(packages).length,inventory.files.length);pass('Inventario SHA256 exacto, sin archivos adicionales/configuración/dumps/fixtures/secretos privados');
+const client=path.join(packages,'client');for(const row of inventory.files.filter(x=>x.side==='client')){
+ assert.ok(!/^backend\/|^scripts\/|node_modules\//.test(row.file));
+ if(!row.file.startsWith('electron/')||!row.file.endsWith('.js'))continue;const text=fs.readFileSync(path.join(client,row.file),'utf8');
+ for(const m of text.matchAll(/require\(['"]([^'"]+)['"]\)/g)){const dep=m[1];if(dep==='electron'||Module.isBuiltin(dep))continue;assert.ok(dep.startsWith('.'),'CLIENT_EXTERNAL_DEPENDENCY '+dep);assert.ok(require.resolve(path.resolve(path.dirname(path.join(client,row.file)),dep)).startsWith(client+path.sep));}
+ assert.ok(!/process\.send|driver-input|test-user\.json|DB_PASSWORD|JWT_SECRET|require\(['"]pg['"]/.test(text));
+}pass('Cliente: sólo builtins/Electron y referencias internas; sin pg, backend, fixtures, IPC de prueba ni secretos');
+const original=fs.readFileSync(path.join(root,'electron/main.js'),'utf8'),entry=fs.readFileSync(path.join(client,'electron/main.js'),'utf8');
+const originalPdf=original.slice(original.indexOf('function isAllowedAppUrl'),original.indexOf('function showConnectionState'));assert.ok(entry.includes(originalPdf));assert.equal(sha(fs.readFileSync(path.join(client,'electron/preload.js'))),sha(fs.readFileSync(path.join(root,'electron/preload.js'))));pass('Navegación, autorización IPC/PDF y preload originales conservados byte a byte');
+const policy=require(path.join(client,'electron/preproductionClientPolicy')),kp=crypto.generateKeyPairSync('ed25519'),key=kp.publicKey.export({type:'spki',format:'pem'}),nonce=crypto.randomBytes(32).toString('hex'),c={verificationKey:key,installationId:crypto.randomUUID(),authEpoch:crypto.randomUUID(),generation:crypto.randomUUID(),origin:'http://127.0.0.1:61234',code:'a'.repeat(64)};
+const body={...c,purpose:'ctsk-preproduction-server-identity023-v1',nonce,instance:crypto.randomUUID(),issuedAt:Date.now()};delete body.verificationKey;
+const sign=(b,privateKey=kp.privateKey)=>({body:b,signature:crypto.sign(null,Buffer.from(JSON.stringify(b)),privateKey).toString('base64')});assert.equal(policy.verify(c,nonce,sign(body)),body.instance);
+for(const change of [{nonce:'b'.repeat(64)},{code:'b'.repeat(64)},{installationId:crypto.randomUUID()},{authEpoch:crypto.randomUUID()},{issuedAt:Date.now()-31000},{issuedAt:Date.now()+5000}])assert.throws(()=>policy.verify(c,nonce,sign({...body,...change})));
+assert.throws(()=>policy.verify(c,nonce,sign(body,crypto.generateKeyPairSync('ed25519').privateKey)));pass('Identidad: firma, nonce, versión, instalación, época y caducidad; negativos rechazados sin IO');
+const env=require('../../backend/config/desktopPolicy').cleanEnvironment();delete env.ELECTRON_RUN_AS_NODE;
+const server=cp.spawnSync(process.execPath,[path.join(packages,'server/start.cjs')],{env,encoding:'utf8',windowsHide:true,timeout:15000});assert.equal(server.status,78);assert.ok(server.stderr.includes('PILOT_SERVER_BLOCKED'));pass('Servidor de componentes rechaza arranque con código78; ningún aprovisionamiento ni relajación de contratos');
+const rejected=cp.spawnSync(require('electron'),[client],{env,encoding:'utf8',windowsHide:true,timeout:30000});assert.equal(rejected.status,0);assert.ok(rejected.stderr.includes('PILOT_CLIENT_REJECTED'));pass('Electron candidato sin descriptor autorizado se cierra sin conectar a backend/SQL');
+const result={completed:true,checkedAt:new Date().toISOString(),checks,files:inventory.files.length,clientFiles:inventory.files.filter(x=>x.side==='client').length,serverFiles:inventory.files.filter(x=>x.side==='server').length,serverRunnable:false,clientScope:'loopback only; actual login in manualMonth.electron candidate',noEnterpriseInstallation:true};fs.writeFileSync(path.join(out,'package-verification.json'),JSON.stringify(result,null,2));console.log(JSON.stringify(result));

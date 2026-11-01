@@ -1,0 +1,60 @@
+const express = require('express');
+const eventosIntegracionController = require('../controllers/eventosIntegracion.controller');
+const { autenticarUsuario, autorizarRoles } = require('../middleware/auth.middleware');
+const { ROLES } = require('../constants/roles');
+
+const router = express.Router();
+const centroAvisos = require('../controllers/centroAvisos.controller');
+router.get('/centro', autenticarUsuario, autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA), centroAvisos.listar);
+router.get('/centro/:id/historial', autenticarUsuario, autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA), centroAvisos.historial);
+
+router.get(
+    '/resumen',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA),
+    eventosIntegracionController.obtenerResumenEventosIntegracion
+);
+
+router.patch(
+    '/:id/archivo',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR),
+    eventosIntegracionController.archivarEventoIntegracion
+);
+
+router.get(
+    '/',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA),
+    eventosIntegracionController.listarEventosIntegracion
+);
+
+router.get(
+    '/:id/diff',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA),
+    eventosIntegracionController.obtenerDiffEventoIntegracion
+);
+router.get(
+    '/:id',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR, ROLES.CONSULTA),
+    eventosIntegracionController.obtenerEventoIntegracion
+);
+
+
+router.post(
+    '/:id/aplicar',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR),
+    eventosIntegracionController.aplicarEventoIntegracion
+);
+router.patch(
+    '/:id/revision',
+    autenticarUsuario,
+    autorizarRoles(ROLES.ADMINISTRADOR),
+    eventosIntegracionController.revisarEventoIntegracion
+);
+
+module.exports = router;
+

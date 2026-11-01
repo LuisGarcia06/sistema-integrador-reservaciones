@@ -1,0 +1,96 @@
+{
+  "phase": "2E.6-independent-enterprise-contract",
+  "candidate": "candidate-08",
+  "attempt": "attempt-10",
+  "scope": "synthetic-acceptance-only",
+  "enterpriseReady": false,
+  "completed": true,
+  "checks": [
+    "Cl\u00c3\u00baster nuevo creado con contrato independiente; autoridad nueva expl\u00c3\u00adcita y credenciales separadas",
+    "T0 independiente: esquema023/024/025 y permisos exactos; 23 tablas y cero datos comerciales/usuarios antes del bootstrap",
+    "Primer Administrador mediante bootstrap seguro; segundo bootstrap rechazado sin cuenta predeterminada",
+    "Servidor real arranca exclusivamente desde candidato; cierre de dependencias runtime sin fixtures, probes ni atestaciones heredadas",
+    "Segundo supervisor rechazado por candado persistente PostgreSQL",
+    "Primer acceso T1 desde ventana y preload originales con HTTPS estricto; cliente sin pg/backend ni Node en renderer",
+    "Cat\u00c3\u00a1logos, reservaciones, referencia025, cupo24 total y12 por grupo/veh\u00c3\u00adculo conservados",
+    "Sin cambios sin auditor\u00c3\u00ada adicional; idempotencia durable; permisos backend y sesi\u00c3\u00b3n revocada",
+    "Formulario original de referencia025 y Daily/PDF generado por exportador original y revalidaci\u00c3\u00b3n backend",
+    "HTTPS rechaza CA desconocida/SAN incorrecto; identidad distinta, descriptor inv\u00c3\u00a1lido y paquete alterado rechazados",
+    "Reinicio independiente de servidor y cliente conserva datos y contrato de sesi\u00c3\u00b3n de la instalaci\u00c3\u00b3n",
+    "Respaldo oficial independiente con snapshot consistente, firma, tablas/secuencias y restricciones",
+    "Base nueva incompatible sin esquema rechazada; no se intenta reparar autom\u00c3\u00a1ticamente",
+    "Restauraci\u00c3\u00b3n exacta en otro cl\u00c3\u00baster nuevo; instalaci\u00c3\u00b3n/\u00c3\u00a9poca/JWT rotados, idempotencia y PDF conservados",
+    "Integraciones apagadas tras restauraci\u00c3\u00b3n; T1 no es plantilla y candidatos \u00c3\u00adntegros al terminar"
+  ],
+  "electron": [
+    {
+      "completed": true,
+      "originalWindow": true,
+      "originalPreload": true,
+      "originalPdfIpc": false,
+      "originalReferenceForm": false,
+      "strictTls": true,
+      "rendererNode": false,
+      "pgLoaded": false,
+      "backendLoaded": false,
+      "electron": "43.4.1"
+    },
+    {
+      "completed": true,
+      "originalWindow": true,
+      "originalPreload": true,
+      "originalPdfIpc": true,
+      "originalReferenceForm": true,
+      "referenceId": 3,
+      "strictTls": true,
+      "rendererNode": false,
+      "pgLoaded": false,
+      "backendLoaded": false,
+      "electron": "43.4.1"
+    },
+    {
+      "completed": true,
+      "originalWindow": true,
+      "originalPreload": true,
+      "originalPdfIpc": true,
+      "originalReferenceForm": false,
+      "strictTls": true,
+      "rendererNode": false,
+      "pgLoaded": false,
+      "backendLoaded": false,
+      "electron": "43.4.1"
+    },
+    {
+      "completed": true,
+      "originalWindow": true,
+      "originalPreload": true,
+      "originalPdfIpc": true,
+      "originalReferenceForm": false,
+      "strictTls": true,
+      "rendererNode": false,
+      "pgLoaded": false,
+      "backendLoaded": false,
+      "electron": "43.4.1"
+    }
+  ],
+  "failureCount": 0,
+  "originalEvidencePath": "docs/local-fase-2e6-enterprise/attempt-10/verification.json",
+  "originalEvidenceSha256": "69eb4cf98d5fb52347fd98b23e3471b2afaaa1ad692ff906483a058496c039ed",
+  "archives": [
+    {
+      "side": "server",
+      "sha256": "98bfa757b7ebbfb2368e69b60cafa8869bee0577c5582aeb0838f5a92d96c091",
+      "members": 1024,
+      "inventoryDigest": "49b5b52d62cec4fa4378a9242c4658a62a58d44a454792bd5e09c85c29156c3d",
+      "verified": true
+    },
+    {
+      "side": "client",
+      "sha256": "456bf37b5cc106ec0c6672ada58ec6bd08d9557d173381bc7f3b5b8e5ebf6c0c",
+      "members": 53,
+      "inventoryDigest": "93205dd6a7b3a765ab17a8bfc74a699e3b53bb2ee730628cace80cccba51e49c",
+      "verified": true
+    }
+  ],
+  "note": "Resumen derivado. El original local permanece intacto; no se publican snapshots de filas, perfiles, autoridades o credenciales."
+}

@@ -1,0 +1,31 @@
+{
+  "remote": "origin",
+  "remoteUrl": "https://github.com/LuisGarcia06/sistema-integrador-reservaciones.git",
+  "visibilityVerified": "public",
+  "branch": "respaldo-pre-entrega-2026-11-01",
+  "refspec": "refs/heads/respaldo-pre-entrega-2026-11-01:refs/heads/respaldo-pre-entrega-2026-11-01",
+  "pushAuthorized": false,
+  "pushExecuted": false,
+  "force": false,
+  "otherLocalBranches": {
+    "master": {
+      "sha": "36a4e9bf632ed7763eca80b7457b1e861a371eb3",
+      "exclusiveCommitsNotInBackup": 0
+    },
+    "Sistema-preintegracion": {
+      "sha": "181f05cfee74e5b42180509220770f806c78b99d",
+      "exclusiveCommitsNotInBackup": 0
+    },
+    "GYG+FRHB-implementado": {
+      "sha": "e7a5f487ef2d1ab38b9189e879d69596781043d7",
+      "exclusiveCommitsNotInBackup": 0
+    }
+  },
+  "existingUnpublishedCommitsPreserved": [
+    "6dbd1d0",
+    "e7a5f48"
+  ],
+  "firstBackupCommit": "cb4f6ff02fba68f1f2ecc25800ff96666f731b92",
+  "functionalSnapshotPath": "docs/local-fase-2e6-enterprise/candidate-08",
+  "functionalEvidenceSummary": "docs/respaldo-pre-entrega-2026-11-01/revision-02/version-funcional-2E6.json"
+}

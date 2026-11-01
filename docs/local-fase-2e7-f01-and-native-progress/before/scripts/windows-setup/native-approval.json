@@ -1,0 +1,22 @@
+{
+  "protocol": "ctsk-native-approval-v1",
+  "scope": "synthetic-acceptance-only",
+  "productionAuthorized": false,
+  "reader": {
+    "sha256": "951dc1a45c290beaff74771e111d9cf99a616200f2429c27212522b15564a6df",
+    "windows11Validated": false,
+    "evidence": null
+  },
+  "privateDirectories": {
+    "sha256": "55284ed9773e436a3ef308a1bac31c00bf7a82e91bbb45216c5dfbd1659c9dfa",
+    "windows11Validated": false
+  },
+  "initdb": {
+    "sha256": null,
+    "windows11Validated": false
+  },
+  "service": {
+    "sha256": null,
+    "windows11Validated": false
+  }
+}

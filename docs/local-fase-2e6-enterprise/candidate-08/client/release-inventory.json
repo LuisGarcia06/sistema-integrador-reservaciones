@@ -1,0 +1,214 @@
+{
+  "protocol": "ctsk-release026-v1",
+  "side": "client",
+  "files": [
+    {
+      "file": "electron/enterprise026Backend.js",
+      "sha256": "9e103d1aa7772854cdadab06aa2ca2050518a6fb799a5516aa25b9992a724351"
+    },
+    {
+      "file": "electron/enterprise026ClientPolicy.js",
+      "sha256": "935745b22af86800241cdf5552a9a077ee11af5442b0af96db3bef7d54557d59"
+    },
+    {
+      "file": "electron/enterprise026Tls.js",
+      "sha256": "013df5040b7bf40d27b93c6cc24640ecb79953d5946d944f07ba6cf778def0a7"
+    },
+    {
+      "file": "electron/main.js",
+      "sha256": "cc2d51fe259df9d668e25a88405acc4e23430007c02a5298a75a37f0007d2002"
+    },
+    {
+      "file": "electron/preload.js",
+      "sha256": "c10fd3ce211348b315dbc6d95311d2604f49020beaf30fdf58739116c201499d"
+    },
+    {
+      "file": "electron/windowsConfigAcl.js",
+      "sha256": "7dd51f4440fe84b664620e5db9ecd59980d2240e42601929d3cf1e7e9eba1e46"
+    },
+    {
+      "file": "frontend/assets/branding/community-tours-sian-kaan-logo.jpeg",
+      "sha256": "7219c6cc58c592c9eed0499fc1804e55f1631ae4e48f03806f6e2801907b2d43"
+    },
+    {
+      "file": "frontend/assets/branding/community-tours-sian-kaan-logo.jpg",
+      "sha256": "7219c6cc58c592c9eed0499fc1804e55f1631ae4e48f03806f6e2801907b2d43"
+    },
+    {
+      "file": "frontend/css/base.css",
+      "sha256": "7762ce45b7143fcaffa1b8c06651957f5cdb88c5e04b1d6e63dd3efbf1a2fe57"
+    },
+    {
+      "file": "frontend/css/centroAvisos.css",
+      "sha256": "df21078b3b7ccae0a3b945dfa85736c5a6c7a53fd8c943ecbbe94e78bfce5b1c"
+    },
+    {
+      "file": "frontend/css/components.css",
+      "sha256": "7ea61620f5e91ceab1def525f2f00cbfe0428b9702c1add7dfca040a68e8cab8"
+    },
+    {
+      "file": "frontend/css/layout.css",
+      "sha256": "6ed9c145e3e9dbbd214564f12916f33389bcbcbe8b949607968fdffe0da56a58"
+    },
+    {
+      "file": "frontend/css/notificaciones.css",
+      "sha256": "2886fef254300368e6673db66e19684b1b877ff490046d98a2551436eb3d20f0"
+    },
+    {
+      "file": "frontend/css/pages.css",
+      "sha256": "ea357447f1476815450c9b9057ffe1ed918361bc76a479a14e3a5b6b6ce0ee80"
+    },
+    {
+      "file": "frontend/css/unified.css",
+      "sha256": "7b96159950a74e88fdef789024d936455621be0b0e7e3c5d929c064580d77908"
+    },
+    {
+      "file": "frontend/css/variables.css",
+      "sha256": "5f1b3617c617a569dfd9aad1fab3a70fe859c7271bea13ca161b32fc30bfc737"
+    },
+    {
+      "file": "frontend/index.html",
+      "sha256": "72235a8d7b5a3d843b8d0a1ca0a2cc62ce04ca79a36b33368dec88649eaa210e"
+    },
+    {
+      "file": "frontend/js/adminCommands.js",
+      "sha256": "72e9a98451af11f391868c86bf9e156cb34e72d4d0e6bb34052080ec945dadc3"
+    },
+    {
+      "file": "frontend/js/adminUi.js",
+      "sha256": "e09b9d274f9e495c27d31ff0cde7dc286d019b281d7e5a9367f3c523cdda5abf"
+    },
+    {
+      "file": "frontend/js/api.js",
+      "sha256": "bb445e94df70c2dbe045bb4344de202ab127e227bc9f263d78cb2838b03e6aee"
+    },
+    {
+      "file": "frontend/js/app.js",
+      "sha256": "b4b975225724ea22580fcf9ba36022bfdc94b3cfab3f413b5a254dc62ddc8032"
+    },
+    {
+      "file": "frontend/js/auditUi.js",
+      "sha256": "4f96b78bde4458e7c8b790271076d0970b831925fb50a000e6d41cadf292a6f1"
+    },
+    {
+      "file": "frontend/js/auth.js",
+      "sha256": "0e26b46d0dd683203fed258190076efa77ff547577aa55482b3189fb6b8d2d29"
+    },
+    {
+      "file": "frontend/js/centroAvisos.js",
+      "sha256": "b76acaecce34ad5c7c1ae29eea5eedd3ea939882de83010d76f054b995a31f98"
+    },
+    {
+      "file": "frontend/js/commandLab.js",
+      "sha256": "69cff4fa611f4ebe712468fd3e0f8751fe0b2d399f008fc7e9cfd433e7f5cc96"
+    },
+    {
+      "file": "frontend/js/commandPanel.js",
+      "sha256": "861afe90eb94121da40291be35f220eca46895a2b201bea24cec69acb188bc19"
+    },
+    {
+      "file": "frontend/js/dailyCommands.js",
+      "sha256": "6464edadc203739e75c2cb34c96420cf3e14162ee2bf7a24192e82df98d0299a"
+    },
+    {
+      "file": "frontend/js/integrationActivation.js",
+      "sha256": "60c37cc785379735a0ccf35172376c707e6a16f5da33315ae06c2dc5e1383602"
+    },
+    {
+      "file": "frontend/js/layout.js",
+      "sha256": "52ad27cfb6e9a2b4e5c70a08c2c07344b2fd49df2cec574e6d4b3d219a4a2a1d"
+    },
+    {
+      "file": "frontend/js/notificaciones.js",
+      "sha256": "716ad000cb45a7b26df6e16098588ccce1d9cd8ff0864b073ed5edef8260e08a"
+    },
+    {
+      "file": "frontend/js/operationCommands.js",
+      "sha256": "21c051352ee5ecb9725d835cee123d91cadd7ff380f823a0c99a4f97a8b0d7df"
+    },
+    {
+      "file": "frontend/js/reservationCommands.js",
+      "sha256": "0ab87ace14e241d03408c99952989491b986ae809b67c9a125811fea3bfaba41"
+    },
+    {
+      "file": "frontend/js/revisionConflict.js",
+      "sha256": "f6012ed703c65467a633c010623236f9da23bd03654e35aff3f383d1cb600052"
+    },
+    {
+      "file": "frontend/js/revisionLab.js",
+      "sha256": "231b09986239f57319edb833f88efd8672a56f40b9466007596989c547c9e1c7"
+    },
+    {
+      "file": "frontend/js/router.js",
+      "sha256": "3ccd34d19f8a361da86d59c014d84f373f95cc26942e3b63817b51eff0dbdbb8"
+    },
+    {
+      "file": "frontend/js/transportCommands.js",
+      "sha256": "7fff920c0fdc67c3b05080e8deb2fda090a996cd586ac4f3e46f2f1d75e9159b"
+    },
+    {
+      "file": "frontend/js/transportesUi.js",
+      "sha256": "e8a0a19892caf8917d19fda6e21cabb69517e5a4e14b57c973d8484fa93dd749"
+    },
+    {
+      "file": "frontend/js/ui.js",
+      "sha256": "011065b5e22be1c664ce19ce0f8c32bf20ff15841dcdb149718ab53543ef567c"
+    },
+    {
+      "file": "frontend/js/unifiedActivation.js",
+      "sha256": "b02d3da4a28362c37ba8cf09ac2b220f11f0be2f42ab4071bf0f419ea46bc935"
+    },
+    {
+      "file": "frontend/js/unifiedAssignments.js",
+      "sha256": "718eeb8d3fb006f3b86c307cfac0aba459a2736a7ca058a2c6998ba9eb4610cd"
+    },
+    {
+      "file": "frontend/pages/bitacora.js",
+      "sha256": "8c857a5fc883d652b97c02a1c435b1c3162111a7581363b05f77f40e7da718d4"
+    },
+    {
+      "file": "frontend/pages/configuracion.js",
+      "sha256": "ea0928c95a10e7ed2f2b8419fcf9af88e9f7baf1be3b87dc7871c2a1df0686e5"
+    },
+    {
+      "file": "frontend/pages/daily.js",
+      "sha256": "d53b37ca66b57e7e98a12dd1f3776a92a4f4f564e8271cc565b45d74b5855481"
+    },
+    {
+      "file": "frontend/pages/dashboard.js",
+      "sha256": "b1dc607f28b05d261be62d9b48849aaf2d86eab9d674a677ed66a1cd1d54e06f"
+    },
+    {
+      "file": "frontend/pages/historial.js",
+      "sha256": "ef9ef91c049f42c90514ddc389d937e88a71b5cc0899afbc77d62f6559080083"
+    },
+    {
+      "file": "frontend/pages/integraciones.js",
+      "sha256": "27f4dd0a92c574b96460866c7019035dbe78f00d18c443e86d450bb2dc847c6c"
+    },
+    {
+      "file": "frontend/pages/login.js",
+      "sha256": "c50098cdca11c2fb62c0fd78a7fb5bac41b3efa095c1bb0eadfa253dd3e35f4c"
+    },
+    {
+      "file": "frontend/pages/operaciones.js",
+      "sha256": "a2ad863a416a26ea5da1d6432127b21082261ded9f6d510b07c470418dbc56d5"
+    },
+    {
+      "file": "frontend/pages/reservaciones.js",
+      "sha256": "3ed2eee777868ac63d430c980f01f40cd957f7d5f49825fe2f5851d9a6e1ff1e"
+    },
+    {
+      "file": "frontend/pages/usuarios.js",
+      "sha256": "42003e27a0a638ec808d66b6e159ae074a1251124a88c0ccdba25de26ec03bbc"
+    },
+    {
+      "file": "package.json",
+      "sha256": "b78c449cdd218aa8c37a42f052facb646635c250c100a9d15da3a2de6d88ef1f"
+    },
+    {
+      "file": "shared/release026.js",
+      "sha256": "a019d578b0deee86106f6ebf819e6f1bf4f1785cb06e817f5dfacab249f1d07a"
+    }
+  ]
+}

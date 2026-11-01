@@ -1,0 +1,26 @@
+{
+  "commitsScanned": 111,
+  "textBlobsScanned": 1554,
+  "findings": [
+    {
+      "blob": "aea91d67d66de1171f98830a1f92d59a279a25db",
+      "path": ".env.example",
+      "rules": [
+        "coincidencia_secreto_local_conocido"
+      ],
+      "classification": "historico_heredado_sin_reescritura"
+    },
+    {
+      "blob": "04239928b30f9ba4d9dd04956371906736075eed",
+      "path": ".env.example",
+      "rules": [
+        "coincidencia_secreto_local_conocido"
+      ],
+      "classification": "historico_heredado_sin_reescritura"
+    }
+  ],
+  "knownValuesCompared": 9,
+  "valuesDisclosed": false,
+  "historyRewritten": false,
+  "notes": "Hallazgos historicos no vacios en .env.example. No se presume vigencia/revocacion. No aparecen en archivos actuales ni en el primer commit de respaldo."
+}

@@ -1,0 +1,28 @@
+{
+  "protocol": "ctsk-native-approval-v1",
+  "scope": "synthetic-acceptance-only",
+  "productionAuthorized": false,
+  "reader": {
+    "sha256": "951dc1a45c290beaff74771e111d9cf99a616200f2429c27212522b15564a6df",
+    "windows11Validated": false,
+    "evidence": null,
+    "manualReadValidation": {
+      "status": "passed-within-read-only-scope",
+      "evidence": "docs/local-fase-2e7-f01-and-native-progress/F01-user-observation.json",
+      "source": "user-manual-report"
+    }
+  },
+  "privateDirectories": {
+    "sha256": "bcac9003b6ea9545c8b4ce07af5e994041c442ec91ac4238a765827c573828b3",
+    "windows11Validated": false
+  },
+  "initdb": {
+    "sha256": null,
+    "windows11Validated": false
+  },
+  "service": {
+    "sha256": null,
+    "windows11Validated": false
+  },
+  "writeOperationsAuthorized": false
+}

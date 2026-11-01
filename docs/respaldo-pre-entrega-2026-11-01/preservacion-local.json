@@ -1,0 +1,21 @@
+{
+  "unchangedFiles": 8211,
+  "changedFiles": [
+    {
+      "path": ".gitattributes",
+      "authorizedAuditEdit": true
+    },
+    {
+      "path": ".gitignore",
+      "authorizedAuditEdit": true
+    },
+    {
+      "path": "scripts/auditarRespaldoGit.py",
+      "authorizedAuditEdit": true
+    }
+  ],
+  "missingFiles": [],
+  "originalUntrackedBeforeAudit": 7825,
+  "noServicesOrDatabasesModified": true,
+  "pushExecuted": false
+}

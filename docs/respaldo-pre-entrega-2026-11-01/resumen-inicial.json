@@ -1,0 +1,49 @@
+{
+  "branch": "respaldo-pre-entrega-2026-11-01",
+  "baseCommit": "e7a5f487ef2d1ab38b9189e879d69596781043d7",
+  "originalBranch": "GYG+FRHB-implementado",
+  "tracked": 388,
+  "modified": 69,
+  "untracked": 7826,
+  "includeExisting": 388,
+  "includeUntracked": 1262,
+  "excludeUntracked": 6564,
+  "includedBytes": 25213005,
+  "groups": {
+    "versionado_previo": 388,
+    "fuente_actual_incluye_experimentos_no_certificados": 553,
+    "documentacion_tecnica": 134,
+    "evidencia_bruta_local_posibles_datos_o_contexto_privado": 662,
+    "salida_generada_o_evidencia_visual_local": 507,
+    "fuente_historica_conservada": 317,
+    "paquete_generado_o_runtime_duplicado": 5395,
+    "fuente_y_paquete_funcional_2E6_candidate08": 258
+  },
+  "knownSecretValuesCompared": 7,
+  "findings": [
+    {
+      "path": "docs/local-fase-2e6-enterprise/candidate-08/server-candidate026.zip::node_modules/dotenv/README-es.md",
+      "rule": "clave_privada_completa"
+    },
+    {
+      "path": "docs/local-fase-2e6-enterprise/candidate-08/server-candidate026.zip::node_modules/dotenv/README.md",
+      "rule": "clave_privada_completa"
+    },
+    {
+      "path": "docs/local-fase-2e6-enterprise/candidate-08/server-candidate026.zip::node_modules/pg-connection-string/README.md",
+      "rule": "url_credencial"
+    },
+    {
+      "path": "docs/local-fase-2e6-enterprise/candidate-08/server-candidate026.zip::node_modules/pg-pool/README.md",
+      "rule": "url_credencial"
+    }
+  ],
+  "remote": {
+    "name": "origin",
+    "repository": "LuisGarcia06/sistema-integrador-reservaciones",
+    "visibility": "public",
+    "verifiedViaAuthenticatedGitHubApi": true
+  },
+  "pushAuthorized": false,
+  "pushExecuted": false
+}

@@ -1,0 +1,14 @@
+'use strict';
+// Formato independiente de inscripción e integridad. No contiene confianza predeterminada.
+const fs=require('node:fs'),path=require('node:path'),crypto=require('node:crypto');
+const sha=x=>crypto.createHash('sha256').update(x).digest('hex');
+const fail=code=>{throw Object.assign(Error(code),{code});};
+const uuid=x=>typeof x==='string'&&/^[a-f0-9]{8}-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/.test(x);
+function sign(key,body){return {body,signature:crypto.sign(null,Buffer.from(JSON.stringify(body)),key).toString('base64')};}
+function signed(key,p){try{return crypto.verify(null,Buffer.from(JSON.stringify(p.body)),key,Buffer.from(p.signature,'base64'));}catch{return false;}}
+function tree(root){const rows=[];function walk(dir){for(const e of fs.readdirSync(path.join(root,dir),{withFileTypes:true}).sort((a,b)=>a.name.localeCompare(b.name,'en'))){const rel=path.posix.join(dir,e.name);if(e.isSymbolicLink())fail('RELEASE_SYMLINK');if(e.isDirectory())walk(rel);else if(e.isFile()&&rel!=='release-inventory.json')rows.push({file:rel,sha256:sha(fs.readFileSync(path.join(root,rel)))});else if(!e.isFile())fail('RELEASE_FILE_TYPE');}}walk('');return rows.sort((a,b)=>a.file.localeCompare(b.file,'en'));}
+function inventory(root){const bytes=fs.readFileSync(path.join(root,'release-inventory.json')),i=JSON.parse(bytes);if(i.protocol!=='ctsk-release026-v1'||!['client','server'].includes(i.side)||JSON.stringify(i.files)!==JSON.stringify(tree(root)))fail('RELEASE_INTEGRITY');return {digest:sha(bytes),...i};}
+function trust(value){if(value?.protocol!=='ctsk-authority026-v1'||value.scope!=='synthetic-acceptance-only'||value.productionAuthorized!==false||!uuid(value.authorityId)||!Number.isInteger(value.expiresAt)||value.expiresAt<=Date.now()||value.expiresAt>Date.now()+7*86400000)fail('ENROLLMENT_AUTHORITY');try{if(crypto.createPublicKey(value.publicKey).asymmetricKeyType!=='ed25519')fail('ENROLLMENT_AUTHORITY');}catch{fail('ENROLLMENT_AUTHORITY');}return value;}
+function authorized(t,p,purpose){trust(t);if(!signed(t.publicKey,p)||p.body?.purpose!==purpose||p.body.authorityId!==t.authorityId||p.body.scope!==t.scope||!Number.isInteger(p.body.expiresAt)||p.body.expiresAt<=Date.now()||p.body.expiresAt>t.expiresAt)fail('ENROLLMENT_REJECTED');return p.body;}
+function confineModules(root){const Module=require('node:module'),resolve=Module._resolveFilename,prefix=(fs.realpathSync(root)+path.sep).toLowerCase();Module._resolveFilename=function(request,parent,...rest){const file=resolve.call(this,request,parent,...rest);if(parent?.filename?.toLowerCase().startsWith(prefix)&&path.isAbsolute(file)&&!fs.realpathSync(file).toLowerCase().startsWith(prefix))fail('RELEASE_DEPENDENCY_ESCAPE');return file;};}
+module.exports={sha,fail,uuid,sign,signed,tree,inventory,trust,authorized,confineModules};

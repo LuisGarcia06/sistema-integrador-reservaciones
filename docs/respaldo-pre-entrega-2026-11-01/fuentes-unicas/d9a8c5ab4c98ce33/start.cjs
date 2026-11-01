@@ -1,0 +1,1 @@
+'use strict';require('./scripts/pilot025Supervisor.cjs').start(process.argv[2],process.argv[3]).catch(e=>{console.error('PILOT025_START_REJECTED '+(/^[A-Z0-9_]+$/.test(e.message)?e.message:'START_FAILED'));process.exitCode=1;});

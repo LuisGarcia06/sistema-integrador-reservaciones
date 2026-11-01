@@ -1,0 +1,623 @@
+[
+  {
+    "path": "backend/__tests__/accessScope.routes.test.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 24352,
+    "sha256": "349b3556fc2d9956982f09860ed3468724b6ab197fee9a7ecf153364dda317f9",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/__tests__/eventosIntegracion.service.test.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 31978,
+    "sha256": "6309c14b847b53918c24eb17ebdd96f40a4edb10cb0acaecf59da9a70fb27868",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/__tests__/fareharborWebhook.routes.test.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 16519,
+    "sha256": "473b68f47a69c13798d38aa5314bddfa295cd09e7bbe6cf58444eb7a11990d3a",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/__tests__/fareharborWebhook.service.test.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 17260,
+    "sha256": "a5dabb5fdbf5ec73419e615d89f8eb6c4deec2001eda4e139d843b030060eec2",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/__tests__/helpers/notificacionesUiHarness.cjs",
+    "tracked": true,
+    "modified": true,
+    "bytes": 19334,
+    "sha256": "071879d6fe108a5eda87b56b8a282dc853b29000805be10b1866437820ddf999",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/__tests__/notificacionesIntegracion.service.test.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 3519,
+    "sha256": "3e77d7878af6827262474978e5a72e52da6264f246fe5774b590c3017b9fd439",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/config/database.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 2331,
+    "sha256": "09ae5234db00a66e8f7e6911f48d017095ac8e44f4d2b565f9082d7a2f16d43a",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/config/desktopConfiguration.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 700,
+    "sha256": "43816151688870945c289016a21dda2f1de388464f130c7077ac339449839eb3",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/config/windowsConfigAcl.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 2803,
+    "sha256": "0e05f189436086ba71cb6d9c9e1757c7d71b416835d36c344f2d3c6db22af13e",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/controllers/auth.controller.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 1870,
+    "sha256": "98ef3712c533dc048bc16b2ba36f157aacdeae5dc45a4bccb89eb6572f94d60c",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/controllers/daily.controller.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 4612,
+    "sha256": "21d9a06a8b37ff4d2fe5c41e453633bb9bd08feb06ceae0b23fc93a8ceec4076",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/controllers/eventosIntegracion.controller.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 25649,
+    "sha256": "8ea253611f025c6fe0b923d8abacfdf1a22c2a8a69073ef2f8f55ba39cc69ee9",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/controllers/guias.controller.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 3910,
+    "sha256": "c4eb5161adb9433d4eb26d7e2090e623a7bb6f8e97e8bf665baa898b681cd5eb",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/controllers/operaciones.controller.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 6137,
+    "sha256": "86a69cd067e59780092cb1ba1cc70274bb0360532f9da82765b076476f74fdc3",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/controllers/operadores.controller.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 4136,
+    "sha256": "7c2cf41c611757b3252d84b0c4cdb42d8c6ab2f8c671406eebf11b370699f2fd",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/controllers/paises.controller.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 1774,
+    "sha256": "1a3286cf7d1db8d9dddf9b3b2766582238f98855340fbd0e02d6b07fab362195",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/controllers/plataformas.controller.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 1934,
+    "sha256": "b518b6b785a32ebbffaba5bb5cf65207d93d3c3bd14cc670668554d44e4cbe94",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/controllers/tours.controller.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 3636,
+    "sha256": "1e6eafdd982e865cf780d9d3af6c3b6e1e4bf1ca920bea1cb8736e3796dd7b64",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/controllers/transportes.controller.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 5336,
+    "sha256": "b58645f5a9dca4c43c5dfc92af72ab9c829b99c28316e23e75585304f024ae2f",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/controllers/usuarios.controller.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 6310,
+    "sha256": "770dcb7900df9477e0039f1b04006b53514c58cf7989fda937aa5b47deb7f1f1",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/controllers/vehiculos.controller.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 4837,
+    "sha256": "b5287cf3ca47f1ef5aaa641ad1e34c3fea85421bb9f12a50a799a607c11bac92",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/integrations/fareharbor/fareharborWebhook.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 10403,
+    "sha256": "ec38abc325dd332448cb9b14709dccd0bc94b8036164afbbf3afb50b2f883fa4",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/integrations/getyourguide/getyourguideGmailSync.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 20844,
+    "sha256": "bac6bddfd26bcce3c933dcc96c2034b6bab65fcddede32bbe375d4ea8f60a7da",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/middleware/alcanceReservaciones.middleware.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 1760,
+    "sha256": "36b515b4256a5a47509f842a3af979675af0e803e679a65ea36e1fee0ece45bf",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/middleware/auth.middleware.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 2998,
+    "sha256": "4769b55b25a5ce9caa4467b691978f8e646092a471b4051e1e957d55fa97b8a7",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/routes/eventosIntegracion.routes.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 1813,
+    "sha256": "e656808b79af2f852f3f99df42166c2d7d7b73e192b4e966ec7046736946cb7f",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/server.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 4111,
+    "sha256": "4c2b20085bee504b51f5841b9b470a63ad87c17d7b76cd3386164651def6ca4c",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/bitacora.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 8034,
+    "sha256": "72dd47f94c2c3f207e4705e2e5cc5e5841fc993aa4d3acdf9feee60a4999715e",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/daily.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 14266,
+    "sha256": "a76eaaa8fb5ba055a751e2effc256b6a85e0479d048321f97a8a80a795e735bc",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/dashboard.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 6238,
+    "sha256": "93ff20d669287f4a31019889eaabe1fe98db0a35cf75c58b9d6b54659986a4ae",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/eventosIntegracion.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 19839,
+    "sha256": "c89f3794bbb84afa093c419ca3631c5960dc5ab7a04cda606faab93e7bcd6c1d",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/guias.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 4167,
+    "sha256": "059d93975c373446f3d0696f143c2d23032fb7a18cb2ce30b83ae78607570592",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/integracionSyncEstado.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 8906,
+    "sha256": "15d6fa11b2a6f5f1678e0ca1edacb59a76f07aafef80300557003fba8eb9c73f",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/notificacionesIntegracion.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 2746,
+    "sha256": "d4a2d6cc5b40cd1405fe20193d47b07bdeed424a63067b64545f316a353890d7",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/operaciones.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 18624,
+    "sha256": "8c8576223d3c7a761b0eb84837b39d76bdd5f51574f41f3024b7364586725d47",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/operadores.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 4399,
+    "sha256": "134112946a4771656636a58c18f8282c30102666bb2728b0fa5cdc1f9eb7f8da",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/paises.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 1040,
+    "sha256": "22c921370b50a0bcd1aa3a3e9ccf223d8e3f7637390864c38b5922c3e59e875f",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/plataformas.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 1401,
+    "sha256": "90ea445d3c2aa443af0d29d65f6764ed5068d6e336b50744c14932ebd7835adb",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/reservaciones.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 36152,
+    "sha256": "760bc718b26fde9a898ce55f119189d6f6248efa63b9d6fedec453ea506f296a",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/tours.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 3878,
+    "sha256": "d231096c6d71f64b7ff8b5a161cbcb56d1327669e586884aa2fa5b34412d2733",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/transportes.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 14776,
+    "sha256": "6484eb717da409e46a8a7a2ade27ce3c6c9befe293c0329b65c41223f991fa11",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/usuarios.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 18119,
+    "sha256": "2414cab155b918fac4253e61f55181717a3029c8ecaae20a4e387d8425a32668",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/services/vehiculos.service.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 7320,
+    "sha256": "a98c89eef4365fc94c6454cd63f77dd3e9280eec437245df6e07c5a5d97f5940",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/utils/dbErrors.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 3527,
+    "sha256": "37b96563740e51342504689c0a734b3a97284b5f0acdc9936b67a60b94ccc0eb",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/validators/operaciones.validator.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 8340,
+    "sha256": "d1d58068b016e25e6a5ec1830a707c3921629787ede8ce7afe5a2f7ee5a6a8cd",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/validators/transportes.validator.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 6600,
+    "sha256": "b0c9c69e4b6de2aa5f6dd6f2c9392b1d2b75bb964041713549e867cfd20c9d51",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "backend/validators/usuarios.validator.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 6781,
+    "sha256": "6cf321d2848b8e5b759fcf59e847294f90227e18fa75f90788c62454edc6144c",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "database/schema.sql",
+    "tracked": true,
+    "modified": true,
+    "bytes": 16982,
+    "sha256": "6bf482bf20586dd294da35bf482f026c4b07193c3b6ce9eee7897f60a95db028",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "electron/main.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 26710,
+    "sha256": "5080ba40150d84310640ddc82cd4660c16eb6654723753afffde5a465b663a63",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/css/pages.css",
+    "tracked": true,
+    "modified": true,
+    "bytes": 60628,
+    "sha256": "ea357447f1476815450c9b9057ffe1ed918361bc76a479a14e3a5b6b6ce0ee80",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/index.html",
+    "tracked": true,
+    "modified": true,
+    "bytes": 2075,
+    "sha256": "72235a8d7b5a3d843b8d0a1ca0a2cc62ce04ca79a36b33368dec88649eaa210e",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/js/api.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 5386,
+    "sha256": "bb445e94df70c2dbe045bb4344de202ab127e227bc9f263d78cb2838b03e6aee",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/js/app.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 432,
+    "sha256": "b4b975225724ea22580fcf9ba36022bfdc94b3cfab3f413b5a254dc62ddc8032",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/js/auth.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 6026,
+    "sha256": "0e26b46d0dd683203fed258190076efa77ff547577aa55482b3189fb6b8d2d29",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/js/layout.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 8269,
+    "sha256": "52ad27cfb6e9a2b4e5c70a08c2c07344b2fd49df2cec574e6d4b3d219a4a2a1d",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/js/notificaciones.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 18231,
+    "sha256": "716ad000cb45a7b26df6e16098588ccce1d9cd8ff0864b073ed5edef8260e08a",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/js/router.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 4561,
+    "sha256": "3ccd34d19f8a361da86d59c014d84f373f95cc26942e3b63817b51eff0dbdbb8",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/js/transportesUi.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 4508,
+    "sha256": "e8a0a19892caf8917d19fda6e21cabb69517e5a4e14b57c973d8484fa93dd749",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/pages/bitacora.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 10531,
+    "sha256": "8c857a5fc883d652b97c02a1c435b1c3162111a7581363b05f77f40e7da718d4",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/pages/configuracion.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 30165,
+    "sha256": "ea0928c95a10e7ed2f2b8419fcf9af88e9f7baf1be3b87dc7871c2a1df0686e5",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/pages/daily.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 34688,
+    "sha256": "d53b37ca66b57e7e98a12dd1f3776a92a4f4f564e8271cc565b45d74b5855481",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/pages/dashboard.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 144967,
+    "sha256": "b1dc607f28b05d261be62d9b48849aaf2d86eab9d674a677ed66a1cd1d54e06f",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/pages/operaciones.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 96953,
+    "sha256": "a2ad863a416a26ea5da1d6432127b21082261ded9f6d510b07c470418dbc56d5",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/pages/reservaciones.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 79044,
+    "sha256": "3ed2eee777868ac63d430c980f01f40cd957f7d5f49825fe2f5851d9a6e1ff1e",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "frontend/pages/usuarios.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 32749,
+    "sha256": "42003e27a0a638ec808d66b6e159ae074a1251124a88c0ccdba25de26ec03bbc",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "package.json",
+    "tracked": true,
+    "modified": true,
+    "bytes": 2035,
+    "sha256": "a0be2c95625822b6e5546cc230d1f464dcafbded8aa4ca6cf88bacf4596ed75f",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "readme.md",
+    "tracked": true,
+    "modified": true,
+    "bytes": 10676,
+    "sha256": "44eee359fae4913bc13a2e7636e81e9fc22a839354b5b3d74b92169959c13a9f",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "scripts/preview/controls.js",
+    "tracked": true,
+    "modified": true,
+    "bytes": 4040,
+    "sha256": "b1f62a9568e58c181f0b70bf85b993fcd42f019170f1ff455f1e9a2e078c3c50",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  },
+  {
+    "path": "scripts/preview/main.cjs",
+    "tracked": true,
+    "modified": true,
+    "bytes": 4648,
+    "sha256": "bbaab629cc4f97dd60b4e99d37835db5b1365b81b8985199126c7c8aca25b1b7",
+    "decision": "incluir",
+    "category": "versionado_previo"
+  }
+]

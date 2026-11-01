@@ -1,0 +1,16 @@
+{
+  "server": {
+    "file": "A:\\sistema-integrador-reservaciones\\docs\\local-fase-2e6-enterprise\\candidate-08\\server-candidate026.zip",
+    "bytes": 1765580,
+    "sha256": "98bfa757b7ebbfb2368e69b60cafa8869bee0577c5582aeb0838f5a92d96c091",
+    "inventoryDigest": "49b5b52d62cec4fa4378a9242c4658a62a58d44a454792bd5e09c85c29156c3d",
+    "files": 1024
+  },
+  "client": {
+    "file": "A:\\sistema-integrador-reservaciones\\docs\\local-fase-2e6-enterprise\\candidate-08\\client-candidate026.zip",
+    "bytes": 379560,
+    "sha256": "456bf37b5cc106ec0c6672ada58ec6bd08d9557d173381bc7f3b5b8e5ebf6c0c",
+    "inventoryDigest": "93205dd6a7b3a765ab17a8bfc74a699e3b53bb2ee730628cace80cccba51e49c",
+    "files": 53
+  }
+}
